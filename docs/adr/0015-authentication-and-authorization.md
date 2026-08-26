@@ -71,3 +71,26 @@ A single authorization call with the record fetched eagerly for every command �
 rejected: a create has no record, and reading one before knowing whether the actor may
 act at all is work done for a refusal. Marking commands public in core — rejected: it
 would put an authentication concept in a package that must not have one.
+
+## Amendment, phase 9 — a command may name its subject
+
+The rule above holds: a command name is a permission name. Phase 9 found the one
+place where it cannot hold on its own.
+
+`blocks.update` loads a page, edits a node in its tree and writes the page back. The
+record-level check therefore asks about `pages.update`, while the permission gate —
+which runs first, before any row is read — derived `blocks.update` from the name. An
+agent needed both, under two names, for one act; and `blocks` is not something anyone
+can hold a right over, because there is no blocks table, no blocks resource and no
+blocks row.
+
+`command()` now accepts `subject`, and the seven block commands declare `pages`. The
+name still supplies the subject everywhere else, so nothing changed for any other
+command. The alternative — teaching `subjectOf` that the `blocks` group means pages —
+was rejected: it puts one package's naming inside `@assemora/auth`, and the next
+command with the same shape would have to be added there too.
+
+Deliberately *not* amended: `revisions.restore` still takes `revisions.restore` and
+the entity's own `<type>.restore`. Those are two different rights — being allowed to
+use the history, and being allowed to change that entity — and the entity type is not
+known until the revision is read, so a declared subject could not express it anyway.
