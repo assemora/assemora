@@ -1,0 +1,34 @@
+{
+  "name": "@assemora/database-postgres",
+  "version": "0.0.0",
+  "description": "PostgreSQL adapter: Query AST translation, transactions, migrations (Drizzle inside)",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@assemora/schema": "workspace:*",
+    "@assemora/core": "workspace:*",
+    "@assemora/database": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "@types/pg": "8.23.1"
+  }
+}

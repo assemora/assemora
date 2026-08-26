@@ -1,0 +1,23 @@
+{
+  "name": "@assemora/integration-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Integration tests that exercise the whole stack against a real database",
+  "devDependencies": {
+    "@assemora/core": "workspace:*",
+    "@assemora/data": "workspace:*",
+    "@assemora/database": "workspace:*",
+    "@assemora/database-postgres": "workspace:*",
+    "@assemora/resources": "workspace:*",
+    "@assemora/schema": "workspace:*",
+    "@types/node": "24.13.3",
+    "@assemora/http": "workspace:*",
+    "@assemora/openapi": "workspace:*",
+    "@assemora/sdk": "workspace:*",
+    "@assemora/auth": "workspace:*",
+    "@assemora/pages": "workspace:*",
+    "@assemora/revisions": "workspace:*",
+    "@assemora/media": "workspace:*"
+  }
+}
