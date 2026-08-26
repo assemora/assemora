@@ -2,8 +2,9 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node", "react"],
-    "jsx": "react-jsx"
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
-  "include": ["packages/*/src/**/*", "tests/**/*"]
+  "include": ["packages/*/src/**/*.test-d.ts", "packages/*/src/**/*.test-d.tsx"]
 }

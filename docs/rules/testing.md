@@ -8,6 +8,10 @@ Reference: SPEC.md §92–§98.
 - Type-level tests live in `*.test-d.ts` and run via `pnpm test:types`. Invalid
   usage is asserted with `@ts-expect-error`, so a regression that makes bad code
   compile fails the suite.
+- `tsconfig.typecheck.json` covers the `*.test-d.ts` files and nothing else.
+  TypeScript pulls in whatever they import, and the sources themselves are checked
+  package by package, each with its own libraries — `pnpm typecheck` is what does
+  that, and it is what stops a server package reaching for `document`.
 - Areas that require thorough coverage: Query AST, query builder, type inference,
   relations, transactions, Command Bus, policy enforcement, Schema Registry,
   OpenAPI generation, MCP permissions, revision restore, dynamic resources.

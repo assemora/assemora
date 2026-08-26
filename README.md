@@ -1,5 +1,7 @@
 # Assemora
 
+[![verify](https://github.com/assemora/assemora/actions/workflows/verify.yml/badge.svg)](https://github.com/assemora/assemora/actions/workflows/verify.yml)
+
 A TypeScript framework and CMS where one application layer serves the developer
 (TypeScript API), the user (Studio) and the AI agent (MCP).
 
@@ -80,16 +82,20 @@ Dependency graph review:
 
 ```bash
 pnpm install
-pnpm verify        # boundaries + lint + build + typecheck + test
+pnpm verify        # boundaries + lint + build + typecheck + test + test:types
 ```
 
 Individual steps: `pnpm boundaries`, `pnpm lint`, `pnpm format`, `pnpm build`,
 `pnpm typecheck`, `pnpm test`, `pnpm test:types`.
 
+`pnpm verify` is what CI runs, so a green checkout is a green pull request.
+
 The PostgreSQL suite (`pnpm test:integration`) needs a database. It defaults to
 `postgres://<user>@localhost:5432/assemora_test` and skips itself when nothing is
 reachable, so a checkout without PostgreSQL still passes `pnpm verify`. Point it
-elsewhere with `ASSEMORA_TEST_DATABASE_URL`.
+elsewhere with `ASSEMORA_TEST_DATABASE_URL`. CI stands a real PostgreSQL up and sets
+`ASSEMORA_REQUIRE_POSTGRES=1`, which turns an unreachable database into a failure
+rather than a silent skip.
 
 ## Layout
 

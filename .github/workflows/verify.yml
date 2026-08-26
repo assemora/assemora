@@ -1,0 +1,84 @@
+# The gate every change passes, and the same one `pnpm verify` runs locally.
+#
+# Two jobs on purpose: the first needs nothing but Node and answers in a couple of
+# minutes, and the second stands a real PostgreSQL up so the integration suite runs
+# instead of skipping itself.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push supersedes an older run on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: boundaries, lint, build, typecheck, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      # Fails when the lockfile does not match package.json, which is what it is for.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm verify
+
+  integration:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: assemora
+          POSTGRES_PASSWORD: assemora
+          POSTGRES_DB: assemora_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U assemora -d assemora_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ASSEMORA_TEST_DATABASE_URL: postgres://assemora:assemora@localhost:5432/assemora_test
+      # Without this an unreachable database is a skipped suite rather than a failing
+      # one, and CI would report success having tested nothing.
+      ASSEMORA_REQUIRE_POSTGRES: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The integration suite imports built packages, so a stale dist would let it
+      # pass against code that no longer exists.
+      - run: pnpm build
+
+      - run: pnpm test:integration

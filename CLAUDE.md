@@ -184,7 +184,8 @@ Known gaps, each with a reason rather than an oversight:
 ## Commands
 
 ```bash
-pnpm verify           # boundaries + lint + build + typecheck + test — run before finishing a task
+pnpm verify           # boundaries + lint + build + typecheck + test + test:types
+                      # what CI runs. Run it before finishing a task
 pnpm test:integration # PostgreSQL suite; skips itself when no database is reachable
                       # it imports built packages, so build first — `vitest` alone
                       # can pass against a stale dist. `pnpm verify` builds for you.

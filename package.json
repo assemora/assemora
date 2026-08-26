@@ -22,7 +22,7 @@
     "format": "biome check --write .",
     "boundaries": "node --disable-warning=ExperimentalWarning scripts/check-boundaries.ts",
     "clean": "turbo run clean && rm -rf .turbo",
-    "verify": "pnpm boundaries && pnpm lint && pnpm build && pnpm typecheck && pnpm test",
+    "verify": "pnpm boundaries && pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm test:types",
     "test:integration": "vitest run tests/integration"
   },
   "engines": {
