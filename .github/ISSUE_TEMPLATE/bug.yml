@@ -1,0 +1,79 @@
+name: Bug report
+description: Something behaves differently from what it says it does
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The most useful bug report is one somebody else
+        can reproduce without asking you anything.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Where
+      description: The package or app it happens in. Pick the closest one.
+      options:
+        - '@assemora/schema'
+        - '@assemora/core'
+        - '@assemora/database'
+        - '@assemora/data'
+        - '@assemora/database-postgres'
+        - '@assemora/resources'
+        - '@assemora/http'
+        - '@assemora/openapi'
+        - '@assemora/sdk'
+        - '@assemora/auth'
+        - '@assemora/pages'
+        - '@assemora/revisions'
+        - '@assemora/media'
+        - '@assemora/react'
+        - Studio (apps/studio)
+        - Playground (apps/playground)
+        - Tooling (build, boundaries, CI)
+        - Somewhere else, or not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened
+      description: Quote the line in SPEC.md, a README or a doc comment if one covers it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Paste the error, the wrong output, or the screenshot.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce it
+      description: |
+        The smallest code that shows it. A failing test is the best possible version
+        of this — `pnpm verify` runs it, and the fix has somewhere to land.
+      render: ts
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Node, pnpm, OS
+      placeholder: 'node 24.19.0, pnpm 10.6.4, macOS 15'
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you post
+      options:
+        - label: I ran `pnpm verify` on a clean checkout and it passed, so this is not my environment
+        - label: I searched the existing issues

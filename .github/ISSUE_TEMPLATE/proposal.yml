@@ -1,0 +1,59 @@
+name: Proposal
+description: Something should exist, or should work differently
+labels: [proposal]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Assemora is built to a specification. Before proposing, please check
+        [`SPEC.md`](https://github.com/assemora/assemora/blob/main/SPEC.md) and
+        [`docs/adr/`](https://github.com/assemora/assemora/tree/main/docs/adr) —
+        the answer is often already there, sometimes as a deliberate *no*.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        What is hard or impossible today. Describe the situation, not the solution —
+        a good problem statement outlives whatever we build for it.
+    validations:
+      required: true
+
+  - type: input
+    id: spec
+    attributes:
+      label: Which part of SPEC.md this touches
+      description: A section number, or "nothing covers it" if that is the case.
+      placeholder: '§35, or: nothing covers it'
+    validations:
+      required: true
+
+  - type: textarea
+    id: shape
+    attributes:
+      label: What the API would look like
+      description: |
+        If you have a shape in mind, write the call. A call should read without
+        documentation — that is the bar the public API is held to (SPEC.md §3).
+      render: ts
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you considered and rejected
+      description: |
+        And what you do today instead. Knowing the workaround tells us how much this
+        actually costs.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints this respects
+      description: |
+        SPEC.md §125 lists what Assemora will not do. Tick what applies — if a
+        proposal needs one of these broken, say so plainly and why.
+      options:
+        - label: Mutations still go through the Command Bus, and policies still run
+        - label: It adds no second schema for a subsystem
+        - label: It needs no new dependency edge between packages, or it comes with an ADR

@@ -128,6 +128,11 @@ Dependency direction is declared in `scripts/lib/package-graph.ts` and enforced 
 Everything in this repository is written in English — code, comments, documentation
 and commit messages.
 
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) — how to get set up, and the rules a change is
+held to. Security reports go through [`SECURITY.md`](SECURITY.md), privately.
+
 ## License
 
 [Apache-2.0](LICENSE).
