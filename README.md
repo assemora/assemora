@@ -98,9 +98,8 @@ packages/     17 framework packages with fixed boundaries
 apps/         studio/, playground/, docs/
 starters/     nextjs, bare — phase 10
 examples/     blog, company — phase 10
-docs/         architecture/, adr/
+docs/         architecture/, adr/, rules/
 scripts/      boundary checker and hooks
-.claude/      rules/, agents/, settings.json
 ```
 
 Two processes are needed to look at Studio:

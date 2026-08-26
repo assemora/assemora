@@ -48,5 +48,5 @@ The checker itself is covered by tests (`scripts/lib/boundaries.test.ts`).
 
 ## Alternatives
 
-Prose rules in `.claude/rules/` alone — rejected: a rule without a check survives
+Prose rules in `docs/rules/` alone — rejected: a rule without a check survives
 until the first rush.

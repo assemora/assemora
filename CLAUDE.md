@@ -251,9 +251,9 @@ repository-wide reformat in the same commit.
 
 ## Detailed rules
 
-@.claude/rules/architecture.md
-@.claude/rules/public-api.md
-@.claude/rules/data-layer.md
-@.claude/rules/security.md
-@.claude/rules/testing.md
-@.claude/rules/studio.md
+@docs/rules/architecture.md
+@docs/rules/public-api.md
+@docs/rules/data-layer.md
+@docs/rules/security.md
+@docs/rules/testing.md
+@docs/rules/studio.md
