@@ -41,8 +41,40 @@ have already been made — do not reverse one without writing a new ADR.
   `@assemora/react` was pulled forward from phase 10 for that reason: SPEC.md §59
   requires the canvas to run the real renderer, not a copy of it.
 
-Only `mcp`, `plugin` and `cli` still export just a `PACKAGE` marker. That is scaffolding, not design — replace it with the real public API of
+- **Phase 9 (`@assemora/mcp` + `@assemora/audit` + `@assemora/change-sets`) — done.**
+  Dry run, change sets, the audit log, field-level agent permissions and an MCP
+  server generated entirely from the Schema Registry. The mandatory scenario of
+  SPEC.md §97 runs as `tests/integration/agent-e2e.test.ts`, over the protocol.
+
+Only `plugin` and `cli` still export just a `PACKAGE` marker. That is scaffolding, not design — replace it with the real public API of
 the phase that owns the package (each package README states its phase).
+
+Decisions phase 9 added (ADR-0019, ADR-0020):
+
+- A dry run is the command pipeline with the transaction rolled back. There is no
+  second code path, so a preview cannot disagree with the write it predicts, and a
+  preview an actor may not perform is refused exactly as the command would be.
+- Inside a batch preview a step does *not* open its own rollback — the caller owns
+  it. "Add a block, then set its title" is one proposal, and undoing each step
+  separately would leave the second referring to something rolled back (SPEC.md §74).
+- An MCP mutation is a proposal by default. Production state changes when a person
+  applies it (SPEC.md §75); `mutations: 'direct'` is the deliberate opt-out.
+- Applying re-previews and compares `baseVersions`, so a proposal written against an
+  older page is refused rather than silently overwriting. Declining is an *outcome*,
+  not an exception: the row has to remember that it declined, and throwing would roll
+  back the very status that records it.
+- Every tool is generated from the registry. A hand-written tool list drifts the
+  moment somebody adds a resource, and this package cannot reach a database at all.
+- A tool carries the name the bus knows, beside the name the agent calls. Stripping
+  the `assemora.` prefix is not invertible — `assemora.describe` is registered under
+  that name.
+- Field-level agent permissions refuse the whole command and name every offending
+  field, rather than dropping fields silently. A read projects to what the actor may
+  see; revisions still record the whole row, because history is not a reader.
+- The Query Bus is audited too. SPEC.md §76 lists audit among the seven things a tool
+  call must pass, and half the tools are reads.
+- A command may declare the `subject` it acts on where its name and the record it
+  changes disagree — the block commands declare `pages` (ADR-0015, amended).
 
 Decisions phase 1 already fixed, which phase 2 builds on:
 
@@ -168,9 +200,10 @@ Known gaps, each with a reason rather than an oversight:
 - The Design section of SPEC.md §58 is not built: SPEC.md §62 fixes the theme token
   document but declares no table, no commands and no routes for it. That contract has
   to be designed before a screen can edit it.
-- Nothing implements core's `AuditPort`, so SPEC.md §67's audit log is collected and
-  discarded. Developer → Logs waits on it.
-
+- Studio's own calls are recorded as `source: rest`, because Studio reaches the same
+  generic `/api/commands/*` routes any REST client does. Separating them means either
+  a header the server would have to trust, or routes Studio alone may call — a
+  decision, not a patch.
 - `.with('posts')` does not add the relation to the instance type. ADR-0010 erased the
   relation target's type to make mutual relations declarable at all; typing the loaded
   shape means revisiting that trade-off in a new ADR, not patching around it.

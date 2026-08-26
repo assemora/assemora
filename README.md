@@ -15,9 +15,9 @@ architecture. Decisions already taken live in [`docs/adr/`](docs/adr/).
 Early, and honest about it: nothing is published to npm yet and the public API is
 still free to change.
 
-Phases 0 to 8 are complete — the framework and Studio both run. `@assemora/mcp`,
-`@assemora/plugin` and `@assemora/cli` are still scaffolding, and phase 9 (MCP) is
-next (SPEC.md §116).
+Phases 0 to 9 are complete — the framework runs, Studio runs, and an agent can drive
+the same application over MCP. `@assemora/plugin` and `@assemora/cli` are still
+scaffolding; phase 10 (the CLI, starters and examples) is next (SPEC.md §117).
 
 | Package | What it is |
 | --- | --- |
@@ -35,6 +35,9 @@ next (SPEC.md §116).
 | `@assemora/revisions` | History, diff, restore, undo and redo |
 | `@assemora/media` | The media library and its storage drivers |
 | `@assemora/react` | The renderer a site ships, and the builder canvas runs |
+| `@assemora/audit` | What happened, who did it, and how it ended |
+| `@assemora/change-sets` | What an agent proposed, previewed and not yet applied |
+| `@assemora/mcp` | Every command and query, as a tool, generated from the registry |
 
 Studio (`apps/studio`) is a client of that layer and holds no list of collections,
 no hand-written form and no list of block types: it asks the Schema Registry what
@@ -72,6 +75,19 @@ PostgreSQL without changing a character.
 
 Dependency graph review:
 [`docs/architecture/package-graph.md`](docs/architecture/package-graph.md).
+
+An agent reaches the same application through MCP, and every registered command and
+query is already a tool — nobody maintains a list. A mutation tool does not mutate:
+it previews the command, stores a change set, and hands back the diff. Production
+state changes when a person applies it.
+
+```text
+assemora.blocks.update  →  { status: 'pending', changes: ['hero — title changed'] }
+```
+
+The seven checks of SPEC.md §76 are not reimplemented for agents. A tool call is the
+same bus call Studio makes, so it passes the same validation, permissions, policies,
+field permissions and audit.
 
 ## Requirements
 
