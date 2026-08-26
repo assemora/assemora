@@ -1,0 +1,31 @@
+{
+  "name": "@assemora/data",
+  "version": "0.0.0",
+  "description": "Assemora Data: model(), query builder, relations, scopes, Query AST",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@assemora/schema": "workspace:*",
+    "@assemora/core": "workspace:*",
+    "@assemora/database": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
+  }
+}
