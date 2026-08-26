@@ -58,7 +58,7 @@ body:
       description: |
         The smallest code that shows it. A failing test is the best possible version
         of this — `pnpm verify` runs it, and the fix has somewhere to land.
-      render: ts
+      render: typescript
     validations:
       required: true
 

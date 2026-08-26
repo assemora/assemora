@@ -36,7 +36,7 @@ body:
       description: |
         If you have a shape in mind, write the call. A call should read without
         documentation — that is the bar the public API is held to (SPEC.md §3).
-      render: ts
+      render: typescript
 
   - type: textarea
     id: alternatives
