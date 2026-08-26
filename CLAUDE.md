@@ -46,8 +46,56 @@ have already been made — do not reverse one without writing a new ADR.
   server generated entirely from the Schema Registry. The mandatory scenario of
   SPEC.md §97 runs as `tests/integration/agent-e2e.test.ts`, over the protocol.
 
-Only `plugin` and `cli` still export just a `PACKAGE` marker. That is scaffolding, not design — replace it with the real public API of
-the phase that owns the package (each package README states its phase).
+- **Phase 10 (`@assemora/cli` + `create-assemora` + `assemora` + starters) — done.**
+  The twenty-two commands of SPEC.md §77, schema diffing behind `db:generate`, the
+  plugin API, the S3 storage driver, the umbrella of SPEC.md §9, the scaffolder, both
+  starters, both examples and the guide. Every package now exports its real API.
+
+Decisions phase 10 added (ADR-0021, ADR-0022):
+
+- The CLI imports the project's *application* at runtime through `assemora.config.ts`
+  and reads its registry and its buses. It never imports a feature package, so
+  `assemora agents` is an authorized, audited read on the Query Bus like any other.
+- `defineConfig` lives in `@assemora/cli`, because the config exists for the CLI and
+  core must not learn what a migrations directory is.
+- Schema diffing splits along the dialect line: `diffSchema()` in `@assemora/database`
+  is pure and knows no SQL, `migrationSql()` in `@assemora/database-postgres` writes
+  it, and the CLI orchestrates. The diff is taken against the snapshot in
+  `.assemora/generated/`, not against a live database — generation has to be
+  deterministic and to work offline, and drift belongs in `db:status`.
+- `assemora` is the umbrella of SPEC.md §9 and the top of the graph. It may depend on
+  everything precisely because nothing depends on it, and `pnpm boundaries` fails on
+  any edge pointing at it. It holds wiring and no business logic — including the
+  routes `auth`, `media` and `mcp` may not declare themselves.
+- Studio is loaded by the umbrella through a dynamic import resolved from the
+  *project*, never a dependency: a hard edge would install a React SPA into every
+  project that answered no to SPEC.md §78's third question.
+- `create-assemora` is unscoped and dependency-free, because `pnpm create assemora`
+  resolves an unscoped name and runs before anything is installed.
+- `starters/bare` is a workspace package, so CI compiles the template rather than
+  trusting it. All eight answers to §78's questions are asserted mechanically.
+- `server.mountAssets()` serves a single-page application outside the API prefix and
+  outside the Schema Registry: a stylesheet is not an endpoint.
+
+An adversarial pass after the phase found defects worth remembering, all fixed:
+
+- The API rate limit had never worked. `@fastify/rate-limit` attaches through an
+  `onRoute` hook, and routes were mounted before the plugin finished registering, so
+  no request in any Assemora application was ever counted (SPEC.md §85).
+- `mountCommands()` published `POST /api/commands/auth.login` beside the hardened
+  login route — the same session as readable JSON, usable as a CSRF-exempt bearer
+  token, with the IP and user agent recorded on the session chosen by the caller.
+  The umbrella no longer publishes a command it fronts with a route of its own.
+- Media bytes went to the model directly, so a policy covered the listing and not the
+  files. They go through the Query Bus now, like every other read.
+- The generated SDK printed an array of a union as `readonly "a" | "b"[]`, which is
+  not the type anybody meant, so §124's "TypeScript SDK" was unmet for any project
+  with pages.
+- A `BlockView` was a `ComponentType`, and a class component's `defaultProps` put the
+  props in a covariant position — so every registry entry needed `as never`.
+- `hasDefault` cleared the "may fail on existing rows" warning in the schema diff,
+  though ADR-0011 keeps defaults out of the DDL, so the column really does arrive
+  with nothing to put in existing rows.
 
 Decisions phase 9 added (ADR-0019, ADR-0020):
 
@@ -204,6 +252,16 @@ Known gaps, each with a reason rather than an oversight:
   generic `/api/commands/*` routes any REST client does. Separating them means either
   a header the server would have to trust, or routes Studio alone may call — a
   decision, not a patch.
+- `auth.login` still accepts a caller-supplied `ipAddress` and `userAgent`, and is
+  publicly authorized, so it remains reachable as the MCP tool `assemora.auth.login`.
+  The umbrella closed the HTTP alias; the deeper fix is for `@assemora/auth` to take
+  those fields from the context, and for a command to be able to declare itself
+  route-only so the exclusion is not a list one package maintains by hand.
+- `frame-ancestors` is one header for the whole origin, so `frontend.framedBy` widens
+  it on `/studio` too. Per-route security headers in `@assemora/http` would fix it.
+- `db:status` reports applied and pending migrations but not drift against a real
+  database. That needs `adapter.introspect()` to return relations and enum values,
+  which it does not — it reads columns only.
 - `.with('posts')` does not add the relation to the instance type. ADR-0010 erased the
   relation target's type to make mutual relations declarable at all; typing the loaded
   shape means revisiting that trade-off in a new ADR, not patching around it.
@@ -238,7 +296,9 @@ pnpm --filter @assemora/playground dev   # the application, on :4000
 pnpm --filter @assemora/studio dev       # Studio, on :5173, proxying /api
 ```
 
-The playground seeds itself on first boot and signs in with `ada@assemora.dev`.
+The playground seeds itself on first boot and signs in with `ada@assemora.dev`. A
+generated project needs one process instead: `assemora()` serves Studio at `/studio`
+beside its own API.
 
 ## Non-negotiable rules
 
