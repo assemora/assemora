@@ -1,8 +1,14 @@
 {
   "name": "@assemora/core",
   "version": "0.0.0",
-  "description": "Application kernel: modules, container, context, Command Bus, Event Bus, errors",
   "private": true,
+  "description": "Application kernel: modules, container, context, Command Bus, Event Bus, errors",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/core"
+  },
   "type": "module",
   "exports": {
     ".": {

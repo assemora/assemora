@@ -1,8 +1,14 @@
 {
   "name": "@assemora/cli",
   "version": "0.0.0",
-  "description": "Assemora CLI: generators, migrations, introspection",
   "private": true,
+  "description": "Assemora CLI: generators, migrations, introspection",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/cli"
+  },
   "type": "module",
   "exports": {
     ".": {

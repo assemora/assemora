@@ -1,8 +1,14 @@
 {
   "name": "@assemora/pages",
   "version": "0.0.0",
-  "description": "Pages, block tree, drafts and publishing",
   "private": true,
+  "description": "Pages, block tree, drafts and publishing",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/pages"
+  },
   "type": "module",
   "exports": {
     ".": {

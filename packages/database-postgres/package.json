@@ -1,8 +1,14 @@
 {
   "name": "@assemora/database-postgres",
   "version": "0.0.0",
-  "description": "PostgreSQL adapter: Query AST translation, transactions, migrations (Drizzle inside)",
   "private": true,
+  "description": "PostgreSQL adapter: Query AST translation, transactions, migrations (Drizzle inside)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/database-postgres"
+  },
   "type": "module",
   "exports": {
     ".": {

@@ -1,8 +1,14 @@
 {
   "name": "@assemora/data",
   "version": "0.0.0",
-  "description": "Assemora Data: model(), query builder, relations, scopes, Query AST",
   "private": true,
+  "description": "Assemora Data: model(), query builder, relations, scopes, Query AST",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/data"
+  },
   "type": "module",
   "exports": {
     ".": {

@@ -1,8 +1,14 @@
 {
   "name": "@assemora/auth",
   "version": "0.0.0",
-  "description": "Users, sessions, roles, permissions, policies, tokens",
   "private": true,
+  "description": "Users, sessions, roles, permissions, policies, tokens",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/auth"
+  },
   "type": "module",
   "exports": {
     ".": {

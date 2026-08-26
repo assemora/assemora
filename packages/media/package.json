@@ -1,8 +1,14 @@
 {
   "name": "@assemora/media",
   "version": "0.0.0",
-  "description": "Media library and storage adapters (local, S3-compatible)",
   "private": true,
+  "description": "Media library and storage adapters (local, S3-compatible)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/media"
+  },
   "type": "module",
   "exports": {
     ".": {

@@ -1,8 +1,14 @@
 {
   "name": "@assemora/sdk",
   "version": "0.0.0",
-  "description": "Type-safe HTTP client generated from the Schema Registry",
   "private": true,
+  "description": "Type-safe HTTP client generated from the Schema Registry",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/sdk"
+  },
   "type": "module",
   "exports": {
     ".": {

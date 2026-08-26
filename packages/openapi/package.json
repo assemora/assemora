@@ -1,8 +1,14 @@
 {
   "name": "@assemora/openapi",
   "version": "0.0.0",
-  "description": "OpenAPI 3.1 generation from the Schema Registry",
   "private": true,
+  "description": "OpenAPI 3.1 generation from the Schema Registry",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/openapi"
+  },
   "type": "module",
   "exports": {
     ".": {

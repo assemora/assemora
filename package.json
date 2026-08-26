@@ -2,11 +2,17 @@
   "name": "assemora",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
-  "packageManager": "pnpm@10.6.4",
-  "engines": {
-    "node": ">=24.11.0"
+  "description": "A TypeScript framework and CMS: one application layer for developers, people and AI agents.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git"
   },
+  "homepage": "https://github.com/assemora/assemora#readme",
+  "bugs": {
+    "url": "https://github.com/assemora/assemora/issues"
+  },
+  "type": "module",
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck && tsc -p scripts/tsconfig.json && tsc -p tests/tsconfig.json",
@@ -19,6 +25,10 @@
     "verify": "pnpm boundaries && pnpm lint && pnpm build && pnpm typecheck && pnpm test",
     "test:integration": "vitest run tests/integration"
   },
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "packageManager": "pnpm@10.6.4",
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
     "@types/node": "24.13.3",

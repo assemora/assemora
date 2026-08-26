@@ -2,6 +2,12 @@
   "name": "@assemora/studio",
   "version": "0.0.0",
   "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "apps/studio"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

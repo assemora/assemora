@@ -1,8 +1,14 @@
 {
   "name": "@assemora/react",
   "version": "0.0.0",
-  "description": "React renderer for the block tree",
   "private": true,
+  "description": "React renderer for the block tree",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/react"
+  },
   "type": "module",
   "exports": {
     ".": {

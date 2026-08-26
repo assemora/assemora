@@ -1,8 +1,14 @@
 {
   "name": "@assemora/mcp",
   "version": "0.0.0",
-  "description": "MCP server, agent API, dry run and change sets",
   "private": true,
+  "description": "MCP server, agent API, dry run and change sets",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/mcp"
+  },
   "type": "module",
   "exports": {
     ".": {

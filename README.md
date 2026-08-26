@@ -10,11 +10,34 @@ architecture. Decisions already taken live in [`docs/adr/`](docs/adr/).
 
 ## Status
 
-Phases 0 to 5 are complete: the repository foundation, `@assemora/schema`,
-`@assemora/core`, `@assemora/database`, `@assemora/data`,
-`@assemora/database-postgres`, `@assemora/resources`, `@assemora/http`,
-`@assemora/openapi`, `@assemora/sdk`, `@assemora/auth`, `@assemora/pages`,
-`@assemora/revisions` and `@assemora/media`. Next is Studio (SPEC.md §115).
+Early, and honest about it: nothing is published to npm yet and the public API is
+still free to change.
+
+Phases 0 to 8 are complete — the framework and Studio both run. `@assemora/mcp`,
+`@assemora/plugin` and `@assemora/cli` are still scaffolding, and phase 9 (MCP) is
+next (SPEC.md §116).
+
+| Package | What it is |
+| --- | --- |
+| `@assemora/schema` | The primitives every layer reads. No dependencies, ever |
+| `@assemora/core` | Command Bus, Query Bus, Schema Registry, events, context |
+| `@assemora/database` | The Query AST and the adapter contract |
+| `@assemora/data` | `model()`, the column DSL, the query builder, relations |
+| `@assemora/database-postgres` | The AST executed. Drizzle lives here and nowhere else |
+| `@assemora/resources` | A model as content: fields, filters, generic CRUD |
+| `@assemora/http` | `route()`, the Fastify adapter, generated endpoints |
+| `@assemora/openapi` | OpenAPI 3.1 and the introspection endpoint |
+| `@assemora/sdk` | The typed client, generated from the registry |
+| `@assemora/auth` | Users, roles, permissions, policies, tokens, agents |
+| `@assemora/pages` | Pages as block trees, and every edit as a command |
+| `@assemora/revisions` | History, diff, restore, undo and redo |
+| `@assemora/media` | The media library and its storage drivers |
+| `@assemora/react` | The renderer a site ships, and the builder canvas runs |
+
+Studio (`apps/studio`) is a client of that layer and holds no list of collections,
+no hand-written form and no list of block types: it asks the Schema Registry what
+exists and renders that. `apps/playground` is the reference application it is
+developed against.
 
 ```ts
 export const User = model('users', {
@@ -72,13 +95,22 @@ elsewhere with `ASSEMORA_TEST_DATABASE_URL`.
 
 ```text
 packages/     17 framework packages with fixed boundaries
-apps/         Studio, playground, docs — phases 8 and 10
+apps/         studio/, playground/, docs/
 starters/     nextjs, bare — phase 10
 examples/     blog, company — phase 10
 docs/         architecture/, adr/
 scripts/      boundary checker and hooks
 .claude/      rules/, agents/, settings.json
 ```
+
+Two processes are needed to look at Studio:
+
+```bash
+pnpm --filter @assemora/playground dev   # the application, on :4000
+pnpm --filter @assemora/studio dev       # Studio, on :5173, proxying /api
+```
+
+The playground seeds itself on first boot and signs in with `ada@assemora.dev`.
 
 ## Package boundaries
 
@@ -90,3 +122,7 @@ Dependency direction is declared in `scripts/lib/package-graph.ts` and enforced 
 
 Everything in this repository is written in English — code, comments, documentation
 and commit messages.
+
+## License
+
+[Apache-2.0](LICENSE).

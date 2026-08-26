@@ -1,8 +1,14 @@
 {
   "name": "@assemora/resources",
   "version": "0.0.0",
-  "description": "Resource layer: static and dynamic resources, fields, CRUD commands",
   "private": true,
+  "description": "Resource layer: static and dynamic resources, fields, CRUD commands",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/resources"
+  },
   "type": "module",
   "exports": {
     ".": {

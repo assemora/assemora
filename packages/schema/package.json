@@ -1,8 +1,14 @@
 {
   "name": "@assemora/schema",
   "version": "0.0.0",
-  "description": "Schema primitives: field definitions, type inference, neutral JSON representation",
   "private": true,
+  "description": "Schema primitives: field definitions, type inference, neutral JSON representation",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/schema"
+  },
   "type": "module",
   "exports": {
     ".": {

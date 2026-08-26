@@ -1,8 +1,14 @@
 {
   "name": "@assemora/database",
   "version": "0.0.0",
-  "description": "Abstract database adapter contracts and Query AST execution",
   "private": true,
+  "description": "Abstract database adapter contracts and Query AST execution",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/database"
+  },
   "type": "module",
   "exports": {
     ".": {

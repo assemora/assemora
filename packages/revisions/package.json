@@ -1,8 +1,14 @@
 {
   "name": "@assemora/revisions",
   "version": "0.0.0",
-  "description": "Revisions, restore, audit log",
   "private": true,
+  "description": "Revisions, restore, audit log",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/revisions"
+  },
   "type": "module",
   "exports": {
     ".": {

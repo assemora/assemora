@@ -2,8 +2,14 @@
   "name": "@assemora/playground",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "description": "A running Assemora application: the API Studio is developed against",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "apps/playground"
+  },
+  "type": "module",
   "scripts": {
     "dev": "node --disable-warning=ExperimentalWarning --watch src/main.ts",
     "start": "node --disable-warning=ExperimentalWarning src/main.ts",

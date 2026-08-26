@@ -1,8 +1,14 @@
 {
   "name": "@assemora/http",
   "version": "0.0.0",
-  "description": "HTTP layer and route DSL (Fastify inside, never exposed)",
   "private": true,
+  "description": "HTTP layer and route DSL (Fastify inside, never exposed)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/http"
+  },
   "type": "module",
   "exports": {
     ".": {
