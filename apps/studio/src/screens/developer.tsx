@@ -6,14 +6,17 @@
  * not documentation *about* the application — it is the application describing
  * itself, and it cannot fall out of date.
  */
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
+import { api } from '../api/client.ts'
 import { type FieldDescriptor, useIntrospection } from '../api/introspection.ts'
+import type { Paged } from '../api/pages.ts'
 import { Page } from '../app/shell.tsx'
-import { Badge, Card, Empty, Failure, Input, Spinner } from '../ui/index.tsx'
+import { Badge, Button, Card, Empty, Failure, Input, Spinner } from '../ui/index.tsx'
 import { Explorer } from './explorer.tsx'
 
-const TABS = ['api', 'resources', 'blocks', 'commands', 'queries', 'models'] as const
+const TABS = ['api', 'logs', 'resources', 'blocks', 'commands', 'queries', 'models'] as const
 
 type Tab = (typeof TABS)[number]
 
@@ -38,6 +41,147 @@ const Schema = ({ value }: { value: unknown }) => (
     {JSON.stringify(value, null, 2)}
   </pre>
 )
+
+type AuditRow = {
+  readonly id: string
+  readonly actorType: string | null
+  readonly actorId: string | null
+  readonly source: string
+  readonly action: string
+  readonly kind: string
+  readonly entityType: string | null
+  readonly outcome: string
+  readonly durationMs: number
+  readonly createdAt: string
+}
+
+/**
+ * Who did what (SPEC.md §67).
+ *
+ * Separate from a page's history: this records the attempts too, including the ones
+ * authorization refused — which are the entries that leave no revision behind.
+ */
+const Logs = () => {
+  const [page, setPage] = useState(1)
+  const [outcome, setOutcome] = useState('')
+
+  const entries = useQuery({
+    queryKey: ['audit', page, outcome],
+    queryFn: ({ signal }) =>
+      api.query<Paged<AuditRow>>(
+        'audit.list',
+        { page, ...(outcome === '' ? {} : { outcome }) },
+        signal,
+      ),
+  })
+
+  return (
+    <>
+      <div className="mb-4 flex gap-1">
+        {['', 'succeeded', 'failed', 'previewed'].map((option) => (
+          <button
+            key={option || 'all'}
+            type="button"
+            className={[
+              'rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition',
+              outcome === option
+                ? 'bg-accent-soft text-accent'
+                : 'text-ink-soft hover:bg-surface-sunken',
+            ].join(' ')}
+            onClick={() => {
+              setPage(1)
+              setOutcome(option)
+            }}
+          >
+            {option || 'everything'}
+          </button>
+        ))}
+      </div>
+
+      {entries.isError && <Failure error={entries.error} />}
+
+      <Card className="overflow-hidden">
+        {entries.isPending && (
+          <div className="p-6">
+            <Spinner />
+          </div>
+        )}
+
+        {entries.data?.data.length === 0 && <Empty title="Nothing recorded yet" />}
+
+        {entries.data !== undefined && entries.data.data.length > 0 && (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-faint">
+                <th className="px-4 py-2.5 font-medium">When</th>
+                <th className="px-4 py-2.5 font-medium">Action</th>
+                <th className="px-4 py-2.5 font-medium">Who</th>
+                <th className="px-4 py-2.5 font-medium">From</th>
+                <th className="px-4 py-2.5 font-medium">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.data.data.map((entry) => (
+                <tr key={entry.id} className="border-b border-line-soft last:border-0">
+                  <td className="px-4 py-2 text-xs text-ink-soft">
+                    {new Date(entry.createdAt).toLocaleTimeString()}
+                  </td>
+                  <td className="px-4 py-2">
+                    <code className="font-mono text-xs">{entry.action}</code>
+                    {entry.kind === 'query' && (
+                      <span className="ml-1.5 text-xs text-ink-faint">read</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-xs text-ink-soft">{entry.actorType ?? 'system'}</td>
+                  <td className="px-4 py-2 text-xs text-ink-soft">{entry.source}</td>
+                  <td className="px-4 py-2">
+                    <Badge
+                      tone={
+                        entry.outcome === 'failed'
+                          ? 'danger'
+                          : entry.outcome === 'previewed'
+                            ? 'accent'
+                            : 'positive'
+                      }
+                    >
+                      {entry.outcome}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      {entries.data !== undefined && entries.data.lastPage > 1 && (
+        <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
+          <span>
+            Page {entries.data.page} of {entries.data.lastPage} · {entries.data.total} entries
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => current - 1)}
+            >
+              Newer
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page >= entries.data.lastPage}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Older
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
 
 export const Developer = () => {
   const introspection = useIntrospection()
@@ -127,6 +271,8 @@ export const Developer = () => {
           onChange={(event) => setFilter(event.target.value)}
         />
       </div>
+
+      {tab === 'logs' && <Logs />}
 
       {tab === 'resources' && (
         <div className="space-y-3">

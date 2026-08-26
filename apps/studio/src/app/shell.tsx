@@ -67,6 +67,10 @@ export const Shell = () => {
             <NavLink to="/pages">All pages</NavLink>
           </Section>
 
+          <Section title="AI">
+            <NavLink to="/proposals">Proposals</NavLink>
+          </Section>
+
           <Section title="Library">
             <NavLink to="/media">Media</NavLink>
           </Section>

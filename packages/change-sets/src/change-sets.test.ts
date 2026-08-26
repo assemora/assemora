@@ -23,11 +23,12 @@ import {
   uuid,
 } from '@assemora/data'
 import { createMemoryAdapter } from '@assemora/database'
-import { number, string } from '@assemora/schema'
+import { diff, number, string } from '@assemora/schema'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { ChangeSet } from './models.js'
 import { changeSets } from './module.js'
+import { summarise, summariseTree } from './summary.js'
 
 const Note = model('notes', {
   id: uuid().primary().defaultRandom(),
@@ -255,5 +256,46 @@ describe('reading proposals', () => {
 
     expect(one.changes).toHaveLength(2)
     expect(one.commands).toHaveLength(2)
+  })
+})
+
+describe('a page change reads block by block (SPEC.md §75)', () => {
+  it('says what happened to each block, not that a tree changed', () => {
+    const before = {
+      draftTree: {
+        blocks: [
+          { id: 'a', type: 'hero', version: 1, props: { title: 'One' }, children: [] },
+          { id: 'b', type: 'faq', version: 1, props: {}, children: [] },
+        ],
+      },
+    }
+    const after = {
+      draftTree: {
+        blocks: [
+          {
+            id: 'a',
+            type: 'hero',
+            version: 2,
+            props: { title: 'One' },
+            children: [],
+            design: { spacingTop: 'md' },
+          },
+          { id: 'c', type: 'testimonials', version: 1, props: {}, children: [] },
+        ],
+      },
+    }
+
+    expect(summariseTree(diff(before, after))).toEqual([
+      'testimonials — new block',
+      'faq — removed',
+      'hero — restyled',
+    ])
+  })
+
+  it('leaves anything that is not a tree to the plain summary', () => {
+    expect(summariseTree(diff({ title: 'One' }, { title: 'Two' }))).toEqual([])
+    expect(summarise('pages', diff({ title: 'One' }, { title: 'Two' }))).toBe(
+      'pages — title: One → Two',
+    )
   })
 })

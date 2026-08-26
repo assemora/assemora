@@ -11,7 +11,7 @@ import { AssemoraError, command, NotFoundError, type Preview, query } from '@ass
 import { array, json, number, string, unknown as unknownSchema, uuid } from '@assemora/schema'
 
 import { ChangeSet, type ChangeSetStatus, type ProposedChange } from './models.js'
-import { summarise } from './summary.js'
+import { summarise, summariseTree } from './summary.js'
 
 declare module '@assemora/core' {
   interface AssemoraEventPayloads {
@@ -51,14 +51,36 @@ const versionsOf = (previews: readonly Preview[]): Record<string, number> => {
   return versions
 }
 
+/**
+ * One line per thing a person is approving.
+ *
+ * A page whose block tree moved becomes one entry per block, because that is what
+ * §75's screen shows and what somebody can actually decide about. Everything else is
+ * one entry with its fields named.
+ */
 const changesOf = (previews: readonly Preview[]): ProposedChange[] =>
   previews.flatMap((preview) =>
-    preview.changes.map((change) => ({
-      entityType: change.entityType,
-      entityId: change.entityId,
-      patch: change.patch,
-      summary: summarise(change.entityType, change.patch),
-    })),
+    preview.changes.flatMap((change) => {
+      const blocks = summariseTree(change.patch)
+
+      if (blocks.length > 0) {
+        return blocks.map((summary) => ({
+          entityType: change.entityType,
+          entityId: change.entityId,
+          patch: change.patch,
+          summary,
+        }))
+      }
+
+      return [
+        {
+          entityType: change.entityType,
+          entityId: change.entityId,
+          patch: change.patch,
+          summary: summarise(change.entityType, change.patch),
+        },
+      ]
+    }),
   )
 
 export const ProposeChangeSet = command('changesets.propose', {

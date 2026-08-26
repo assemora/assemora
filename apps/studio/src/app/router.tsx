@@ -8,6 +8,7 @@ import { createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/re
 
 import { useSession } from '../api/session.tsx'
 import { Builder } from '../screens/builder.tsx'
+import { ChangeSets } from '../screens/changesets.tsx'
 import { Collection } from '../screens/collection.tsx'
 import { Dashboard } from '../screens/dashboard.tsx'
 import { Developer } from '../screens/developer.tsx'
@@ -58,6 +59,7 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/pages/$id', component: Builder }),
   createRoute({ getParentRoute: () => rootRoute, path: '/pages/$id/history', component: History }),
   createRoute({ getParentRoute: () => rootRoute, path: '/media', component: MediaLibrary }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/proposals', component: ChangeSets }),
   createRoute({ getParentRoute: () => rootRoute, path: '/users', component: Users }),
   createRoute({ getParentRoute: () => rootRoute, path: '/developer', component: Developer }),
 ]
