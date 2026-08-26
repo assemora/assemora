@@ -208,3 +208,38 @@ describe('naming', () => {
     expect(rules([manifest({ directory: 'unknown-package' })])).toContain('policy')
   })
 })
+
+describe('a package published under an unscoped name', () => {
+  it('accepts the name the convention forces on it', () => {
+    expect(rules([manifest({ directory: 'create-assemora', name: 'create-assemora' })])).toEqual([])
+  })
+
+  it('still rejects the scoped name it does not have', () => {
+    expect(
+      rules([manifest({ directory: 'create-assemora', name: '@assemora/create-assemora' })]),
+    ).toEqual(['naming'])
+  })
+
+  it('polices an edge to it like any other, rather than mistaking it for a library', () => {
+    expect(
+      rules([
+        manifest({
+          directory: 'schema',
+          dependencies: ['create-assemora'],
+        }),
+      ]),
+    ).toEqual(['allowed-dependency', 'dependency-free', 'tsconfig-references'])
+  })
+
+  it('accepts the one edge the graph allows', () => {
+    expect(
+      rules([
+        manifest({
+          directory: 'cli',
+          dependencies: ['create-assemora'],
+          tsconfigReferences: ['../create-assemora/tsconfig.build.json'],
+        }),
+      ]),
+    ).toEqual([])
+  })
+})

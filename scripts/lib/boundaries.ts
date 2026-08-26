@@ -3,6 +3,7 @@ import {
   dependencyFreePackages,
   implementationLibraries,
   type PackageName,
+  publishedNames,
 } from './package-graph.ts'
 
 const SCOPE = '@assemora/'
@@ -30,8 +31,23 @@ export type Violation = {
   message: string
 }
 
+/** Every published name that belongs to a workspace package, mapped to its directory. */
+const directories = new Map<string, string>(
+  Object.entries(publishedNames).map(([directory, published]) => [published, directory]),
+)
+
+/**
+ * The directory a dependency refers to, if it is one of ours.
+ *
+ * Almost every workspace package is `@assemora/<directory>`; `create-assemora` is
+ * the exception, and it is still an internal edge that the graph has to police.
+ */
+/** How a package is written in a package.json — the inverse of `internalName`. */
+const published = (directory: string): string =>
+  publishedNames[directory as PackageName] ?? `${SCOPE}${directory}`
+
 const internalName = (dependency: string): string | undefined =>
-  dependency.startsWith(SCOPE) ? dependency.slice(SCOPE.length) : undefined
+  dependency.startsWith(SCOPE) ? dependency.slice(SCOPE.length) : directories.get(dependency)
 
 const isKnownPackage = (name: string): name is PackageName => name in allowedDependencies
 
@@ -45,7 +61,8 @@ const sorted = (values: Iterable<string>): string[] => [...values].sort()
 /** Directory, package name and declared policy must agree. */
 const checkNaming = (manifest: PackageManifest): Violation[] => {
   const violations: Violation[] = []
-  const expected = `${SCOPE}${manifest.directory}`
+  const expected =
+    publishedNames[manifest.directory as PackageName] ?? `${SCOPE}${manifest.directory}`
 
   if (manifest.name !== expected) {
     violations.push({
@@ -80,8 +97,8 @@ const checkInternalDependencies = (manifest: PackageManifest): Violation[] => {
     .map((dependency) => ({
       package: manifest.directory,
       rule: 'allowed-dependency',
-      message: `dependency "${SCOPE}${dependency}" is not allowed; permitted: ${
-        allowed.length > 0 ? allowed.map((name) => SCOPE + name).join(', ') : 'none'
+      message: `dependency "${published(dependency)}" is not allowed; permitted: ${
+        allowed.length > 0 ? allowed.map(published).join(', ') : 'none'
       }`,
     }))
 }
@@ -163,13 +180,13 @@ const checkImports = (manifest: PackageManifest): Violation[] => {
       violations.push({
         package: manifest.directory,
         rule: 'source-import',
-        message: `sources import "${SCOPE}${imported}", which the dependency graph does not allow`,
+        message: `sources import "${published(imported)}", which the dependency graph does not allow`,
       })
     } else if (!declared.has(imported)) {
       violations.push({
         package: manifest.directory,
         rule: 'undeclared-import',
-        message: `sources import "${SCOPE}${imported}" without declaring it in package.json`,
+        message: `sources import "${published(imported)}" without declaring it in package.json`,
       })
     }
   }
@@ -181,7 +198,7 @@ const checkImports = (manifest: PackageManifest): Violation[] => {
       violations.push({
         package: manifest.directory,
         rule: 'undeclared-import',
-        message: `tests import "${SCOPE}${imported}" without declaring it in package.json`,
+        message: `tests import "${published(imported)}" without declaring it in package.json`,
       })
     }
   }

@@ -19,9 +19,22 @@ schema
   ├── sdk
   └── react
 
-mcp   → core, resources, pages
-cli   → core, data, database-postgres, openapi, sdk
+audit        → core, data
+change-sets  → core, data
+mcp          → core
+sdk          → schema
+cli          → core, data, database-postgres, openapi, sdk, create-assemora
+
+create-assemora — nothing at all
 ```
+
+`mcp` reaches only `core`: a tool call is a bus call, and the package cannot touch a
+database even by accident (ADR-0020). `cli` is the same idea from the other end — it
+imports the *application* at runtime through `assemora.config.ts` and asks its
+registry and its buses, so it needs no edge to `auth`, `pages`, `media` or `http`
+(ADR-0021). `create-assemora` runs through `pnpm create` before anything is
+installed, which is why it has no dependencies and why it is the one package whose
+published name is not `@assemora/<directory>`.
 
 The direction matches SPEC.md §8. There are no cycles, which `findCycles` verifies
 by walking the graph.

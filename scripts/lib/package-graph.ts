@@ -27,6 +27,7 @@ export type PackageName =
   | 'react'
   | 'plugin'
   | 'cli'
+  | 'create-assemora'
 
 /** Allowed workspace dependencies for every package. */
 export const allowedDependencies: Record<PackageName, readonly PackageName[]> = {
@@ -48,7 +49,19 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
   sdk: ['schema'],
   react: ['schema'],
   plugin: ['schema', 'core'],
-  cli: ['schema', 'core', 'data', 'database-postgres', 'openapi', 'sdk'],
+  cli: ['schema', 'core', 'data', 'database-postgres', 'openapi', 'sdk', 'create-assemora'],
+  'create-assemora': [],
+}
+
+/**
+ * Packages whose published name is not `@assemora/<directory>`.
+ *
+ * There is one, and it is forced by a convention outside this repository:
+ * `pnpm create assemora my-project` resolves to the unscoped package
+ * `create-assemora`, so that is the name it has to carry (SPEC.md §78).
+ */
+export const publishedNames: Partial<Record<PackageName, string>> = {
+  'create-assemora': 'create-assemora',
 }
 
 /**
@@ -77,6 +90,9 @@ export const implementationLibraries: Record<string, PackageName> = {
 }
 
 /** Packages that must carry no dependencies at all. */
-export const dependencyFreePackages: readonly PackageName[] = ['schema']
+// `create-assemora` runs through `pnpm create` before anything is installed, so a
+// dependency of its own would have to be fetched first. It writes files and nothing
+// else, which is why it can afford to have none.
+export const dependencyFreePackages: readonly PackageName[] = ['schema', 'create-assemora']
 
 export const packageNames = Object.keys(allowedDependencies) as PackageName[]
