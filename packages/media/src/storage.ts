@@ -1,9 +1,8 @@
 /**
  * Where the bytes live (SPEC.md §63).
  *
- * The interface names no vendor. A local disk driver ships here; an S3-compatible
- * one needs a signing client and credentials, which belong with deployment rather
- * than with the content layer, and arrives with the CLI in phase 10.
+ * The interface names no vendor. Both drivers SPEC.md §63 makes mandatory implement
+ * it: the local disk one below, and the S3-compatible one in `s3-storage.ts`.
  */
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, normalize, resolve, sep } from 'node:path'

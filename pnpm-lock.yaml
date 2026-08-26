@@ -134,6 +134,58 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@24.13.3)(jiti@2.7.0)
 
+  packages/assemora:
+    dependencies:
+      '@assemora/audit':
+        specifier: workspace:*
+        version: link:../audit
+      '@assemora/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@assemora/change-sets':
+        specifier: workspace:*
+        version: link:../change-sets
+      '@assemora/core':
+        specifier: workspace:*
+        version: link:../core
+      '@assemora/data':
+        specifier: workspace:*
+        version: link:../data
+      '@assemora/database':
+        specifier: workspace:*
+        version: link:../database
+      '@assemora/database-postgres':
+        specifier: workspace:*
+        version: link:../database-postgres
+      '@assemora/http':
+        specifier: workspace:*
+        version: link:../http
+      '@assemora/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@assemora/media':
+        specifier: workspace:*
+        version: link:../media
+      '@assemora/openapi':
+        specifier: workspace:*
+        version: link:../openapi
+      '@assemora/pages':
+        specifier: workspace:*
+        version: link:../pages
+      '@assemora/resources':
+        specifier: workspace:*
+        version: link:../resources
+      '@assemora/revisions':
+        specifier: workspace:*
+        version: link:../revisions
+      '@assemora/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+
   packages/audit:
     dependencies:
       '@assemora/core':
@@ -202,6 +254,9 @@ importers:
       '@assemora/data':
         specifier: workspace:*
         version: link:../data
+      '@assemora/database':
+        specifier: workspace:*
+        version: link:../database
       '@assemora/database-postgres':
         specifier: workspace:*
         version: link:../database-postgres
@@ -214,6 +269,10 @@ importers:
       '@assemora/sdk':
         specifier: workspace:*
         version: link:../sdk
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
 
   packages/core:
     dependencies:

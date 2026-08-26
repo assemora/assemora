@@ -13,6 +13,10 @@ export {
   type RawResult,
 } from './adapter.js'
 export { isDriverError, toAssemoraError } from './errors.js'
+// `SchemaChange` is not re-exported: `@assemora/database` owns the diff vocabulary
+// and every generator reads it from there, so there is exactly one definition of what
+// a change is (ADR-0021).
+export { type GeneratedMigration, migrationSql } from './migration-sql.js'
 export {
   applyMigrations,
   applySchema,

@@ -57,6 +57,9 @@
     },
     {
       "path": "packages/cli/tsconfig.build.json"
+    },
+    {
+      "path": "packages/assemora/tsconfig.build.json"
     }
   ]
 }

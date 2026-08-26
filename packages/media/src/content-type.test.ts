@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { safeContentType } from './commands.js'
+import { safeContentType } from './content-type.js'
 
 describe('what a browser is told a stored file is (SPEC.md §85)', () => {
   it('lets an image be an image', () => {

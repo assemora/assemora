@@ -14,33 +14,6 @@ declare module '@assemora/core' {
   }
 }
 
-/**
- * Types a browser may be told to render (SPEC.md §85).
- *
- * A content type is chosen by whoever uploads, and `text/html` would make the media
- * library a way to run a script on the application's own origin. Anything not on this
- * list is stored and served as a download rather than as a page.
- */
-const RENDERABLE = new Set([
-  'image/apng',
-  'image/avif',
-  'image/gif',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'video/mp4',
-  'video/webm',
-  'audio/mpeg',
-  'audio/ogg',
-  'audio/wav',
-  'application/pdf',
-  'text/plain',
-])
-
-/** What a browser may be told this file is. */
-export const safeContentType = (mimeType: string): string =>
-  RENDERABLE.has(mimeType.toLowerCase()) ? mimeType.toLowerCase() : 'application/octet-stream'
-
 /** `photo.png` → `2026/08/<uuid>.png`, so nothing collides and nothing is guessable. */
 const storagePath = (filename: string): string => {
   const now = new Date()

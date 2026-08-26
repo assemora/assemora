@@ -50,7 +50,16 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
   sdk: ['schema'],
   react: ['schema'],
   plugin: ['schema', 'core'],
-  cli: ['schema', 'core', 'data', 'database-postgres', 'openapi', 'sdk', 'create-assemora'],
+  cli: [
+    'schema',
+    'core',
+    'database',
+    'data',
+    'database-postgres',
+    'openapi',
+    'sdk',
+    'create-assemora',
+  ],
   'create-assemora': [],
   // The umbrella of SPEC.md §9. It is the only package allowed to depend on
   // everything, because it is the only one nothing depends on: it exists to put the

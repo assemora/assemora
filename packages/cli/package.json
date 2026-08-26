@@ -17,6 +17,9 @@
     }
   },
   "main": "./dist/index.js",
+  "bin": {
+    "assemora": "./dist/bin.js"
+  },
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
@@ -27,11 +30,15 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@assemora/schema": "workspace:*",
     "@assemora/core": "workspace:*",
     "@assemora/data": "workspace:*",
+    "@assemora/database": "workspace:*",
     "@assemora/database-postgres": "workspace:*",
     "@assemora/openapi": "workspace:*",
+    "@assemora/schema": "workspace:*",
     "@assemora/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
   }
 }

@@ -1,7 +1,15 @@
-import type { TableDescriptor } from '@assemora/database'
+import type { ColumnDescriptor, TableDescriptor } from '@assemora/database'
 import { describe, expect, it } from 'vitest'
 
-import { createSchemaSql, createTableSql, dropSchemaSql } from './migrations.js'
+import {
+  columnSql,
+  createIndexSql,
+  createSchemaSql,
+  createTableSql,
+  dropIndexSql,
+  dropSchemaSql,
+  dropTableSql,
+} from './migrations.js'
 
 const users: TableDescriptor = {
   name: 'users',
@@ -156,6 +164,47 @@ describe('schema DDL', () => {
       'drop table if exists "users" cascade',
       'drop table if exists "posts" cascade',
     ])
+  })
+})
+
+describe('who the statement is for', () => {
+  it('bootstraps a database that may be half built', () => {
+    expect(createTableSql(users, 'bootstrap')).toContain('create table if not exists "users"')
+    expect(dropTableSql(users, 'bootstrap')).toBe('drop table if exists "users" cascade')
+    expect(createIndexSql('users', 'createdAt', 'bootstrap')).toContain(
+      'create index if not exists',
+    )
+    expect(dropIndexSql('users', 'createdAt', 'bootstrap')).toBe(
+      'drop index if exists "users_created_at_idx"',
+    )
+  })
+
+  it('states exactly what a migration does, so a schema it was not written for refuses it', () => {
+    expect(createTableSql(users, 'migration')).toContain('create table "users"')
+    expect(dropTableSql(users, 'migration')).toBe('drop table "users"')
+    expect(createIndexSql('users', 'createdAt', 'migration')).toBe(
+      'create index "users_created_at_idx" on "users" ("created_at")',
+    )
+    expect(dropIndexSql('users', 'createdAt', 'migration')).toBe(
+      'drop index "users_created_at_idx"',
+    )
+  })
+
+  it('writes the primary key inline in a create table and never in an add column', () => {
+    // A migration that re-adds a primary column always carries the moved key as a
+    // change of its own, so writing it inline as well would give the table two.
+    const id: ColumnDescriptor = {
+      name: 'id',
+      type: 'uuid',
+      isPrimary: true,
+      isNullable: false,
+      isUnique: false,
+      isIndexed: false,
+      hasDefault: true,
+    }
+
+    expect(columnSql(id, 'create-table')).toBe('"id" uuid primary key')
+    expect(columnSql(id, 'add-column')).toBe('"id" uuid not null')
   })
 })
 
