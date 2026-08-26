@@ -14,6 +14,13 @@ import { ConfigurationError, ForbiddenError } from './errors.js'
 
 export type AuthorizationRequest = {
   readonly command: string
+  /**
+   * What the command said it acts on, when it said anything.
+   *
+   * Absent, the subject is read from the command's own name, which is the rule
+   * (ADR-0015) and holds for nearly every command.
+   */
+  readonly subject?: string
   readonly input: unknown
   readonly context: AssemoraContext
 }

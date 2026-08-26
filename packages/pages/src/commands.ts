@@ -204,6 +204,7 @@ const openForEdit = async (
 
 export const AddBlock = command('blocks.add', {
   description: 'Adds a block to a page',
+  subject: 'pages',
   input: {
     ...VERSIONED,
     type: string().min(1),
@@ -227,6 +228,7 @@ export const AddBlock = command('blocks.add', {
 
 export const UpdateBlock = command('blocks.update', {
   description: 'Changes the props of a block',
+  subject: 'pages',
   input: { ...VERSIONED, blockId: uuid(), props: json<Record<string, unknown>>() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
@@ -242,6 +244,7 @@ export const UpdateBlock = command('blocks.update', {
 
 export const DesignBlock = command('blocks.design', {
   description: 'Sets the universal design controls of a block (SPEC.md §61)',
+  subject: 'pages',
   input: {
     ...VERSIONED,
     blockId: uuid(),
@@ -262,6 +265,7 @@ export const DesignBlock = command('blocks.design', {
 
 export const MoveBlock = command('blocks.move', {
   description: 'Moves a block, possibly into another one',
+  subject: 'pages',
   input: {
     ...VERSIONED,
     blockId: uuid(),
@@ -282,6 +286,7 @@ export const MoveBlock = command('blocks.move', {
 
 export const RemoveBlock = command('blocks.remove', {
   description: 'Removes a block and everything inside it',
+  subject: 'pages',
   input: { ...VERSIONED, blockId: uuid() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
@@ -292,6 +297,7 @@ export const RemoveBlock = command('blocks.remove', {
 
 export const DuplicateBlock = command('blocks.duplicate', {
   description: 'Copies a block beside itself, with new ids throughout',
+  subject: 'pages',
   input: { ...VERSIONED, blockId: uuid() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
@@ -303,6 +309,7 @@ export const DuplicateBlock = command('blocks.duplicate', {
 
 export const HideBlock = command('blocks.hide', {
   description: 'Keeps a block in the tree and out of the rendered page',
+  subject: 'pages',
   input: { ...VERSIONED, blockId: uuid(), hidden: boolean() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)

@@ -65,6 +65,15 @@ export type CommandDefinition<S extends Shape, R> = {
   readonly description: string | undefined
   readonly input: Schema<InferShape<S>>
   /**
+   * What this command acts on, when that is not what its name says.
+   *
+   * A command name is a permission name (ADR-0015), and for nearly every command
+   * the group in the name *is* the subject. `blocks.update` is the exception: it
+   * edits a page, authorizes `pages.update` once the row is loaded, and would
+   * otherwise demand two permissions with different names for one act.
+   */
+  readonly subject: string | undefined
+  /**
    * Whether this command can honestly be previewed (SPEC.md §73).
    *
    * A dry run undoes the transaction, which undoes rows and nothing else. A handler
@@ -80,6 +89,7 @@ export type AnyCommand = {
   readonly name: string
   readonly description: string | undefined
   readonly input: Schema<unknown>
+  readonly subject: string | undefined
   readonly previewable: boolean
   handle(input: never, context: CommandContext): Promise<unknown>
 }
@@ -126,6 +136,8 @@ export const command = <S extends Shape, R>(
   definition: {
     readonly input: S
     readonly description?: string
+    /** What it acts on, when the command's own name does not say it. */
+    readonly subject?: string
     /** Defaults to true. Say `false` when the handler reaches outside the database. */
     readonly previewable?: boolean
     handle(input: InferShape<S>, context: CommandContext): Promise<R>
@@ -134,6 +146,7 @@ export const command = <S extends Shape, R>(
   name,
   description: definition.description,
   input: object(definition.input),
+  subject: definition.subject,
   previewable: definition.previewable ?? true,
   handle: definition.handle,
 })
@@ -238,6 +251,7 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       // 2. Authorization — before anything is opened or written.
       await options.authorization.authorize({
         command: definition.name,
+        ...(definition.subject === undefined ? {} : { subject: definition.subject }),
         input: parsed.value,
         context,
       })

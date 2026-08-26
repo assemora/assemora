@@ -54,15 +54,15 @@ export const subjectOf = (request: AuthorizationRequest): CommandSubject => {
 
   const group = request.command.slice(0, Math.max(separator, 0))
   const action = separator === -1 ? 'execute' : request.command.slice(separator + 1)
+  const read = (subject: string) => ({ subject, action: READING.has(action) ? 'read' : action })
 
-  if (group === 'entries' && resource !== undefined) {
-    return { subject: resource, action: READING.has(action) ? 'read' : action }
-  }
+  // A command that names what it acts on has the last word: `blocks.update` edits a
+  // page, so `pages.update` is the one permission it takes, at both stages.
+  if (request.subject !== undefined) return read(request.subject)
 
-  return {
-    subject: group === '' ? request.command : group,
-    action: READING.has(action) ? 'read' : action,
-  }
+  if (group === 'entries' && resource !== undefined) return read(resource)
+
+  return read(group === '' ? request.command : group)
 }
 
 export const policies = (): AuthorizationPort => ({
