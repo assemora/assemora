@@ -27,8 +27,9 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@assemora/core": "workspace:*",
     "@assemora/schema": "workspace:*",
-    "@assemora/core": "workspace:*"
+    "@modelcontextprotocol/sdk": "1.30.0"
   },
   "devDependencies": {
     "@types/node": "24.13.3"
