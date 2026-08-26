@@ -5,7 +5,7 @@
  * filtered, searched and sorted, and which CRUD endpoints exist. The model keeps
  * owning the data.
  */
-import { ValidationError } from '@assemora/core'
+import { currentContext, ValidationError } from '@assemora/core'
 import type {
   ComputedValues,
   Fields as DataFields,
@@ -16,7 +16,7 @@ import type {
   Page,
 } from '@assemora/data'
 import type { Issue } from '@assemora/schema'
-
+import { readableByActor } from './agent-fields.js'
 import {
   type ApiExposure,
   describeField,
@@ -71,6 +71,8 @@ export type Resource<
   readonly model: Model<F, SN, C>
   readonly fields: RF
   readonly descriptor: ResourceDescriptor
+  /** The fields by name, for the checks the command path runs (SPEC.md §52). */
+  readonly writableFields: ReadonlyMap<string, AnyField>
   /** A page of entries. Never the whole dataset (SPEC.md §89). */
   list(query?: ListQuery): Promise<Page<ResourceRecord<F, RF>>>
   find(id: unknown): Promise<ResourceRecord<F, RF> | null>
@@ -85,6 +87,7 @@ export type AnyResource = {
   readonly name: string
   readonly label: string
   readonly descriptor: ResourceDescriptor
+  readonly writableFields: ReadonlyMap<string, AnyField>
   list(query?: ListQuery): Promise<Page<unknown>>
   find(id: unknown): Promise<unknown>
   validate(values: unknown, mode: 'create' | 'update'): Record<string, unknown>
@@ -343,14 +346,23 @@ export const resource = <
     instance.toJSON() as Record<string, unknown>
 
   /** Projects a model row down to what the resource actually declares. */
+  /**
+   * Projects an instance down to what this reader may see.
+   *
+   * The actor comes from the ambient context rather than a parameter, so a direct
+   * `Resource.list()` is filtered exactly as `entries.list` is — there is no back
+   * door that skips it (SPEC.md §12, §52).
+   */
   const project = (instance: Instance<F, C>): ResourceRecord<F, RF> => {
     const row = snapshot(instance)
+    const actor = currentContext()?.actor
     const projected: Record<string, unknown> = {
       id: String((instance as unknown as Record<string, unknown>)[model.primaryKey]),
     }
 
     for (const [fieldName, field] of entries) {
       if (field.isHidden) continue
+      if (!readableByActor(field, actor)) continue
       if (fieldName in row) projected[fieldName] = row[fieldName]
     }
 
@@ -364,6 +376,7 @@ export const resource = <
     model,
     fields,
     descriptor,
+    writableFields: fieldByName,
 
     // `async` on purpose: a rejected list query has to arrive as a rejected promise,
     // not as a synchronous throw a `.catch()` would never see.

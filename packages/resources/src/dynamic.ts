@@ -6,10 +6,11 @@
  * against a declarative schema, its field kinds must be registered, and nothing in
  * it is ever executed.
  */
-import { AssemoraError, ValidationError } from '@assemora/core'
+import { type Actor, AssemoraError, currentContext, ValidationError } from '@assemora/core'
 import type { Page } from '@assemora/data'
 import type { Issue } from '@assemora/schema'
 
+import { readableByActor } from './agent-fields.js'
 import { describeField, humanize, type ResourceDescriptor } from './descriptor.js'
 import { definitionSchema, type FieldSpec, fieldFromSpec } from './field-registry.js'
 import type { AnyField } from './fields.js'
@@ -74,11 +75,45 @@ export const parseDynamicDefinition = (input: unknown): DynamicDefinition => {
 
 const ENTRY_SORT_FIELDS = new Set(['createdAt', 'updatedAt', 'publishedAt', 'status'])
 
-const toEntry = (row: Record<string, unknown>): DynamicEntry => {
+/**
+ * The whole stored row, hidden fields and all.
+ *
+ * What a revision records and what a restore puts back. Filtering it by whoever
+ * happened to trigger the command would quietly drop fields from history, and the
+ * restore would then write that loss back into the row (SPEC.md §64).
+ */
+const wholeEntry = (row: Record<string, unknown>): DynamicEntry => ({
+  ...((row.data ?? {}) as Record<string, unknown>),
+  id: String(row.id),
+  status: String(row.status),
+  version: Number(row.version ?? 1),
+  createdAt: row.createdAt as Date,
+  updatedAt: row.updatedAt as Date,
+})
+
+/**
+ * A stored row, projected to what this reader may see.
+ *
+ * The declared fields are the filter. Spreading the JSONB whole would return a
+ * `hidden()` field to anybody who asked — the column is one blob, so a dynamic
+ * resource has no other place for that rule to live (SPEC.md §28, §52).
+ */
+const toEntry = (
+  row: Record<string, unknown>,
+  fields: ReadonlyMap<string, AnyField>,
+  actor: Actor | undefined,
+): DynamicEntry => {
   const data = (row.data ?? {}) as Record<string, unknown>
+  const visible: Record<string, unknown> = {}
+
+  for (const [name, field] of fields) {
+    if (field.isHidden) continue
+    if (!readableByActor(field, actor)) continue
+    if (name in data) visible[name] = data[name]
+  }
 
   return {
-    ...data,
+    ...visible,
     id: String(row.id),
     status: String(row.status),
     version: Number(row.version ?? 1),
@@ -180,6 +215,7 @@ export const dynamicResource = (
     name: definition.name,
     label: descriptor.label,
     descriptor,
+    writableFields: fields,
 
     async list(query: ListQuery = {}): Promise<Page<unknown>> {
       const issues: Issue[] = []
@@ -248,20 +284,22 @@ export const dynamicResource = (
         Math.min(Math.max(1, query.perPage ?? perPage), maxPerPage),
       )
 
-      return { ...page, data: page.data.map((row) => toEntry(row.toJSON())) }
+      const actor = currentContext()?.actor
+
+      return { ...page, data: page.data.map((row) => toEntry(row.toJSON(), fields, actor)) }
     },
 
     async find(id: unknown) {
       const found = await entriesOf().where('id', String(id)).first()
 
-      return found === null ? null : toEntry(found.toJSON())
+      return found === null ? null : toEntry(found.toJSON(), fields, currentContext()?.actor)
     },
 
     validate,
 
     [PERSISTENCE]: {
       async load(id) {
-        return toEntry((await load(id)).toJSON()) as unknown as Record<string, unknown>
+        return wholeEntry((await load(id)).toJSON()) as unknown as Record<string, unknown>
       },
 
       async create(values) {
@@ -272,24 +310,24 @@ export const dynamicResource = (
           version: 1,
         })
 
-        return { id: created.id, after: toEntry(created.toJSON()) }
+        return { id: created.id, after: wholeEntry(created.toJSON()) }
       },
 
       async update(id, values) {
         const entry = await load(id)
-        const before = toEntry(entry.toJSON())
+        const before = wholeEntry(entry.toJSON())
 
         await entry.update({
           data: { ...(entry.data as Record<string, unknown>), ...values },
           version: (entry.version ?? 1) + 1,
         })
 
-        return { before, after: toEntry(entry.toJSON()) }
+        return { before, after: wholeEntry(entry.toJSON()) }
       },
 
       async remove(id) {
         const entry = await load(id)
-        const before = toEntry(entry.toJSON())
+        const before = wholeEntry(entry.toJSON())
 
         await entry.delete()
 

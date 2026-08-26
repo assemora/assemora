@@ -8,6 +8,7 @@
 import { command, ForbiddenError, NotFoundError } from '@assemora/core'
 import { string, unknown as unknownSchema, uuid } from '@assemora/schema'
 
+import { refuseUnwritableFields } from './agent-fields.js'
 import { resourceByName } from './registry.js'
 import { PERSISTENCE } from './resource.js'
 
@@ -38,6 +39,11 @@ export const CreateEntry = command('entries.create', {
     refuseWhenDisabled(resource, target.descriptor.api.create, 'created')
 
     const values = target.validate(data, 'create')
+
+    // Between validation and the write: what an agent sent has to be legal for an
+    // agent to send, and it must not reach the row before that is settled.
+    refuseUnwritableFields(resource, target.writableFields, values, context.actor)
+
     const { id, after } = await target[PERSISTENCE].create(values)
 
     context.revise({
@@ -61,6 +67,8 @@ export const UpdateEntry = command('entries.update', {
     refuseWhenDisabled(resource, target.descriptor.api.update, 'updated')
 
     const values = target.validate(data, 'update')
+
+    refuseUnwritableFields(resource, target.writableFields, values, context.actor)
 
     // The record itself decides, and it has to be read before it is written
     // (SPEC.md §51).

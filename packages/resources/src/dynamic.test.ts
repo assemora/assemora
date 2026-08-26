@@ -217,3 +217,51 @@ describe('a dynamic resource behaves like any other', () => {
     expect(adapter.rows('assemora_resource_entries')).toHaveLength(1)
   })
 })
+
+describe('a dynamic resource hides what it declared hidden (SPEC.md §28)', () => {
+  const leads: DynamicDefinition = {
+    name: 'leads',
+    label: 'Leads',
+    fields: [
+      { name: 'company', kind: 'text', required: true },
+      { name: 'score', kind: 'number', hidden: true },
+    ],
+  }
+
+  const build = () => {
+    const resource = dynamicResource(parseDynamicDefinition(leads), { id: RESOURCE_ID })
+
+    const app = createApplication({
+      modules: [module('content').resources(resource)],
+      authorization: permitAll(),
+    })
+
+    return { app, resource }
+  }
+
+  it('does not return a hidden field, though the data is one JSONB blob', async () => {
+    const { app, resource } = build()
+
+    await app.commands.execute('entries.create', {
+      resource: 'leads',
+      data: { company: 'Acme', score: 91 },
+    })
+
+    const listed = await resource.list()
+
+    expect(listed.data[0]).toHaveProperty('company', 'Acme')
+    // Spreading the JSONB whole used to hand this to anybody who asked.
+    expect(listed.data[0]).not.toHaveProperty('score')
+  })
+
+  it('still records the whole row in a revision, so a restore loses nothing', async () => {
+    const { app } = build()
+
+    const created = (await app.commands.execute('entries.create', {
+      resource: 'leads',
+      data: { company: 'Acme', score: 91 },
+    })) as { entry: Record<string, unknown> }
+
+    expect(created.entry).toMatchObject({ company: 'Acme', score: 91 })
+  })
+})

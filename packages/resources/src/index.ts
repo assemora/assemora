@@ -21,6 +21,7 @@
  * `entries.update` and `entries.delete` on the Command Bus (SPEC.md §2).
  */
 
+export { readableByActor, refuseUnwritableFields } from './agent-fields.js'
 export {
   CreateEntry,
   DeleteEntry,
