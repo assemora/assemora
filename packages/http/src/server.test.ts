@@ -715,3 +715,39 @@ describe('a single-page application lives beside the API, not inside it', () => 
     expect(answered.statusCode).toBe(404)
   })
 })
+
+describe('the ceiling of SPEC.md §85 is a ceiling', () => {
+  it('counts requests and refuses the ones past the limit', async () => {
+    const limited = build({ rateLimit: { max: 2, windowMs: 60_000 } })
+
+    limited.mount(
+      route.get('/ping', {
+        response: { status: string() },
+        handler: async () => ({ status: 'ok' }),
+      }),
+    )
+
+    const codes: number[] = []
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      codes.push((await limited.inject({ method: 'GET', url: '/api/ping' })).statusCode)
+    }
+
+    // A route mounted before the plugin finished registering is never counted, which
+    // is what this asserts is no longer possible.
+    expect(codes).toEqual([200, 200, 429, 429])
+  })
+
+  it('leaves an application that asked for no limit alone', async () => {
+    server.mount(
+      route.get('/ping', {
+        response: { status: string() },
+        handler: async () => ({ status: 'ok' }),
+      }),
+    )
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      expect((await server.inject({ method: 'GET', url: '/api/ping' })).statusCode).toBe(200)
+    }
+  })
+})

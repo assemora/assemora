@@ -1,0 +1,570 @@
+/**
+ * `assemora()` — the call SPEC.md §9 writes (ADR-0022).
+ *
+ * ```ts
+ * export default assemora({
+ *   database: postgres(),
+ *   modules: [auth(), pages({ blocks }), media(), blog()],
+ *   studio: true,
+ *   api: true,
+ *   mcp: true,
+ * })
+ * ```
+ *
+ * Everything in this file either constructs something a package below it exports, or
+ * connects two packages that are forbidden to know about each other: the login route
+ * over the auth commands, the media URL over the storage driver, the MCP endpoint
+ * over the buses. There is no business logic here, and there is nowhere for any to
+ * hide — a command, a model or a policy would belong to the feature it describes.
+ *
+ * Nothing here is asynchronous. `assemora()` returns with the Schema Registry already
+ * complete, which is what lets `export default assemora({…})` be a top-level
+ * statement and what lets `assemora routes` describe an application without starting
+ * a server.
+ */
+import { audit, auditModule } from '@assemora/audit'
+import { policies, resolveActor } from '@assemora/auth'
+import { changeSets } from '@assemora/change-sets'
+import {
+  type Application,
+  ConfigurationError,
+  createApplication,
+  createLogger,
+  type Logger,
+  type ModuleBuilder,
+} from '@assemora/core'
+import { dataTransactions, useAdapter } from '@assemora/data'
+import type { DatabaseAdapter } from '@assemora/database'
+import { commandEndpoints, commandRoutes, createHttpServer, type HttpServer } from '@assemora/http'
+import { mcp } from '@assemora/mcp'
+import { currentStorage, localStorage, type StorageDriver, useStorage } from '@assemora/media'
+import { introspectionRoute, openApiRoute } from '@assemora/openapi'
+import { revisions, revisionsModule } from '@assemora/revisions'
+
+import { AUTH_ROUTE_COMMANDS, authRoutes, CSRF_COOKIE } from './auth-routes.js'
+import { healthRoutes } from './health-routes.js'
+import { type MountedMcp, mcpRoutes } from './mcp-routes.js'
+import { mediaRoutes } from './media-routes.js'
+import {
+  type AssemoraOptions,
+  DEFAULT_PORT,
+  type MediaOptions,
+  type ResolvedApi,
+  resolve,
+  type Settings,
+} from './options.js'
+import { mountPreview } from './preview-routes.js'
+import { mountStudio } from './studio.js'
+
+/**
+ * A built application, and the server in front of it.
+ *
+ * `app` is the application, un-booted, and it is what a config file hands the CLI.
+ * `listen()` is the other half — one entry point for the process that actually
+ * serves, which a config file has no place to call. Both reach the same boot.
+ */
+export type AssemoraApplication = {
+  /**
+   * The application, with this handle's own lifecycle on it.
+   *
+   * It is what `assemora.config.ts` hands the CLI: the CLI boots the project itself
+   * and reads its registry, and must not have to know the application was assembled
+   * by this function (ADR-0021). Its `boot()` and `shutdown()` are this handle's, so
+   * booting through it mounts Studio and the preview like `listen()` does, and
+   * stopping through it closes the server and the database — two paths on to one
+   * lifecycle rather than two lifecycles that disagree.
+   */
+  readonly app: Application
+  /** `undefined` when `api: false`. */
+  readonly server: HttpServer | undefined
+  /**
+   * Boots the application and mounts what needs a filesystem.
+   *
+   * The same boot, however often it is asked for and through whichever half of this
+   * handle, so seeding between booting and listening does not have to thread a flag
+   * and a CLI that boots what the config gave it does not collide with `listen()`.
+   */
+  boot(): Promise<Application>
+  /** Boots, then serves. Answers with the address it is listening on. */
+  listen(port?: number, host?: string): Promise<string>
+  /**
+   * Stops serving, stops the modules, closes the database. In that order.
+   *
+   * Every step is attempted even when an earlier one fails, because the database is
+   * the last of them and a connection pool nobody closed outlives the process that
+   * forgot it. What went wrong is thrown once everything has been tried.
+   */
+  shutdown(): Promise<void>
+}
+
+/** `PORT` is universal enough to read; everything else arrives as an option. */
+const defaultPort = (): number => {
+  const declared = Number(process.env.PORT)
+
+  return Number.isFinite(declared) && declared > 0 ? declared : DEFAULT_PORT
+}
+
+/**
+ * The adapter's own `close()`, when it has one.
+ *
+ * `DatabaseAdapter` does not declare it — an in-memory adapter has nothing to close —
+ * and `PostgresAdapter` does, because a connection pool outlives the process that
+ * forgets it.
+ */
+const closable = (adapter: DatabaseAdapter): { close(): Promise<void> } | undefined => {
+  const candidate = adapter as { close?: unknown }
+
+  return typeof candidate.close === 'function'
+    ? (candidate as { close(): Promise<void> })
+    : undefined
+}
+
+/**
+ * The driver, built so that its URLs and the mounted media routes agree.
+ *
+ * `media.list` and `media.upload` answer with `driver.url(path)`, and the bytes are
+ * served from `<prefix>/media`. Two strings kept the same by hand is how every image
+ * in Studio becomes a 404.
+ */
+const storageFor = (media: MediaOptions, prefix: string): StorageDriver =>
+  'storage' in media
+    ? media.storage
+    : localStorage({ root: media.root, baseUrl: `${prefix}/media` })
+
+/**
+ * Who may frame this application's pages (SPEC.md §59, §85).
+ *
+ * The only frameable document here is the preview, and the only thing that may frame
+ * it is Studio: `'self'`, which covers the ordinary deployment where Studio is served
+ * beside the API, plus whatever `frontend.framedBy` names for a split-origin setup.
+ * With no frontend there is nothing to frame, and the policy stays `'none'`.
+ *
+ * `origins` is deliberately not consulted. It answers "who may call this API", and an
+ * origin allowed to fetch JSON has not been allowed to put the logged-in admin UI in
+ * an iframe of its own.
+ */
+const frameAncestorsFor = (settings: Settings): readonly string[] =>
+  settings.frontend === undefined ? [] : ["'self'", ...settings.frontend.framedBy]
+
+/**
+ * An origin, and nothing else.
+ *
+ * These strings become a CORS allow-list and a `frame-ancestors` source list. A CSP
+ * source list is separated by spaces and terminated by `;`, so an entry carrying
+ * either would append directives to the policy this package promises to send
+ * (SPEC.md §85).
+ */
+const ORIGIN = /^https?:\/\/([a-z0-9-]+(\.[a-z0-9-]+)*|\[[0-9a-f:]+\])(:\d{1,5})?$/i
+
+/** A storage driver the application registered before calling this function. */
+const hasStorage = (): boolean => {
+  try {
+    currentStorage()
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** A configuration that cannot work, refused where it was written. */
+const refuseImpossible = (
+  options: AssemoraOptions,
+  settings: Settings,
+  declared: ReadonlySet<string>,
+): void => {
+  const fail = (message: string): never => {
+    throw new ConfigurationError(message)
+  }
+
+  const refuseUnlessOrigins = (values: readonly string[], option: string): void => {
+    for (const value of values) {
+      if (value === '*') {
+        fail(
+          `"${option}" contains "*", which is not an origin. CORS is configured, not waved through (SPEC.md §85), and a list holding "*" is matched literally: it would allow no cross-origin call at all while opening the frame policy to everybody. List the origins instead.`,
+        )
+      }
+
+      if (!ORIGIN.test(value)) {
+        fail(
+          `"${value}" is not a browser origin. Write "${option}" entries as scheme://host[:port] — no path, no wildcard, and nothing that could add directives to the content security policy this application sends.`,
+        )
+      }
+    }
+  }
+
+  refuseUnlessOrigins(settings.origins, 'origins')
+  refuseUnlessOrigins(settings.frontend?.framedBy ?? [], 'frontend.framedBy')
+
+  if (settings.api === undefined) {
+    if (settings.studio !== undefined) {
+      fail(
+        'Studio is a client of this application\'s API, and "api: false" leaves it nothing to talk to. Set "api: true", or "studio: false".',
+      )
+    }
+
+    if (settings.mcp !== undefined) {
+      fail(
+        'The MCP endpoint is an API route, and "api: false" means there are no routes. Set "api: true", or "mcp: false".',
+      )
+    }
+
+    if (settings.frontend !== undefined) {
+      fail(
+        'The frontend is served by the API server, and "api: false" means there is none. Set "api: true", or drop "frontend".',
+      )
+    }
+
+    if (options.media !== undefined && 'root' in options.media) {
+      fail(
+        '"media: { root }" builds URLs that point at the media routes this application serves, and "api: false" means it serves none — every stored URL would point at nothing. Pass a driver of your own with "media: { storage }", or set "api: true".',
+      )
+    }
+  }
+
+  if (
+    settings.studio !== undefined &&
+    settings.frontend !== undefined &&
+    settings.studio.path === settings.frontend.path
+  ) {
+    fail(
+      `Studio and the frontend are both asked for at "${settings.studio.path}", and one origin cannot serve two bundles from one path. Give one of them a path of its own.`,
+    )
+  }
+
+  if (declared.has('media') && options.media === undefined && !hasStorage()) {
+    fail(
+      'The media module has nowhere to put the bytes: nothing was passed as "media", and no storage driver is registered. Set "media: { root }", pass "media: { storage }", or call useStorage() before assemora().',
+    )
+  }
+
+  if (settings.studio !== undefined && !declared.has('auth')) {
+    fail(
+      'Studio signs in through /auth/login, which the auth module provides. Add auth() to "modules", or set "studio: false".',
+    )
+  }
+
+  if (settings.mcp !== undefined && !declared.has('auth')) {
+    fail(
+      'The MCP endpoint identifies an agent by its token, which the auth module resolves. Add auth() to "modules", or set "mcp: false".',
+    )
+  }
+
+  if (settings.mcp?.mutations === 'change-set' && !settings.changeSets) {
+    fail(
+      'An MCP mutation is a proposal, and a proposal is a change set (SPEC.md §75). Set "changeSets: true", or "mcp: { mutations: \'direct\' }".',
+    )
+  }
+}
+
+/**
+ * The three modules a developer should not have to list, plus the one a switch asks
+ * for.
+ *
+ * Without revisions and audit an application silently throws its history away, and
+ * without change sets an agent's first write is an unknown command. A module the
+ * application listed itself wins: `createApplication` refuses a name twice, and
+ * `auth({ policies: [...] })` must not be replaced by a bare one.
+ */
+const infrastructureFor = (settings: Settings, declared: ReadonlySet<string>): ModuleBuilder[] => {
+  const modules: ModuleBuilder[] = []
+
+  if (settings.revisions && !declared.has('revisions')) modules.push(revisionsModule())
+  if (settings.audit && !declared.has('audit')) modules.push(auditModule())
+  if (settings.changeSets && !declared.has('changesets')) modules.push(changeSets())
+
+  if (settings.mcp !== undefined && !declared.has('mcp')) {
+    modules.push(
+      mcp({
+        project: {
+          name: settings.project.name,
+          ...(settings.project.description === undefined
+            ? {}
+            : { description: settings.project.description }),
+        },
+      }),
+    )
+  }
+
+  return modules
+}
+
+type Served = {
+  readonly server: HttpServer
+  readonly mcp: MountedMcp | undefined
+}
+
+/**
+ * The server, and everything mounted on it.
+ *
+ * A module that is not registered gets no routes: without auth() there is no login
+ * route and no actor resolver, so every request is anonymous and — because
+ * authorization denies by default — refused. That is the honest outcome of an
+ * application that has not set up authentication.
+ */
+const serve = (
+  app: Application,
+  settings: Settings,
+  api: ResolvedApi,
+  modules: ReadonlySet<string>,
+  isReady: () => boolean,
+): Served => {
+  const server = createHttpServer({
+    registry: app.registry,
+    commands: app.commands,
+    queries: app.queries,
+    logger: app.logger,
+    prefix: api.prefix,
+    ...(modules.has('auth') ? { resolveActor } : {}),
+    // Registered only when there is something to allow, and always as a list. CORS is
+    // configured, not waved through (SPEC.md §85).
+    ...(settings.origins.length === 0
+      ? {}
+      : { cors: { origins: settings.origins, credentials: true } }),
+    rateLimit: api.rateLimit,
+    // Passed unconditionally: the option is optional in createHttpServer, and leaving
+    // it out turns CSRF off entirely (SPEC.md §85).
+    csrf: { cookie: CSRF_COOKIE },
+    security: { frameAncestors: frameAncestorsFor(settings) },
+  })
+
+  const endpoint =
+    settings.mcp === undefined
+      ? undefined
+      : mcpRoutes({
+          registry: app.registry,
+          commands: app.commands,
+          queries: app.queries,
+          path: settings.mcp.path,
+          name: settings.project.name,
+          version: settings.project.version,
+          mutations: settings.mcp.mutations,
+          rateLimit: settings.mcp.rateLimit,
+        })
+
+  server.mountRegistered()
+
+  if (api.crud) server.mountResources()
+
+  // Every command except the ones this package fronts with a route of its own.
+  // Mounting the rest is safe by construction — the bus validates and authorizes
+  // first, and authorization denies by default — but a publicly authorized command
+  // behind a hardened route would have a second, unhardened door beside it
+  // (AUTH_ROUTE_COMMANDS, SPEC.md §85).
+  server.mount(
+    ...commandRoutes(
+      commandEndpoints(app.registry).filter(
+        (endpoint) => !AUTH_ROUTE_COMMANDS.includes(endpoint.name),
+      ),
+      app.commands,
+    ),
+  )
+
+  server.mountQueries()
+
+  server.mount(
+    ...healthRoutes(isReady),
+    ...(modules.has('auth') ? authRoutes(app.commands, settings.session) : []),
+    ...(modules.has('media') ? mediaRoutes(app.queries) : []),
+    ...(endpoint?.routes ?? []),
+    ...(api.documentation
+      ? [
+          openApiRoute({
+            registry: app.registry,
+            info: {
+              title: settings.project.name,
+              version: settings.project.version,
+              ...(settings.project.description === undefined
+                ? {}
+                : { description: settings.project.description }),
+            },
+            prefix: api.prefix,
+          }),
+          introspectionRoute(app.registry),
+        ]
+      : []),
+  )
+
+  return { server, mcp: endpoint }
+}
+
+export const assemora = (options: AssemoraOptions): AssemoraApplication => {
+  const settings = resolve(options)
+  const declared = new Set((options.modules ?? []).map((builder) => builder.name))
+  const logger: Logger = options.logger ?? createLogger()
+
+  refuseImpossible(options, settings, declared)
+
+  if (!settings.session.secure) {
+    logger.warn('Session cookies are issued without Secure, so they may travel over plain http', {
+      option: 'session: { secure: false }',
+    })
+  }
+
+  if (settings.studio !== undefined && (settings.frontend?.framedBy.length ?? 0) > 0) {
+    // One content security policy is sent for the whole origin, so the origins that
+    // may frame the preview may frame the Studio document served beside it.
+    logger.warn('The origins allowed to frame the preview may also frame Studio', {
+      framedBy: settings.frontend?.framedBy,
+      studio: settings.studio.path,
+    })
+  }
+
+  // Both are process-wide, and both are set before anything is registered: a module's
+  // registration is user code, and user code may query.
+  useAdapter(options.database)
+
+  if (options.media !== undefined) {
+    // The prefix is always there when the driver's URLs need it: `media: { root }`
+    // without an API is refused above, and a driver the application built decides its
+    // own URLs.
+    useStorage(storageFor(options.media, settings.api?.prefix ?? ''))
+  }
+
+  const app = createApplication({
+    modules: [...(options.modules ?? []), ...infrastructureFor(settings, declared)],
+    // Never permitAll(). Core denies by default, and the umbrella must not be the
+    // thing that opens the door (ADR-0022); an application that wants the blunt
+    // answer writes it in its own source, with createApplication().
+    authorization: policies(),
+    transactions: dataTransactions(),
+    // Switched off, the port goes with the module: nothing should write history into
+    // a table that is no longer part of the schema.
+    ...(settings.revisions ? { revisions: revisions() } : {}),
+    ...(settings.audit ? { audit: audit() } : {}),
+    logger,
+  })
+
+  let booting: Promise<Application> | undefined
+  let stopped = false
+  let ready = false
+
+  // `app.modules` rather than what was passed: it is the list after the umbrella added
+  // what a developer should not have to list.
+  const registered = new Set(app.modules)
+  const served =
+    settings.api === undefined
+      ? undefined
+      : serve(app, settings, settings.api, registered, () => ready)
+
+  /**
+   * One boot, whichever half of the handle asks for it.
+   *
+   * The CLI boots the application the config gave it (ADR-0021) and the process that
+   * serves calls `listen()`. Core refuses a second boot, so if those were two
+   * different calls the second would fail — and the first would leave an application
+   * with no Studio, no preview and nothing saying why.
+   */
+  const boot = (): Promise<Application> => {
+    booting ??= (async () => {
+      await app.boot()
+
+      // Assets wait for boot because they need a filesystem, and Studio because it is
+      // an import this package deliberately does not declare. Fastify refuses a route
+      // added after it is ready, so both happen before anything listens or injects.
+      if (served !== undefined) {
+        if (settings.studio !== undefined) {
+          await mountStudio(served.server, settings.studio, logger)
+        }
+
+        if (settings.frontend !== undefined) {
+          await mountPreview(served.server, settings.frontend, logger)
+        }
+      }
+
+      ready = true
+
+      return facade
+    })()
+
+    return booting
+  }
+
+  const shutdown = async (): Promise<void> => {
+    if (stopped) return
+
+    const failures: unknown[] = []
+
+    /** Every step is tried: one that throws must not strand the ones behind it. */
+    const attempt = async (step: string, stop: () => Promise<void>): Promise<void> => {
+      try {
+        await stop()
+      } catch (error) {
+        failures.push(error)
+        logger.error('An application did not stop cleanly', {
+          step,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    // The server first, so no request arrives at a module that has already stopped.
+    await attempt('mcp', async () => {
+      await served?.mcp?.close()
+    })
+
+    if (served !== undefined) {
+      await attempt('server', async () => {
+        // Fastify will not close a server it has never made ready, and an application
+        // that was built and then abandoned — a CLI command that only read the
+        // registry — has never made one. Readying it is what lets it be closed.
+        await served.server.ready()
+        await served.server.close()
+      })
+    }
+
+    await attempt('modules', () => app.shutdown())
+    await attempt('database', async () => {
+      await closable(options.database)?.close()
+    })
+
+    // Set once everything has been attempted, not before: a caller whose first
+    // shutdown failed would otherwise be told the second one had nothing left to do.
+    stopped = true
+
+    if (failures.length === 1) throw failures[0]
+    if (failures.length > 1) {
+      throw new AggregateError(failures, 'This application did not stop cleanly')
+    }
+  }
+
+  /**
+   * The application, carrying this handle's lifecycle.
+   *
+   * `assemora.config.ts` hands this to the CLI, which boots it and later stops it
+   * (ADR-0021). Delegating those two to the handle is what makes the CLI's boot the
+   * same boot as `listen()`'s, and what closes the database pool the CLI opened.
+   */
+  const facade: Application = {
+    container: app.container,
+    commands: app.commands,
+    queries: app.queries,
+    events: app.events,
+    registry: app.registry,
+    logger: app.logger,
+    modules: app.modules,
+    boot,
+    shutdown,
+    run: (init, operation) => app.run(init, operation),
+    contextFor: (init) => app.contextFor(init),
+  }
+
+  return {
+    app: facade,
+    server: served?.server,
+    boot,
+    shutdown,
+
+    async listen(port = defaultPort(), host) {
+      if (served === undefined) {
+        throw new ConfigurationError(
+          'This application was built with "api: false", so there is no server to listen with.',
+        )
+      }
+
+      await boot()
+
+      return served.server.listen(port, host)
+    },
+  }
+}

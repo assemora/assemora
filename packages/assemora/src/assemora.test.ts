@@ -1,0 +1,1123 @@
+/**
+ * What one call has to be worth (SPEC.md §9, §124, ADR-0022).
+ *
+ * The claim of the umbrella is that a project writes `assemora({…})` and gets a
+ * working, secure application. Every test here is one clause of that claim, asserted
+ * against a real application over `inject()` — not against the shape of the object
+ * this package returns.
+ */
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { AuditLog } from '@assemora/audit'
+import {
+  auth,
+  clearPolicies,
+  createAgent,
+  hashPassword,
+  Permission,
+  policy,
+  Role,
+  RolePermission,
+  User,
+  UserRole,
+} from '@assemora/auth'
+import { clearRestorers, createLogger, type Logger, module, silentWriter } from '@assemora/core'
+import { model, string, uuid } from '@assemora/data'
+import { createMemoryAdapter, type DatabaseAdapter } from '@assemora/database'
+import { clearRouteRegistry, type HttpServer, type InjectedResponse } from '@assemora/http'
+import { clearStorage, localStorage, media, useStorage } from '@assemora/media'
+import { block, clearBlockRegistry, pages } from '@assemora/pages'
+import { clearResourceRegistry, resource, select, text } from '@assemora/resources'
+import { Revision } from '@assemora/revisions'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import { type AssemoraApplication, assemora } from './assemora.js'
+import type { AssemoraOptions } from './options.js'
+
+const Note = model('notes', {
+  id: uuid().primary().defaultRandom(),
+  title: string(),
+  status: string().default('draft'),
+})
+
+const Notes = resource(Note as never, {
+  title: text().required().searchable(),
+  status: select('draft', 'published').required().filterable(),
+})
+
+const notes = () =>
+  module('notes')
+    .models(Note as never)
+    .resources(Notes as never)
+
+/** One block type, which is all SPEC.md §124 asks a developer to declare. */
+const Hero = block('hero', {
+  title: text().required(),
+  variant: select('centered', 'split'),
+})
+
+const PASSWORD = 'correct horse battery staple'
+
+const quiet: Logger = createLogger(silentWriter)
+
+let running: AssemoraApplication[] = []
+
+/** Every application under test is stopped, so no Fastify instance outlives its test. */
+const build = (
+  options: Omit<AssemoraOptions, 'database' | 'logger'>,
+  database: DatabaseAdapter = createMemoryAdapter(),
+): AssemoraApplication => {
+  const built = assemora({ ...options, database, logger: quiet })
+
+  running.push(built)
+
+  return built
+}
+
+const serverOf = (built: AssemoraApplication) => {
+  if (built.server === undefined) throw new Error('this application was built without an API')
+
+  return built.server
+}
+
+/** An administrator, the way an application seeds its first one. */
+const administrator = async (): Promise<void> => {
+  const user = await User.create({
+    email: 'ada@assemora.dev',
+    name: 'Ada',
+    passwordHash: await hashPassword(PASSWORD),
+    active: true,
+    version: 1,
+  })
+  const role = await Role.create({ name: 'administrator', label: 'Administrator', version: 1 })
+  const everything = await Permission.create({ name: '*', description: null })
+
+  await UserRole.create({ userId: user.id, roleId: role.id })
+  await RolePermission.create({ roleId: role.id, permissionId: everything.id })
+}
+
+const cookiesOf = (response: InjectedResponse): Record<string, string> => {
+  const header = response.headers['set-cookie']
+  const all = Array.isArray(header) ? header : [String(header ?? '')]
+  const found: Record<string, string> = {}
+
+  for (const line of all) {
+    const [pair] = String(line).split(';')
+    const [name, ...rest] = (pair ?? '').split('=')
+
+    if (name !== undefined && name !== '') found[name] = decodeURIComponent(rest.join('='))
+  }
+
+  return found
+}
+
+const signIn = (server: HttpServer): Promise<InjectedResponse> =>
+  server.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email: 'ada@assemora.dev', password: PASSWORD },
+  })
+
+/** What a browser has to send with a mutation once it holds a session (SPEC.md §85). */
+const asStudio = (jar: Record<string, string>): Record<string, string> => ({
+  cookie: `assemora_session=${jar.assemora_session}; assemora_csrf=${jar.assemora_csrf}`,
+  'x-csrf-token': jar.assemora_csrf ?? '',
+})
+
+/** What it sends when it is only reading: the session, and nothing else. */
+const asReader = (jar: Record<string, string>): Record<string, string> => ({
+  cookie: `assemora_session=${jar.assemora_session}`,
+})
+
+const PNG = [0x89, 0x50, 0x4e, 0x47]
+
+const upload = (server: HttpServer, jar: Record<string, string>): Promise<InjectedResponse> =>
+  server.inject({
+    method: 'POST',
+    url: '/api/commands/media.upload',
+    payload: {
+      filename: 'dot.png',
+      mimeType: 'image/png',
+      data: Buffer.from(PNG).toString('base64'),
+    },
+    headers: asStudio(jar),
+  })
+
+const bundle = async (body: string): Promise<string> => {
+  const root = await mkdtemp(join(tmpdir(), 'assemora-bundle-'))
+
+  await writeFile(join(root, 'index.html'), body)
+
+  return root
+}
+
+const rpc = (id: number, method: string, params: Record<string, unknown> = {}) => ({
+  jsonrpc: '2.0',
+  id,
+  method,
+  params,
+})
+
+beforeEach(() => {
+  clearPolicies()
+  clearResourceRegistry()
+  clearRouteRegistry()
+  clearRestorers()
+  clearBlockRegistry()
+  clearStorage()
+})
+
+afterEach(async () => {
+  for (const built of running) await built.shutdown()
+
+  running = []
+})
+
+describe('a model and a resource are the whole configuration (SPEC.md §124)', () => {
+  it('publishes REST CRUD, OpenAPI, the API Explorer and a registry an SDK can read', async () => {
+    const built = build({ modules: [notes()] })
+
+    await built.boot()
+
+    const server = serverOf(built)
+
+    // Present, and refused — which is the pair §124 promises and §85 requires. A 404
+    // would mean no CRUD; a 200 would mean no authorization.
+    const list = await server.inject({ method: 'GET', url: '/api/notes' })
+
+    expect(list.statusCode).toBe(403)
+
+    const document = await server.inject({ method: 'GET', url: '/api/openapi.json' })
+    const paths = Object.keys(document.json<{ paths: Record<string, unknown> }>().paths)
+
+    expect(document.statusCode).toBe(200)
+    expect(paths).toContain('/api/notes')
+    expect(paths).toContain('/api/notes/{id}')
+
+    const explorer = await server.inject({ method: 'GET', url: '/api/_introspection' })
+    const described = explorer.json<Record<string, { name: string }[]>>()
+
+    expect(described.resources?.map((entry) => entry.name)).toContain('notes')
+    expect(described.routes?.map((entry) => entry.name)).toContain('get /notes')
+    expect(described.commands?.map((entry) => entry.name)).toContain('entries.create')
+
+    // The SDK is generated from the same snapshot the explorer just served.
+    expect(built.app.registry.describe()).toMatchObject({ resources: expect.anything() })
+  })
+
+  it('refuses a command sent by nobody, so the umbrella did not open the door', async () => {
+    const built = build({ modules: [notes()] })
+
+    await built.boot()
+
+    const refused = await serverOf(built).inject({
+      method: 'POST',
+      url: '/api/commands/entries.create',
+      payload: { resource: 'notes', data: { title: 'Anonymous', status: 'draft' } },
+    })
+
+    expect(refused.statusCode).toBe(403)
+  })
+
+  it('assembles a page from blocks, records every change and undoes it', async () => {
+    const built = build({ modules: [auth(), pages({ blocks: [Hero] })] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const send = (name: string, payload: Record<string, unknown>) =>
+      server.inject({
+        method: 'POST',
+        url: `/api/commands/${name}`,
+        payload,
+        headers: asStudio(jar),
+      })
+
+    // A block a developer declared is a block Studio and an agent can both place.
+    expect(
+      built.app.registry.describe().blocks?.map((entry) => (entry as { name: string }).name),
+    ).toContain('hero')
+
+    const page = (await send('pages.create', { slug: 'home', title: 'Home' })).json<{
+      id: string
+    }>()
+
+    const added = await send('blocks.add', {
+      id: page.id,
+      type: 'hero',
+      props: { title: 'Welcome', variant: 'centered' },
+    })
+
+    expect(added.statusCode).toBe(200)
+
+    const published = await send('pages.publish', { id: page.id })
+
+    expect(published.statusCode).toBe(200)
+
+    const history = await server.inject({
+      method: 'GET',
+      url: `/api/queries/revisions.list?entityType=pages&entityId=${page.id}`,
+      headers: asReader(jar),
+    })
+
+    expect(
+      history.json<{ data: { command: string }[] }>().data.map((entry) => entry.command),
+    ).toEqual(['pages.publish', 'blocks.add', 'pages.create'])
+
+    const undone = await send('revisions.undo', { entityType: 'pages', entityId: page.id })
+
+    expect(undone.statusCode).toBe(200)
+
+    const read = await server.inject({
+      method: 'GET',
+      url: '/api/queries/pages.get?slug=home&mode=draft',
+      headers: asReader(jar),
+    })
+
+    expect(read.json<{ status: string }>().status).toBe('draft')
+  })
+})
+
+describe('signing in (SPEC.md §49, §85)', () => {
+  it('answers with an httpOnly session cookie and a readable CSRF cookie', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const response = await signIn(serverOf(built))
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json<{ csrfToken: string }>().csrfToken).toEqual(expect.any(String))
+
+    const header = response.headers['set-cookie']
+    const lines = Array.isArray(header) ? header.map(String) : [String(header)]
+    const session = lines.find((line) => line.startsWith('assemora_session='))
+    const csrf = lines.find((line) => line.startsWith('assemora_csrf='))
+
+    // The session token is one an injected script must not be able to read; the CSRF
+    // token is one the page has to be able to echo back.
+    expect(session).toContain('HttpOnly')
+    expect(session).toContain('SameSite=Strict')
+    expect(csrf).not.toContain('HttpOnly')
+  })
+
+  it('marks both cookies Secure, because that is the default and not a guess', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const header = (await signIn(serverOf(built))).headers['set-cookie']
+    const lines = Array.isArray(header) ? header.map(String) : [String(header)]
+
+    // Not `NODE_ENV === 'production'`: a security default decided by an environment
+    // variable is not a default, and the container that forgets to set it is exactly
+    // the deployment whose session cookie would then travel in cleartext.
+    expect(lines.find((line) => line.startsWith('assemora_session='))).toContain('Secure')
+    expect(lines.find((line) => line.startsWith('assemora_csrf='))).toContain('Secure')
+  })
+
+  it('drops Secure only for an application that says so out loud', async () => {
+    const built = build({ modules: [auth(), notes()], session: { secure: false } })
+
+    await built.boot()
+    await administrator()
+
+    const header = (await signIn(serverOf(built))).headers['set-cookie']
+    const lines = Array.isArray(header) ? header.map(String) : [String(header)]
+
+    expect(lines.find((line) => line.startsWith('assemora_session='))).not.toContain('Secure')
+  })
+
+  it('refuses a cookie-authenticated mutation that does not repeat the CSRF token', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+    const create = { resource: 'notes', data: { title: 'From Studio', status: 'draft' } }
+    const { 'x-csrf-token': token, ...cookieOnly } = asStudio(jar)
+
+    const forged = await server.inject({
+      method: 'POST',
+      url: '/api/commands/entries.create',
+      payload: create,
+      headers: cookieOnly,
+    })
+
+    expect(forged.statusCode).toBe(403)
+    expect(forged.json()).toMatchObject({ error: { code: 'CSRF_FAILED' } })
+
+    const genuine = await server.inject({
+      method: 'POST',
+      url: '/api/commands/entries.create',
+      payload: create,
+      headers: { ...cookieOnly, 'x-csrf-token': token ?? '' },
+    })
+
+    expect(genuine.statusCode).toBe(200)
+    expect(genuine.json()).toMatchObject({ entry: { title: 'From Studio' } })
+  })
+
+  it('says who is asking, and what they may do', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const me = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: `assemora_session=${jar.assemora_session}` },
+    })
+
+    expect(me.json()).toMatchObject({ email: 'ada@assemora.dev', permissions: ['*'] })
+  })
+
+  it('ends a session, and says so with an expired cookie', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const out = await server.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: asStudio(jar),
+    })
+
+    expect(out.statusCode).toBe(200)
+
+    const after = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: `assemora_session=${jar.assemora_session}` },
+    })
+
+    expect(after.statusCode).toBe(401)
+  })
+})
+
+describe('one door per session command (SPEC.md §85)', () => {
+  it('publishes no raw alias of the login route', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+
+    // `/auth/login` answers with an httpOnly cookie and a CSRF token, and records the
+    // user agent the request actually carried. The generic command endpoint would
+    // hand the same session token back as readable JSON, exempt from CSRF because it
+    // works as a bearer credential, with the forensic fields chosen by the caller.
+    const alias = await server.inject({
+      method: 'POST',
+      url: '/api/commands/auth.login',
+      payload: {
+        email: 'ada@assemora.dev',
+        password: PASSWORD,
+        ipAddress: '10.0.0.1',
+        userAgent: 'not really',
+      },
+    })
+
+    expect(alias.statusCode).toBe(404)
+
+    const logout = await server.inject({
+      method: 'POST',
+      url: '/api/commands/auth.logout',
+      payload: { token: 'anything' },
+    })
+
+    expect(logout.statusCode).toBe(404)
+
+    // The hardened route is untouched, and everything else is still published: the
+    // generic mount is safe because authorization denies by default, and these two
+    // are the exception because they are the two that are publicly authorized.
+    expect((await signIn(server)).statusCode).toBe(200)
+
+    const other = await server.inject({
+      method: 'POST',
+      url: '/api/commands/entries.create',
+      payload: { resource: 'notes', data: { title: 'Anonymous', status: 'draft' } },
+    })
+
+    expect(other.statusCode).toBe(403)
+  })
+
+  it('does not document the alias either', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+
+    const document = await serverOf(built).inject({ method: 'GET', url: '/api/openapi.json' })
+    const paths = Object.keys(document.json<{ paths: Record<string, unknown> }>().paths)
+
+    expect(paths).not.toContain('/api/commands/auth.login')
+    expect(paths).toContain('/api/auth/login')
+    expect(paths).toContain('/api/commands/entries.create')
+  })
+})
+
+describe('the agent endpoint (SPEC.md §68, §76)', () => {
+  it('speaks the protocol to a caller carrying an agent token', async () => {
+    const built = build({
+      modules: [auth(), notes()],
+      mcp: true,
+      project: { name: 'demo', version: '2.1.0' },
+    })
+
+    await built.boot()
+
+    const agent = await createAgent({ name: 'content-agent', permissions: ['assemora.*'] })
+    const server = serverOf(built)
+    const headers = { authorization: `Bearer ${agent.token}` }
+
+    const initialized = await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: rpc(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    })
+
+    expect(initialized.json()).toMatchObject({
+      result: { serverInfo: { name: 'demo', version: '2.1.0' } },
+    })
+
+    // A notification has no reply, and JSON-RPC says to answer it with nothing.
+    const notified = await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: { jsonrpc: '2.0', method: 'notifications/initialized' },
+    })
+
+    expect(notified.statusCode).toBe(202)
+
+    const listed = await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: rpc(2, 'tools/list'),
+    })
+
+    const tools = listed.json<{ result: { tools: { name: string }[] } }>().result.tools
+
+    // Generated from the registry: the resource declared above is already a tool.
+    expect(tools.map((tool) => tool.name)).toContain('assemora.entries.create')
+  })
+
+  it('refuses an anonymous caller rather than running its tools as nobody', async () => {
+    const built = build({ modules: [auth(), notes()], mcp: true })
+
+    await built.boot()
+
+    const refused = await serverOf(built).inject({
+      method: 'POST',
+      url: '/api/mcp',
+      payload: rpc(1, 'tools/list'),
+    })
+
+    expect(refused.statusCode).toBe(401)
+  })
+})
+
+describe('an MCP mutation is a proposal (SPEC.md §75, ADR-0020)', () => {
+  it('answers a mutating tool call with a change set, and leaves production alone', async () => {
+    const built = build({ modules: [auth(), notes()], mcp: true })
+
+    await built.boot()
+
+    const agent = await createAgent({
+      name: 'content-agent',
+      permissions: ['assemora.*', 'notes.create', 'notes.read', 'changesets.propose'],
+    })
+    const server = serverOf(built)
+    const headers = { authorization: `Bearer ${agent.token}` }
+
+    await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: rpc(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    })
+
+    const called = await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: rpc(2, 'tools/call', {
+        name: 'assemora.entries.create',
+        arguments: { resource: 'notes', data: { title: 'From an agent', status: 'draft' } },
+      }),
+    })
+
+    const answered = called.json<{
+      result: { isError?: boolean; content: { text: string }[] }
+    }>().result
+
+    expect(answered.isError).not.toBe(true)
+
+    const proposal = JSON.parse(answered.content[0]?.text ?? '{}') as { status?: string }
+
+    // `mutations: 'change-set'` is the default, and it is the whole of SPEC.md §75:
+    // production state changes when a person applies the proposal, not before.
+    expect(proposal.status).toBe('pending')
+    expect(await Note.where('title', 'From an agent').first()).toBeNull()
+  })
+})
+
+describe('the allow-list and the log (SPEC.md §85, §67)', () => {
+  it('allows the origins it was given, and no others', async () => {
+    const built = build({ modules: [notes()], origins: ['http://localhost:5173'] })
+
+    await built.boot()
+
+    const server = serverOf(built)
+    const url = '/api/_introspection'
+
+    const allowed = await server.inject({
+      method: 'GET',
+      url,
+      headers: { origin: 'http://localhost:5173' },
+    })
+    const refused = await server.inject({
+      method: 'GET',
+      url,
+      headers: { origin: 'https://elsewhere.example' },
+    })
+
+    expect(allowed.headers['access-control-allow-origin']).toBe('http://localhost:5173')
+    expect(allowed.headers['access-control-allow-credentials']).toBe('true')
+    expect(refused.headers['access-control-allow-origin']).toBeUndefined()
+  })
+
+  it('registers no CORS at all when nothing was allowed', async () => {
+    const built = build({ modules: [notes()] })
+
+    await built.boot()
+
+    const response = await serverOf(built).inject({
+      method: 'GET',
+      url: '/api/_introspection',
+      headers: { origin: 'https://elsewhere.example' },
+    })
+
+    expect(response.headers['access-control-allow-origin']).toBeUndefined()
+  })
+
+  it('records a revision and an audit entry for a write nobody asked it to record', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/commands/entries.create',
+      payload: { resource: 'notes', data: { title: 'Recorded', status: 'draft' } },
+      headers: asStudio(jar),
+    })
+
+    expect(created.statusCode).toBe(200)
+
+    const id = created.json<{ entry: { id: string } }>().entry.id
+
+    // The modules alone are not enough: without `revisions: revisions()` and
+    // `audit: audit()` the ports discard everything and the tables stay empty.
+    expect(await Revision.where('entityType', 'notes').where('entityId', id).first()).not.toBeNull()
+    expect(await AuditLog.where('action', 'entries.create').first()).not.toBeNull()
+  })
+})
+
+describe('liveness and readiness (SPEC.md §88)', () => {
+  it('answers a probe before and after the application is ready', async () => {
+    const built = build({ modules: [notes()] })
+    const server = serverOf(built)
+
+    const starting = await server.inject({ method: 'GET', url: '/api/ready' })
+
+    // Liveness answers before anything has booted; readiness deliberately does not,
+    // so nothing routes traffic at an application whose modules are not up.
+    expect((await server.inject({ method: 'GET', url: '/api/health' })).statusCode).toBe(200)
+    expect(starting.statusCode).toBe(503)
+    expect(starting.json()).toMatchObject({ error: { code: 'NOT_READY' } })
+
+    await built.boot()
+
+    const ready = await server.inject({ method: 'GET', url: '/api/ready' })
+
+    expect(ready.statusCode).toBe(200)
+    expect(ready.json()).toMatchObject({ status: 'ready' })
+  })
+})
+
+describe('serving Studio (SPEC.md §58, ADR-0022)', () => {
+  it('names the package to install when it is not there', async () => {
+    const built = build({ modules: [auth(), notes()], studio: true })
+
+    await expect(built.boot()).rejects.toThrow(/@assemora\/studio/)
+  })
+
+  it('serves a bundle beside the API, on one origin', async () => {
+    const root = await bundle('<!doctype html><title>Studio</title>')
+    const built = build({ modules: [auth(), notes()], studio: { root } })
+
+    await built.boot()
+
+    const server = serverOf(built)
+    const entry = await server.inject({ method: 'GET', url: '/studio' })
+    const deep = await server.inject({ method: 'GET', url: '/studio/pages/42' })
+
+    expect(entry.statusCode).toBe(200)
+    expect(entry.body).toContain('<title>Studio</title>')
+    // Studio routes in the browser, so an unknown path is the entry document.
+    expect(deep.body).toContain('<title>Studio</title>')
+
+    // Assets are not endpoints, so they are not described in OpenAPI.
+    const document = await server.inject({ method: 'GET', url: '/api/openapi.json' })
+
+    expect(Object.keys(document.json<{ paths: object }>().paths)).not.toContain('/studio')
+  })
+
+  it('refuses to be asked for without the module it signs in through', () => {
+    expect(() => build({ modules: [notes()], studio: true })).toThrow(/auth\(\)/)
+  })
+})
+
+describe('the frontend the builder canvas frames (SPEC.md §59, §85)', () => {
+  it('serves it at the origin root, and lets the origins it named frame it', async () => {
+    const root = await bundle('<!doctype html><title>Preview</title>')
+    const built = build({
+      modules: [notes()],
+      frontend: { root, framedBy: ['http://localhost:5173'] },
+    })
+
+    await built.boot()
+
+    const page = await serverOf(built).inject({ method: 'GET', url: '/preview' })
+
+    expect(page.statusCode).toBe(200)
+    expect(page.headers['content-security-policy']).toContain(
+      "frame-ancestors 'self' http://localhost:5173",
+    )
+  })
+
+  it('does not let an origin frame Studio because it may call the API', async () => {
+    const root = await bundle('<!doctype html><title>Preview</title>')
+    const studio = await bundle('<!doctype html><title>Studio</title>')
+    const built = build({
+      modules: [auth(), notes()],
+      studio: { root: studio },
+      frontend: { root },
+      // Allowed to call the API, and nothing more. Who may frame the logged-in admin
+      // UI is a different permission, and it is not this one.
+      origins: ['https://partner.example'],
+    })
+
+    await built.boot()
+
+    const page = await serverOf(built).inject({ method: 'GET', url: '/studio' })
+    const policyHeader = String(page.headers['content-security-policy'])
+
+    expect(policyHeader).toContain("frame-ancestors 'self'")
+    expect(policyHeader).not.toContain('partner.example')
+  })
+
+  it('lets nothing frame an application that serves no frontend', async () => {
+    const built = build({ modules: [notes()] })
+
+    await built.boot()
+
+    const response = await serverOf(built).inject({ method: 'GET', url: '/api/_introspection' })
+
+    expect(response.headers['content-security-policy']).toContain("frame-ancestors 'none'")
+  })
+
+  it('refuses "*" rather than producing a policy open to everybody', () => {
+    expect(() => build({ modules: [notes()], origins: ['*'] })).toThrow(/not an origin/)
+  })
+
+  it('refuses an origin that would add directives to the policy', async () => {
+    const root = await bundle('<!doctype html><title>Preview</title>')
+
+    expect(() =>
+      build({
+        modules: [notes()],
+        frontend: { root, framedBy: ['https://studio.example; script-src *'] },
+      }),
+    ).toThrow(/scheme:\/\/host/)
+  })
+})
+
+describe('media (SPEC.md §63)', () => {
+  it('serves an uploaded file from the very URL the library handed out', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [auth(), media(), notes()], media: { root } })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+    const uploaded = await upload(server, jar)
+
+    expect(uploaded.statusCode).toBe(200)
+
+    // The driver's `baseUrl` and the mounted route have to be the same string, or
+    // every image Studio renders is a 404. Following the URL is how that is proved.
+    const url = uploaded.json<{ url: string }>().url
+
+    expect(url.startsWith('/api/media/')).toBe(true)
+
+    const file = await server.inject({ method: 'GET', url, headers: asReader(jar) })
+
+    expect(file.statusCode).toBe(200)
+    expect(file.headers['content-type']).toContain('image/png')
+    expect([...file.rawBody]).toEqual(PNG)
+  })
+
+  it('leaves a storage driver the application registered itself alone', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+
+    useStorage(localStorage({ root, baseUrl: 'https://cdn.example/files' }))
+
+    const built = build({ modules: [auth(), media(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const uploaded = await upload(server, cookiesOf(await signIn(server)))
+
+    // Omitting `media` means the umbrella never called `useStorage`, so the URLs stay
+    // the ones this application's own driver decided on.
+    expect(uploaded.json<{ url: string }>().url.startsWith('https://cdn.example/files/')).toBe(true)
+  })
+
+  it('serves a file a browser must not render as a download', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [auth(), media(), notes()], media: { root } })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const uploaded = await server.inject({
+      method: 'POST',
+      url: '/api/commands/media.upload',
+      payload: {
+        filename: 'payload.html',
+        mimeType: 'text/html',
+        data: Buffer.from('<script>alert(1)</script>').toString('base64'),
+      },
+      headers: asStudio(jar),
+    })
+
+    const file = await server.inject({
+      method: 'GET',
+      url: uploaded.json<{ url: string }>().url,
+      headers: asReader(jar),
+    })
+
+    // An upload must not become a page on this origin (SPEC.md §85).
+    expect(file.headers['content-type']).toContain('application/octet-stream')
+    expect(file.headers['content-disposition']).toContain('attachment')
+    expect(file.headers['x-content-type-options']).toBe('nosniff')
+  })
+})
+
+describe('the bytes pass the policy the library passes (SPEC.md §51, §63)', () => {
+  /** A library an application decided to keep behind a policy. */
+  const closed = () => auth({ policies: [policy('media', { read: () => false })] })
+
+  const stored = async (server: HttpServer, jar: Record<string, string>) => {
+    const uploaded = await upload(server, jar)
+
+    return uploaded.json<{ id: string; url: string }>()
+  }
+
+  it('refuses a caller the media policy refuses, at every door on to the file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [closed(), media(), notes()], media: { root } })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const file = await stored(server, cookiesOf(await signIn(server)))
+
+    // The three doors on to one file have to agree. The query was already right; the
+    // two byte routes read the model directly and answered 200 to anybody.
+    const asked = await server.inject({
+      method: 'GET',
+      url: `/api/queries/media.get?id=${file.id}`,
+    })
+    const byPath = await server.inject({ method: 'GET', url: file.url })
+    const byId = await server.inject({ method: 'GET', url: `/api/media/by-id/${file.id}` })
+
+    expect(asked.statusCode).toBe(403)
+    expect(byPath.statusCode).toBe(403)
+    expect(byId.statusCode).toBe(403)
+  })
+
+  it('says the same thing about a file that is not there', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [closed(), media(), notes()], media: { root } })
+
+    await built.boot()
+
+    // 403 rather than 404: a caller who may not read the library does not get to
+    // learn which ids it holds. `/queries/media.get` answers the same way.
+    const byId = await serverOf(built).inject({
+      method: 'GET',
+      url: `/api/media/by-id/${crypto.randomUUID()}`,
+    })
+
+    expect(byId.statusCode).toBe(403)
+  })
+
+  it('serves the same bytes to a caller it allows', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [closed(), media(), notes()], media: { root } })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+    const file = await stored(server, jar)
+
+    // The administrator holds `*`, so the permission answers before the policy does.
+    const byPath = await server.inject({ method: 'GET', url: file.url, headers: asReader(jar) })
+    const byId = await server.inject({
+      method: 'GET',
+      url: `/api/media/by-id/${file.id}`,
+      headers: asReader(jar),
+    })
+
+    expect(byPath.statusCode).toBe(200)
+    expect([...byPath.rawBody]).toEqual(PNG)
+    expect(byId.statusCode).toBe(200)
+    expect([...byId.rawBody]).toEqual(PNG)
+  })
+
+  it('is a 404 for a storage path the library never handed out', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [auth(), media(), notes()], media: { root } })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const missing = await server.inject({
+      method: 'GET',
+      url: '/api/media/2026/08/nothing.png',
+      headers: asReader(jar),
+    })
+
+    expect(missing.statusCode).toBe(404)
+  })
+})
+
+describe('every switch removes exactly what it names', () => {
+  it('builds no server at all when the API is off', async () => {
+    const built = build({ modules: [notes()], api: false })
+
+    await built.boot()
+
+    expect(built.server).toBeUndefined()
+    await expect(built.listen()).rejects.toThrow(/api: false/)
+  })
+
+  it('drops generated CRUD but keeps the commands behind it', async () => {
+    const built = build({ modules: [notes()], api: { crud: false } })
+
+    await built.boot()
+
+    const server = serverOf(built)
+
+    await expect(
+      server.inject({ method: 'GET', url: '/api/notes' }).then((r) => r.statusCode),
+    ).resolves.toBe(404)
+
+    // A resource is still reachable the way Studio and an agent reach it.
+    await expect(
+      server
+        .inject({ method: 'POST', url: '/api/commands/entries.create', payload: {} })
+        .then((r) => r.statusCode),
+    ).resolves.not.toBe(404)
+  })
+
+  it('stops publishing the API’s own description when documentation is off', async () => {
+    const built = build({ modules: [notes()], api: { documentation: false } })
+
+    await built.boot()
+
+    const server = serverOf(built)
+
+    await expect(
+      server.inject({ method: 'GET', url: '/api/openapi.json' }).then((r) => r.statusCode),
+    ).resolves.toBe(404)
+    await expect(
+      server.inject({ method: 'GET', url: '/api/_introspection' }).then((r) => r.statusCode),
+    ).resolves.toBe(404)
+  })
+
+  it('leaves no agent endpoint and no agent queries when MCP is off', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+
+    const refused = await serverOf(built).inject({ method: 'POST', url: '/api/mcp', payload: {} })
+
+    expect(refused.statusCode).toBe(404)
+    expect(built.app.registry.find('queries', 'assemora.describe')).toBeUndefined()
+    expect(built.app.modules).not.toContain('mcp')
+  })
+
+  it('adds revisions, audit and change sets that nobody asked for', async () => {
+    const built = build({ modules: [notes()] })
+
+    expect(built.app.modules).toEqual(['notes', 'revisions', 'audit', 'changesets'])
+  })
+
+  it('takes them away again when they are switched off', () => {
+    const built = build({ modules: [notes()], revisions: false, audit: false, changeSets: false })
+
+    expect(built.app.modules).toEqual(['notes'])
+  })
+
+  it('never registers a module the application listed itself twice', () => {
+    const built = build({ modules: [auth(), notes()], mcp: true })
+
+    expect(built.app.modules).toEqual(['auth', 'notes', 'revisions', 'audit', 'changesets', 'mcp'])
+  })
+})
+
+describe('what the CLI is handed (ADR-0021)', () => {
+  it('reaches a complete registry without booting anything', () => {
+    const built = build({ modules: [notes()] })
+
+    // Registration is synchronous, so `assemora routes` can describe an application
+    // without opening a socket.
+    expect(built.app.registry.find('resources', 'notes')).toBeDefined()
+    expect(built.app.registry.find('commands', 'entries.create')).toBeDefined()
+  })
+
+  it('boots once, however often it is asked to', async () => {
+    const built = build({ modules: [notes()] })
+
+    const [first, second] = await Promise.all([built.boot(), built.boot()])
+
+    expect(first).toBe(second)
+    expect(first).toBe(built.app)
+  })
+
+  it('is the same boot whichever half of the handle is asked', async () => {
+    const root = await bundle('<!doctype html><title>Studio</title>')
+    const built = build({ modules: [auth(), notes()], studio: { root } })
+
+    // The config hands the CLI the application and the CLI boots it (ADR-0021),
+    // while `src/server.ts` calls `listen()`, which boots as well. Two paths on to
+    // one boot: the second must not be refused, and the first must not leave an
+    // application with no Studio and no explanation.
+    const booted = await built.app.boot()
+
+    await expect(built.boot()).resolves.toBe(booted)
+
+    const entry = await serverOf(built).inject({ method: 'GET', url: '/studio' })
+
+    expect(entry.statusCode).toBe(200)
+  })
+
+  it('closes the database even when something else fails to stop', async () => {
+    let closed = false
+    // A pool that outlives the process that forgot it is the failure being tested.
+    const database = {
+      ...createMemoryAdapter(),
+      close: () => {
+        closed = true
+
+        return Promise.resolve()
+      },
+    }
+
+    const stubborn = module('stubborn').shutdown(() => {
+      throw new Error('this module did not stop')
+    })
+
+    const built = build({ modules: [notes(), stubborn] }, database)
+
+    await built.boot()
+
+    // A step that throws must not take the connection pool with it, and must not
+    // leave the handle marked stopped without having stopped anything.
+    await expect(built.shutdown()).rejects.toThrow(/did not stop/)
+    expect(closed).toBe(true)
+  })
+})
+
+describe('a configuration that cannot work is refused where it was written', () => {
+  it('refuses media() with nowhere to put the bytes', () => {
+    expect(() => build({ modules: [auth(), media(), notes()] })).toThrow(/storage/)
+  })
+
+  it('accepts media() when the application registered a driver itself', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+
+    useStorage(localStorage({ root, baseUrl: 'https://cdn.example/files' }))
+
+    expect(() => build({ modules: [auth(), media(), notes()] })).not.toThrow()
+  })
+
+  it('refuses Studio and the frontend on the same path', async () => {
+    const root = await bundle('<!doctype html><title>Both</title>')
+
+    expect(() =>
+      build({
+        modules: [auth(), notes()],
+        studio: { root, path: '/app' },
+        frontend: { root, path: '/app' },
+      }),
+    ).toThrow(/\/app/)
+  })
+
+  it('refuses media URLs that would point at routes nobody mounted', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+
+    expect(() => build({ modules: [media(), notes()], api: false, media: { root } })).toThrow(
+      /api: false/,
+    )
+  })
+})

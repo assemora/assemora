@@ -1,0 +1,4 @@
+# Machine-made. `scripts/copy-templates.mjs` copies starters/ here so that a
+# published tarball carries the starters it scaffolds from, and `prepack` is what
+# runs it. Nothing in here is ever edited by hand — edit the starter (ADR-0021).
+templates/

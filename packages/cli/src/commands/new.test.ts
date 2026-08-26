@@ -7,6 +7,9 @@
  * project contains is the scaffolder's own question, and answering it twice is how
  * the two would come to disagree.
  */
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { parseArgs } from '../args.js'
@@ -89,9 +92,33 @@ describe('the invocation itself', () => {
     }
   })
 
-  // TODO(phase-10): replace this with a case that scaffolds into a temporary
-  // directory once `create-assemora` exists and the import in `new.ts` is live.
-  it('says plainly that create-assemora has not landed yet, and what to run meanwhile', async () => {
-    await expect(invoke(['new', 'demo'])).rejects.toThrow(/pnpm create assemora demo/)
+  it('scaffolds a real project, through the same function `pnpm create` calls', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'assemora-new-'))
+    const template = join(directory, 'template')
+
+    // The smallest thing `create-assemora` accepts as a starter: it insists on a
+    // package.json, so that a directory of nothing cannot be reported as a project.
+    await mkdir(template, { recursive: true })
+    await writeFile(
+      join(template, 'package.json'),
+      JSON.stringify({ name: 'starter', private: true, dependencies: {} }),
+    )
+    await writeFile(join(template, 'README.md'), '# starter\n')
+
+    const output = captureOutput()
+
+    try {
+      const code = await commandNamed('new')?.handler({
+        args: parseArgs(['new', 'demo', '--template', template, '--yes']),
+        cwd: directory,
+      })
+
+      expect(code).toBe(0)
+      expect(await readFile(join(directory, 'demo', 'README.md'), 'utf8')).toContain('starter')
+      expect(output.stdout).toContain('demo')
+    } finally {
+      output.restore()
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 })

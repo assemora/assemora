@@ -1,13 +1,13 @@
 {
-  "name": "@assemora/cli",
+  "name": "assemora",
   "version": "0.0.0",
-  "private": true,
-  "description": "Assemora CLI: generators, migrations, introspection",
+  "private": false,
+  "description": "The umbrella: one call that assembles an Assemora application",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/assemora/assemora.git",
-    "directory": "packages/cli"
+    "directory": "packages/assemora"
   },
   "type": "module",
   "exports": {
@@ -17,9 +17,6 @@
     }
   },
   "main": "./dist/index.js",
-  "bin": {
-    "assemora": "./dist/bin.js"
-  },
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
@@ -30,16 +27,22 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@assemora/audit": "workspace:*",
+    "@assemora/auth": "workspace:*",
+    "@assemora/change-sets": "workspace:*",
     "@assemora/core": "workspace:*",
     "@assemora/data": "workspace:*",
     "@assemora/database": "workspace:*",
-    "@assemora/database-postgres": "workspace:*",
+    "@assemora/http": "workspace:*",
+    "@assemora/mcp": "workspace:*",
+    "@assemora/media": "workspace:*",
     "@assemora/openapi": "workspace:*",
-    "@assemora/schema": "workspace:*",
-    "@assemora/sdk": "workspace:*",
-    "create-assemora": "workspace:*"
+    "@assemora/revisions": "workspace:*",
+    "@assemora/schema": "workspace:*"
   },
   "devDependencies": {
+    "@assemora/pages": "workspace:*",
+    "@assemora/resources": "workspace:*",
     "@types/node": "24.13.3"
   }
 }

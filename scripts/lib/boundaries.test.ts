@@ -255,9 +255,9 @@ describe('the top of the graph', () => {
     ])
 
     expect(violations.map((violation) => violation.rule)).toContain('terminal-package')
-    expect(violations.find((violation) => violation.rule === 'terminal-package')?.message).toContain(
-      'nothing may depend on it',
-    )
+    expect(
+      violations.find((violation) => violation.rule === 'terminal-package')?.message,
+    ).toContain('nothing may depend on it')
   })
 
   it('lets the umbrella depend on what it assembles', () => {

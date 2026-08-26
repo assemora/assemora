@@ -1,0 +1,34 @@
+{
+  "name": "create-assemora",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Scaffold an Assemora project: pnpm create assemora my-project",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/create-assemora"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "bin": {
+    "create-assemora": "./dist/bin.js"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "node scripts/copy-templates.mjs",
+    "clean": "rm -rf dist templates *.tsbuildinfo"
+  }
+}

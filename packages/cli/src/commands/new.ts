@@ -11,15 +11,9 @@
  * the defaults SPEC.md §78 fixes — Studio, Pages and MCP are all in unless the
  * invocation says otherwise.
  */
-// TODO(phase-10): `create-assemora` is not in the workspace yet. It lands
-// immediately after this command, and importing it before it exists would break the
-// build for every other package. Switching this command on is two uncomments — the
-// import here and the call in `runScaffold` — and nothing else in this file depends
-// on either.
-// import { scaffold } from 'create-assemora'
 import { relative, resolve } from 'node:path'
 
-import { AssemoraError } from '@assemora/core'
+import { scaffold } from 'create-assemora'
 
 import { bool, flag, type ParsedArgs } from '../args.js'
 import { fail, line, ok } from '../output.js'
@@ -78,14 +72,7 @@ export const scaffoldOptions = (name: string, args: ParsedArgs, cwd: string): Sc
   }
 }
 
-const runScaffold = async (options: ScaffoldOptions): Promise<Scaffolded> => {
-  // return scaffold(options)
-  throw new AssemoraError(
-    'NOT_AVAILABLE',
-    `\`assemora new\` cannot scaffold ${options.name} yet: it delegates to create-assemora, ` +
-      `which lands with the starter. Until then: \`pnpm create assemora ${options.name}\`.`,
-  )
-}
+const runScaffold = async (options: ScaffoldOptions): Promise<Scaffolded> => scaffold(options)
 
 /** An absolute path is a poor thing to type; a relative one is what `cd` wants. */
 const shortest = (from: string, directory: string): string => {

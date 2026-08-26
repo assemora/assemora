@@ -23,16 +23,28 @@
       "path": "../data/tsconfig.build.json"
     },
     {
-      "path": "../database-postgres/tsconfig.build.json"
+      "path": "../http/tsconfig.build.json"
     },
     {
       "path": "../openapi/tsconfig.build.json"
     },
     {
-      "path": "../sdk/tsconfig.build.json"
+      "path": "../auth/tsconfig.build.json"
     },
     {
-      "path": "../create-assemora/tsconfig.build.json"
+      "path": "../media/tsconfig.build.json"
+    },
+    {
+      "path": "../revisions/tsconfig.build.json"
+    },
+    {
+      "path": "../audit/tsconfig.build.json"
+    },
+    {
+      "path": "../change-sets/tsconfig.build.json"
+    },
+    {
+      "path": "../mcp/tsconfig.build.json"
     }
   ]
 }

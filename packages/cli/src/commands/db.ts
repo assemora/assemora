@@ -24,7 +24,6 @@ import { detail, fail, json, line, ok, table, warn } from '../output.js'
 import { loadApplication } from '../project.js'
 import { defineCommand, register } from '../registry.js'
 
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 

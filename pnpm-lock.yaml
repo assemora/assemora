@@ -154,9 +154,6 @@ importers:
       '@assemora/database':
         specifier: workspace:*
         version: link:../database
-      '@assemora/database-postgres':
-        specifier: workspace:*
-        version: link:../database-postgres
       '@assemora/http':
         specifier: workspace:*
         version: link:../http
@@ -169,12 +166,6 @@ importers:
       '@assemora/openapi':
         specifier: workspace:*
         version: link:../openapi
-      '@assemora/pages':
-        specifier: workspace:*
-        version: link:../pages
-      '@assemora/resources':
-        specifier: workspace:*
-        version: link:../resources
       '@assemora/revisions':
         specifier: workspace:*
         version: link:../revisions
@@ -182,6 +173,12 @@ importers:
         specifier: workspace:*
         version: link:../schema
     devDependencies:
+      '@assemora/pages':
+        specifier: workspace:*
+        version: link:../pages
+      '@assemora/resources':
+        specifier: workspace:*
+        version: link:../resources
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
@@ -269,6 +266,9 @@ importers:
       '@assemora/sdk':
         specifier: workspace:*
         version: link:../sdk
+      create-assemora:
+        specifier: workspace:*
+        version: link:../create-assemora
     devDependencies:
       '@types/node':
         specifier: 24.13.3
@@ -283,6 +283,8 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
+
+  packages/create-assemora: {}
 
   packages/data:
     dependencies:

@@ -189,7 +189,16 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     'cross-origin-opener-policy': 'same-origin',
   }
 
-  const ready = (async () => {
+  /**
+   * Everything that has to happen before a request is served, in order.
+   *
+   * Plugins first, then routes — and that order is load-bearing rather than tidy.
+   * `@fastify/rate-limit` attaches itself to a route through an `onRoute` hook, so a
+   * route defined before the plugin finishes registering is never counted. Mounting
+   * straight on to Fastify silently produced an application with no ceiling at all
+   * (SPEC.md §85), which is why `mount` appends to this chain instead.
+   */
+  let ready = (async () => {
     if (options.cors !== undefined) {
       await app.register(cors, {
         origin: [...options.cors.origins],
@@ -337,10 +346,16 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           options.registry.register('routes', describeRoute(definition))
         }
 
-        app.route({
-          method: definition.method.toUpperCase() as 'GET',
-          url: `${prefix}${definition.path}`,
-          handler: handle(definition),
+        // Describing is synchronous, so the registry is complete the moment `mount`
+        // returns; only the Fastify side waits for the plugins.
+        const url = `${prefix}${definition.path}`
+
+        ready = ready.then(() => {
+          app.route({
+            method: definition.method.toUpperCase() as 'GET',
+            url,
+            handler: handle(definition),
+          })
         })
       }
 
@@ -389,9 +404,11 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           .send(found.stream())
       }
 
-      // `/studio` and `/studio/` are the same document, and a browser sends both.
-      app.route({ method: 'GET', url: base === '' ? '/' : base, handler: serve })
-      app.route({ method: 'GET', url: `${base}/*`, handler: serve })
+      ready = ready.then(() => {
+        // `/studio` and `/studio/` are the same document, and a browser sends both.
+        app.route({ method: 'GET', url: base === '' ? '/' : base, handler: serve })
+        app.route({ method: 'GET', url: `${base}/*`, handler: serve })
+      })
 
       return server
     },
