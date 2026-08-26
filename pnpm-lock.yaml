@@ -277,15 +277,13 @@ importers:
       '@assemora/core':
         specifier: workspace:*
         version: link:../core
-      '@assemora/pages':
-        specifier: workspace:*
-        version: link:../pages
-      '@assemora/resources':
-        specifier: workspace:*
-        version: link:../resources
       '@assemora/schema':
         specifier: workspace:*
         version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
 
   packages/media:
     dependencies:

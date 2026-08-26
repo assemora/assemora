@@ -6,9 +6,10 @@
  */
 import { integer, json, model, string, timestamp, uuid } from '@assemora/data'
 
-export type RevisionPatch = Readonly<
-  Record<string, { readonly from: unknown; readonly to: unknown }>
->
+import type { Patch } from '@assemora/schema'
+
+/** The name this table has always used for it. One diff, one meaning (ADR-0019). */
+export type RevisionPatch = Patch
 
 export const Revision = model('assemora_revisions', {
   id: uuid().primary().defaultRandom(),

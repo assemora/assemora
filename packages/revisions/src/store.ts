@@ -7,8 +7,9 @@
  */
 import type { RevisionEntry, RevisionPort } from '@assemora/core'
 
+import { diff } from '@assemora/schema'
+
 import { Revision } from './models.js'
-import { diff } from './patch.js'
 
 /**
  * The next position in one entity's history.

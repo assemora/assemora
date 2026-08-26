@@ -10,12 +10,14 @@
 export { type Application, type ApplicationOptions, createApplication } from './application.js'
 export {
   type AnyCommand,
+  type ChangedEntity,
   type CommandBus,
   type CommandBusOptions,
   type CommandContext,
   type CommandDefinition,
   command,
   createCommandBus,
+  type Preview,
 } from './commands.js'
 export {
   type Container,
@@ -96,6 +98,7 @@ export {
   type RevisionPort,
   registerRestorer,
   restorerFor,
+  type TransactionOptions,
   type TransactionPort,
   withoutTransactions,
 } from './ports.js'

@@ -21,6 +21,7 @@ export type PackageName =
   | 'media'
   | 'revisions'
   | 'audit'
+  | 'change-sets'
   | 'mcp'
   | 'sdk'
   | 'react'
@@ -42,7 +43,8 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
   media: ['schema', 'core', 'data'],
   revisions: ['schema', 'core', 'data'],
   audit: ['schema', 'core', 'data'],
-  mcp: ['schema', 'core', 'resources', 'pages'],
+  'change-sets': ['schema', 'core', 'data'],
+  mcp: ['schema', 'core'],
   sdk: ['schema'],
   react: ['schema'],
   plugin: ['schema', 'core'],

@@ -5,10 +5,9 @@
  * leaves a revision of its own. Undoing is never a way around the pipeline.
  */
 import { AssemoraError, type CommandContext, command, NotFoundError, query } from '@assemora/core'
-import { enumOf, number, string, uuid } from '@assemora/schema'
+import { changedFields, diff, enumOf, number, string, uuid } from '@assemora/schema'
 
 import { Revision } from './models.js'
-import { changedFields, diff } from './patch.js'
 import { restorerFor } from './restore.js'
 
 declare module '@assemora/core' {

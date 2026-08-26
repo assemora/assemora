@@ -8,7 +8,7 @@
  * bypassed (see docs/architecture/package-graph.md).
  */
 import type { AssemoraContext } from './context.js'
-import { ForbiddenError } from './errors.js'
+import { ConfigurationError, ForbiddenError } from './errors.js'
 
 // --- authorization -----------------------------------------------------------
 
@@ -72,13 +72,41 @@ export const permitAll = (): AuthorizationPort => ({
 
 // --- transactions ------------------------------------------------------------
 
-export type TransactionPort = {
-  run<T>(operation: () => Promise<T>): Promise<T>
+export type TransactionOptions = {
+  /**
+   * Undo everything the operation wrote, and still answer with what it returned
+   * (SPEC.md §73, ADR-0019).
+   *
+   * A preview is the one case where the value matters and the writes do not, and
+   * rejecting — the only way to undo today — throws that value away. A port that
+   * cannot undo must refuse rather than commit: silently committing a preview is
+   * the one outcome worse than having no previews.
+   */
+  readonly rollback?: boolean
 }
 
-/** Runs the operation directly. Used until a database adapter is registered. */
+export type TransactionPort = {
+  run<T>(operation: () => Promise<T>, options?: TransactionOptions): Promise<T>
+}
+
+/**
+ * Runs the operation directly. Used until a database adapter is registered.
+ *
+ * It refuses a rollback rather than pretending: with nothing to undo, a preview
+ * would be a real mutation wearing the wrong name.
+ */
 export const withoutTransactions = (): TransactionPort => ({
-  run: (operation) => operation(),
+  run: (operation, options) => {
+    if (options?.rollback === true) {
+      return Promise.reject(
+        new ConfigurationError(
+          'Nothing can be previewed without a transaction. Register a database adapter and pass dataTransactions().',
+        ),
+      )
+    }
+
+    return operation()
+  },
 })
 
 // --- revisions ---------------------------------------------------------------
@@ -176,7 +204,12 @@ export type AuditEntry = {
   readonly source: AssemoraContext['source']
   readonly requestId: string
   readonly actor?: AssemoraContext['actor']
-  readonly outcome: 'succeeded' | 'failed'
+  /**
+   * `previewed` is a dry run: it ran, it was authorized, and it changed nothing
+   * (SPEC.md §73). Recording it as `succeeded` would be a lie and as `failed` a
+   * worse one, and §76 requires every agent action to be audited.
+   */
+  readonly outcome: 'succeeded' | 'failed' | 'previewed'
   readonly durationMs: number
   /**
    * What was acted on, when the command said so (SPEC.md §67).

@@ -7,6 +7,7 @@
  * pipeline (SPEC.md §64, §65).
  */
 
+export { changedFields, diff, type Patch } from '@assemora/schema'
 export {
   CompareRevisions,
   GetRevision,
@@ -20,6 +21,5 @@ export {
 } from './commands.js'
 export { Revision, type RevisionPatch, revisionModels } from './models.js'
 export { revisionsModule } from './module.js'
-export { changedFields, diff } from './patch.js'
 export { clearRestorers, type Restorer, registerRestorer, restorerFor } from './restore.js'
 export { revisions } from './store.js'

@@ -45,6 +45,7 @@ export {
   VIEWPORTS,
   type Viewport,
 } from './design.js'
+export { changedFields, diff, type Patch } from './patch.js'
 export {
   type BigIntSchema,
   type BinarySchema,

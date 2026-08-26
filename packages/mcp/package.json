@@ -28,8 +28,9 @@
   },
   "dependencies": {
     "@assemora/schema": "workspace:*",
-    "@assemora/core": "workspace:*",
-    "@assemora/resources": "workspace:*",
-    "@assemora/pages": "workspace:*"
+    "@assemora/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
   }
 }

@@ -51,6 +51,40 @@ export const transaction = <T>(operation: () => Promise<T>): Promise<T> => {
  * the data layer registers, so a handler that writes several rows either commits all
  * of them or none.
  */
+/** Nothing else can be thrown by accident, so nothing else can be mistaken for it. */
+const ROLLBACK = Symbol('assemora.rollback')
+
+/**
+ * Runs the operation inside a transaction that is always undone, and still answers
+ * with what it returned (SPEC.md §73).
+ *
+ * Rejecting is the only way to make an adapter roll back — that is how both of them
+ * implement it — so the value is carried out past the rejection rather than through
+ * it. A real failure inside the operation is rethrown untouched.
+ */
+const rollingBack = async <T>(operation: () => Promise<T>): Promise<T> => {
+  const carried: T[] = []
+
+  try {
+    await transaction(async () => {
+      carried.push(await operation())
+
+      throw ROLLBACK
+    })
+  } catch (error) {
+    if (error !== ROLLBACK) throw error
+  }
+
+  const [value] = carried
+
+  if (carried.length === 0) {
+    throw new ConfigurationError('The transaction was undone before the operation answered')
+  }
+
+  return value as T
+}
+
 export const dataTransactions = (): TransactionPort => ({
-  run: (operation) => transaction(operation),
+  run: (operation, options) =>
+    options?.rollback === true ? rollingBack(operation) : transaction(operation),
 })

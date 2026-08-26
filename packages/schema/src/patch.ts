@@ -1,10 +1,15 @@
 /**
- * What changed between two states (SPEC.md §64, §65).
+ * What changed between two states (SPEC.md §64, §65, §75).
  *
  * Studio shows this, not the whole document: "spacing: xl → md" is what a person can
- * act on, and it is also what a change set diff is built from (SPEC.md §75).
+ * act on. It lives here because three layers need it and none of them may depend on
+ * the others — a revision records one, a dry run builds one, and a change set stores
+ * one. Two implementations over the same two snapshots would eventually disagree on
+ * a screen that shows both (ADR-0019).
  */
-import type { RevisionPatch } from './models.js'
+
+/** A field-level diff of two snapshots. */
+export type Patch = Readonly<Record<string, { readonly from: unknown; readonly to: unknown }>>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -17,7 +22,7 @@ const same = (left: unknown, right: unknown): boolean => {
 }
 
 /** A field-level diff of two snapshots. Keys present in either side are considered. */
-export const diff = (before: unknown, after: unknown): RevisionPatch => {
+export const diff = (before: unknown, after: unknown): Patch => {
   const from = isRecord(before) ? before : {}
   const to = isRecord(after) ? after : {}
   const patch: Record<string, { from: unknown; to: unknown }> = {}
@@ -29,4 +34,4 @@ export const diff = (before: unknown, after: unknown): RevisionPatch => {
   return patch
 }
 
-export const changedFields = (patch: RevisionPatch): readonly string[] => Object.keys(patch)
+export const changedFields = (patch: Patch): readonly string[] => Object.keys(patch)

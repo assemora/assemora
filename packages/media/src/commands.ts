@@ -51,6 +51,9 @@ const storagePath = (filename: string): string => {
 
 export const UploadMedia = command('media.upload', {
   description: 'Stores a file and records it in the library',
+  // The bytes are written to storage, and no transaction can take them back
+  // (SPEC.md §73, ADR-0019).
+  previewable: false,
   input: {
     filename: string().min(1),
     mimeType: string().min(1),
@@ -92,6 +95,8 @@ export const UploadMedia = command('media.upload', {
 
 export const DeleteMedia = command('media.delete', {
   description: 'Removes a file and its record',
+  /** The file is gone from storage before the transaction has a say. */
+  previewable: false,
   input: { id: uuid() },
   handle: async ({ id }, context) => {
     const item = await Media.find(id)
