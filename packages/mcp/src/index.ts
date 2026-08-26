@@ -36,9 +36,9 @@ export {
   type MutationMode,
 } from './server.js'
 export {
-  busName,
   TOOL_PREFIX,
   type ToolDescriptor,
   toolName,
   toolsOf,
 } from './tools.js'
+export { connectDirectly, type McpEndpoint } from './transport.js'

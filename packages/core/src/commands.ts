@@ -208,6 +208,7 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       try {
         await options.audit.record({
           action: definition.name,
+          kind: 'command',
           source: context.source,
           requestId: context.requestId,
           ...(context.actor === undefined ? {} : { actor: context.actor }),

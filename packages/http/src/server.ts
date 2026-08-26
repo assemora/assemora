@@ -220,7 +220,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     const actor = await options.resolveActor?.(headers)
 
     const context = createContext({
-      source: 'rest',
+      source: definition.source ?? 'rest',
       requestId,
       ...(actor === undefined ? {} : { actor }),
     })

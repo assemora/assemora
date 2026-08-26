@@ -8,10 +8,12 @@
  */
 import { audit, auditModule } from '@assemora/audit'
 import { auth, policies, resolveActor } from '@assemora/auth'
+import { changeSets } from '@assemora/change-sets'
 import { createApplication, createLogger } from '@assemora/core'
 import { dataTransactions, useAdapter } from '@assemora/data'
 import { createMemoryAdapter } from '@assemora/database'
 import { createHttpServer, route } from '@assemora/http'
+import { mcp } from '@assemora/mcp'
 import { localStorage, media, useStorage } from '@assemora/media'
 import { introspectionRoute, openApiRoute } from '@assemora/openapi'
 import { pages } from '@assemora/pages'
@@ -20,6 +22,7 @@ import { string } from '@assemora/schema'
 
 import { authRoutes, CSRF_COOKIE } from './auth-routes.ts'
 import { blog, Faq, Hero, Section } from './blog.ts'
+import { mcpRoutes } from './mcp-routes.ts'
 import { mediaRoutes } from './media-routes.ts'
 import { previewRoutes } from './preview-routes.ts'
 import { seed } from './seed.ts'
@@ -39,6 +42,13 @@ const app = createApplication({
     media(),
     revisionsModule(),
     auditModule(),
+    changeSets(),
+    mcp({
+      project: {
+        name: 'Assemora playground',
+        description: 'A blog, built the way the framework intends',
+      },
+    }),
   ],
   authorization: policies(),
   transactions: dataTransactions(),
@@ -75,6 +85,7 @@ server
   .mount(
     ...authRoutes(app.commands),
     ...mediaRoutes(),
+    ...mcpRoutes({ registry: app.registry, commands: app.commands, queries: app.queries }),
     ...previewRoutes(),
     health,
     openApiRoute({

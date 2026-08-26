@@ -15,7 +15,16 @@ import type { JsonSchema } from '@assemora/schema'
 
 /** The MCP wire shape for a tool. Plain JSON Schema — no second schema system. */
 export type ToolDescriptor = {
+  /** What the agent calls it. */
   readonly name: string
+  /**
+   * What the bus calls it, carried rather than derived.
+   *
+   * Deriving it would mean inverting `toolName`, and that inverse does not exist:
+   * the introspection queries are registered as `assemora.describe` already, so
+   * stripping the prefix would turn a real name into one nobody registered.
+   */
+  readonly bus: string
   readonly description: string
   readonly inputSchema: { readonly type: 'object' } & JsonSchema
   /** Whether calling it would change anything, which decides how it is handled. */
@@ -27,10 +36,6 @@ export const TOOL_PREFIX = 'assemora.'
 /** `entries.create` becomes `assemora.entries.create`; `assemora.describe` stays. */
 export const toolName = (busName: string): string =>
   busName.startsWith(TOOL_PREFIX) ? busName : `${TOOL_PREFIX}${busName}`
-
-/** And back again, because the bus knows nothing about the prefix. */
-export const busName = (tool: string): string =>
-  tool.startsWith(TOOL_PREFIX) ? tool.slice(TOOL_PREFIX.length) : tool
 
 const objectSchema = (input: unknown): { type: 'object' } & JsonSchema => {
   const schema = (input ?? {}) as JsonSchema
@@ -54,6 +59,7 @@ export const toolsOf = (registry: SchemaRegistry): ToolDescriptor[] => {
 
   const describe = (entry: Described, mutates: boolean): ToolDescriptor => ({
     name: toolName(entry.name),
+    bus: entry.name,
     description: entry.description ?? entry.name,
     inputSchema: objectSchema(entry.input),
     mutates,

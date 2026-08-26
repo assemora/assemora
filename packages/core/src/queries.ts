@@ -10,7 +10,7 @@ import { type InferShape, object, type Schema, type Shape } from '@assemora/sche
 import { type AssemoraContext, contextOrInternal } from './context.js'
 import { UnknownQueryError, ValidationError } from './errors.js'
 import type { Logger } from './logger.js'
-import type { AuthorizationPort } from './ports.js'
+import type { AuditPort, AuthorizationPort } from './ports.js'
 import type { SchemaRegistry } from './registry.js'
 
 export type QueryContext = AssemoraContext & {
@@ -88,6 +88,14 @@ export type QueryBusOptions = {
   readonly authorization: AuthorizationPort
   readonly registry: SchemaRegistry
   readonly logger: Logger
+  /**
+   * Reads are audited too (SPEC.md §67, §76).
+   *
+   * §76 lists audit among the checks every MCP tool call must pass, and half the
+   * tools of §69 are reads. A log that only recorded writes could not answer which
+   * agent read the user list.
+   */
+  readonly audit: AuditPort
 }
 
 export const createQueryBus = (options: QueryBusOptions): QueryBus => {
@@ -95,26 +103,69 @@ export const createQueryBus = (options: QueryBusOptions): QueryBus => {
 
   const run = async (definition: AnyQuery, rawInput: unknown): Promise<unknown> => {
     const context = contextOrInternal()
+    const startedAt = performance.now()
+
+    /** Never fails the read: a log that cannot be written is not a reason to refuse. */
+    const audit = async (outcome: 'succeeded' | 'failed', metadata?: Record<string, unknown>) => {
+      try {
+        await options.audit.record({
+          action: definition.name,
+          kind: 'query',
+          source: context.source,
+          requestId: context.requestId,
+          ...(context.actor === undefined ? {} : { actor: context.actor }),
+          outcome,
+          durationMs: performance.now() - startedAt,
+          ...(metadata === undefined ? {} : { metadata }),
+        })
+      } catch (error) {
+        options.logger.error('The audit log could not be written', {
+          query: definition.name,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
     const parsed = definition.input.parse(rawInput)
 
-    if (!parsed.ok) throw new ValidationError(parsed.issues)
+    if (!parsed.ok) {
+      await audit('failed', { reason: 'VALIDATION_ERROR' })
+      throw new ValidationError(parsed.issues)
+    }
 
-    await options.authorization.authorize({
-      command: definition.name,
-      input: parsed.value,
-      context,
-    })
+    try {
+      await options.authorization.authorize({
+        command: definition.name,
+        input: parsed.value,
+        context,
+      })
+    } catch (error) {
+      await audit('failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
 
-    return (definition.handle as (input: unknown, context: QueryContext) => Promise<unknown>)(
-      parsed.value,
-      {
+    try {
+      const answer = await (
+        definition.handle as (input: unknown, context: QueryContext) => Promise<unknown>
+      )(parsed.value, {
         ...context,
         logger: options.logger.child({ query: definition.name }),
         authorize: async (subject, action, record) => {
           await options.authorization.authorizeRecord?.({ subject, action, record, context })
         },
-      },
-    )
+      })
+
+      await audit('succeeded')
+
+      return answer
+    } catch (error) {
+      await audit('failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
   }
 
   const bus: QueryBus = {

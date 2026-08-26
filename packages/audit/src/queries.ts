@@ -14,6 +14,7 @@ export const ListAuditLog = query('audit.list', {
   description: 'Who did what, newest first',
   input: {
     action: string().optional(),
+    kind: string().optional(),
     actorId: string().optional(),
     source: string().optional(),
     entityType: string().optional(),
@@ -22,10 +23,21 @@ export const ListAuditLog = query('audit.list', {
     page: number().integer().optional(),
     perPage: number().integer().optional(),
   },
-  handle: async ({ action, actorId, source, entityType, entityId, outcome, page, perPage }) => {
+  handle: async ({
+    action,
+    kind,
+    actorId,
+    source,
+    entityType,
+    entityId,
+    outcome,
+    page,
+    perPage,
+  }) => {
     let found = AuditLog.orderBy('createdAt', 'desc')
 
     if (action !== undefined && action !== '') found = found.whereLike('action', `${action}%`)
+    if (kind !== undefined) found = found.where('kind', kind)
     if (actorId !== undefined) found = found.where('actorId', actorId)
     if (source !== undefined) found = found.where('source', source)
     if (entityType !== undefined) found = found.where('entityType', entityType)
@@ -42,6 +54,7 @@ export const ListAuditLog = query('audit.list', {
         actorId: entry.actorId,
         source: entry.source,
         action: entry.action,
+        kind: entry.kind,
         entityType: entry.entityType,
         entityId: entry.entityId,
         requestId: entry.requestId,

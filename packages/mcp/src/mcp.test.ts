@@ -19,7 +19,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { mcp } from './module.js'
 import { RateLimitedError, rateLimit } from './rate-limit.js'
-import { busName, toolName, toolsOf } from './tools.js'
+import { createMcpServer } from './server.js'
+import { toolName, toolsOf } from './tools.js'
+import { connectDirectly } from './transport.js'
 
 const Publish = command('pages.publish', {
   description: 'Makes the draft tree the one visitors see',
@@ -56,7 +58,15 @@ describe('the tool list is the registry (SPEC.md §69, §70)', () => {
   it('does not prefix what is already prefixed', () => {
     expect(toolName('entries.create')).toBe('assemora.entries.create')
     expect(toolName('assemora.describe')).toBe('assemora.describe')
-    expect(busName('assemora.entries.create')).toBe('entries.create')
+  })
+
+  it('carries the name the bus knows, because the prefix cannot be undone', () => {
+    const tools = toolsOf(app.registry)
+
+    // `assemora.describe` is registered under that whole name. Stripping the prefix
+    // to get back to a bus name would invent one nobody registered.
+    expect(tools.find((tool) => tool.name === 'assemora.describe')?.bus).toBe('assemora.describe')
+    expect(tools.find((tool) => tool.name === 'assemora.pages.publish')?.bus).toBe('pages.publish')
   })
 
   it('marks a read as a read, so a client knows what is safe', () => {
@@ -163,5 +173,101 @@ describe('rate limits (SPEC.md §76)', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
 
     expect(() => limit.check('agent-1')).not.toThrow()
+  })
+})
+
+describe('speaking the protocol (SPEC.md §68)', () => {
+  const rpc = (method: string, params: unknown = {}, id = 1) => ({
+    jsonrpc: '2.0' as const,
+    id,
+    method,
+    params,
+  })
+
+  it('completes the handshake and then lists its tools', async () => {
+    const server = createMcpServer({
+      registry: app.registry,
+      commands: app.commands,
+      queries: app.queries,
+    })
+    const endpoint = await connectDirectly(server)
+
+    const initialized = (await endpoint.handle(
+      rpc('initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    )) as { result: { serverInfo: { name: string } } }
+
+    expect(initialized.result.serverInfo.name).toBe('assemora')
+
+    await endpoint.handle({ jsonrpc: '2.0', method: 'notifications/initialized' })
+
+    const listed = (await endpoint.handle(rpc('tools/list', {}, 2))) as {
+      result: { tools: { name: string; inputSchema: unknown }[] }
+    }
+
+    const names = listed.result.tools.map((tool) => tool.name)
+
+    expect(names).toContain('assemora.describe')
+    expect(names).toContain('assemora.pages.publish')
+
+    await endpoint.close()
+  })
+
+  it('runs a read tool through the Query Bus', async () => {
+    const server = createMcpServer({
+      registry: app.registry,
+      commands: app.commands,
+      queries: app.queries,
+    })
+    const endpoint = await connectDirectly(server)
+
+    await endpoint.handle(
+      rpc('initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    )
+
+    const called = (await app.run({ source: 'mcp' }, () =>
+      endpoint.handle(rpc('tools/call', { name: 'assemora.describe', arguments: {} }, 3)),
+    )) as { result: { content: { text: string }[] } }
+
+    const text = called.result.content[0]?.text ?? '{}'
+
+    if (JSON.parse(text).error !== undefined) throw new Error(text)
+
+    expect((JSON.parse(text) as { capabilities: string[] }).capabilities).toEqual(['pages'])
+
+    await endpoint.close()
+  })
+
+  it('answers an unknown tool as an error rather than throwing', async () => {
+    const server = createMcpServer({
+      registry: app.registry,
+      commands: app.commands,
+      queries: app.queries,
+    })
+    const endpoint = await connectDirectly(server)
+
+    await endpoint.handle(
+      rpc('initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    )
+
+    const called = (await endpoint.handle(
+      rpc('tools/call', { name: 'assemora.nowhere', arguments: {} }, 4),
+    )) as { result: { isError?: boolean; content: { text: string }[] } }
+
+    expect(called.result.isError).toBe(true)
+    expect(called.result.content[0]?.text).toContain('UNKNOWN_TOOL')
+
+    await endpoint.close()
   })
 })

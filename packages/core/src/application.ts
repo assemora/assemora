@@ -60,14 +60,16 @@ export const createApplication = (options: ApplicationOptions = {}): Application
   const events = createEventBus(logger)
 
   const authorization = options.authorization ?? denyAll()
+  // One audit port for both buses: a read and a write belong in the same log.
+  const audit = options.audit ?? discardAudit()
 
-  const queries = createQueryBus({ authorization, registry, logger })
+  const queries = createQueryBus({ authorization, registry, logger, audit })
 
   const commands = createCommandBus({
     authorization,
     transactions: options.transactions ?? withoutTransactions(),
     revisions: options.revisions ?? discardRevisions(),
-    audit: options.audit ?? discardAudit(),
+    audit,
     events,
     registry,
     logger,

@@ -30,6 +30,7 @@ export const audit = (options: AuditOptions = {}): AuditPort => ({
       actorId: entry.actor?.id ?? null,
       source: entry.source,
       action: entry.action,
+      kind: entry.kind,
       entityType: entry.entityType ?? null,
       entityId: entry.entityId ?? null,
       requestId: entry.requestId,

@@ -14,7 +14,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 
 import { type RateLimit, rateLimit } from './rate-limit.js'
-import { busName, type ToolDescriptor, toolsOf } from './tools.js'
+import { type ToolDescriptor, toolsOf } from './tools.js'
 
 /**
  * What a mutation tool does when an agent calls it.
@@ -89,7 +89,7 @@ export const createMcpServer = (options: McpServerOptions): Server => {
       return failure({ code: 'UNKNOWN_TOOL', message: `No tool named "${request.params.name}"` })
     }
 
-    const name = busName(tool.name)
+    const name = tool.bus
     const input = request.params.arguments ?? {}
 
     try {

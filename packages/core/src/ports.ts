@@ -201,6 +201,14 @@ export const clearRestorers = (): void => {
 /** Who did what, as stored by SPEC.md §67. */
 export type AuditEntry = {
   readonly action: string
+  /**
+   * Whether it changed anything, or only asked (SPEC.md §67).
+   *
+   * Both are recorded: §76 requires every MCP tool call to be audited, and half the
+   * tools of §69 are reads. "Which agent read the user list" is a question an audit
+   * log has to be able to answer.
+   */
+  readonly kind: 'command' | 'query'
   readonly source: AssemoraContext['source']
   readonly requestId: string
   readonly actor?: AssemoraContext['actor']

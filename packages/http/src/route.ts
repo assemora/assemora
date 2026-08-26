@@ -39,6 +39,14 @@ export type RouteDefinition<P extends Shape, Q extends Shape, B extends Shape, R
   /** The shape of a successful answer. Used to serialize it and to document it. */
   readonly response?: Shape | Schema<unknown>
   readonly auth?: boolean
+  /**
+   * What the audit log should call this door (SPEC.md §67).
+   *
+   * `rest` unless a route says otherwise. The MCP endpoint says `mcp`, because "an
+   * agent did this through MCP" and "somebody did this over REST" are the two
+   * things that column exists to tell apart.
+   */
+  readonly source?: AssemoraContext['source']
   readonly status?: number
   readonly description?: string
   readonly tags?: readonly string[]
@@ -55,6 +63,7 @@ export type Route = {
   readonly body: Schema<unknown> | undefined
   readonly response: Schema<unknown> | undefined
   readonly auth: boolean
+  readonly source: AssemoraContext['source'] | undefined
   readonly status: number
   readonly description: string | undefined
   readonly tags: readonly string[]
@@ -104,6 +113,7 @@ const define = <P extends Shape, Q extends Shape, B extends Shape, R>(
   body: asSchema(definition.body),
   response: asSchema(definition.response),
   auth: definition.auth ?? false,
+  source: definition.source,
   status: definition.status ?? (method === 'post' ? 201 : 200),
   description: definition.description,
   tags: definition.tags ?? [],

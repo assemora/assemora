@@ -25,5 +25,10 @@
     "@assemora/pages": "workspace:*",
     "@assemora/revisions": "workspace:*",
     "@assemora/media": "workspace:*"
+  },
+  "dependencies": {
+    "@assemora/audit": "workspace:*",
+    "@assemora/change-sets": "workspace:*",
+    "@assemora/mcp": "workspace:*"
   }
 }

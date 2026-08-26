@@ -70,6 +70,7 @@ export const commandRoutes = (
     // shape yet. Promising a schema here would be inventing one (SPEC.md §42).
     response: undefined,
     auth: false,
+    source: undefined,
     status: 200,
     description: endpoint.description,
     tags: [endpoint.module ?? 'commands'],

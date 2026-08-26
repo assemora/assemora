@@ -20,10 +20,12 @@
   "dependencies": {
     "@assemora/audit": "workspace:*",
     "@assemora/auth": "workspace:*",
+    "@assemora/change-sets": "workspace:*",
     "@assemora/core": "workspace:*",
     "@assemora/data": "workspace:*",
     "@assemora/database": "workspace:*",
     "@assemora/http": "workspace:*",
+    "@assemora/mcp": "workspace:*",
     "@assemora/media": "workspace:*",
     "@assemora/openapi": "workspace:*",
     "@assemora/pages": "workspace:*",

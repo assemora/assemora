@@ -17,6 +17,8 @@ export const AuditLog = model('assemora_audit_logs', {
   source: string().index(),
   /** The command or query name, which is also its permission name (ADR-0015). */
   action: string().index(),
+  /** `command` or `query`: whether it changed anything, or only asked. */
+  kind: string().index(),
   entityType: string().nullable().index(),
   entityId: string().nullable(),
   requestId: string().index(),

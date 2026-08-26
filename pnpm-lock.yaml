@@ -32,6 +32,9 @@ importers:
       '@assemora/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@assemora/change-sets':
+        specifier: workspace:*
+        version: link:../../packages/change-sets
       '@assemora/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -44,6 +47,9 @@ importers:
       '@assemora/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@assemora/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@assemora/media':
         specifier: workspace:*
         version: link:../../packages/media
@@ -436,6 +442,16 @@ importers:
         version: link:../schema
 
   tests:
+    dependencies:
+      '@assemora/audit':
+        specifier: workspace:*
+        version: link:../packages/audit
+      '@assemora/change-sets':
+        specifier: workspace:*
+        version: link:../packages/change-sets
+      '@assemora/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp
     devDependencies:
       '@assemora/auth':
         specifier: workspace:*
