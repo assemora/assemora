@@ -1,0 +1,57 @@
+/**
+ * `@assemora/http` — the HTTP layer.
+ *
+ * One route declaration validates the request, types the handler, serializes the
+ * answer and describes itself to the Schema Registry — from which OpenAPI, the API
+ * Explorer and the SDK follow without a second schema anywhere (SPEC.md §112, §121).
+ *
+ * ```ts
+ * route.post('/auth/login', {
+ *   body: { email: email(), password: string().min(8) },
+ *   response: { token: string() },
+ *   handler: async ({ body }) => ({ token: await login(body) }),
+ * })
+ * ```
+ *
+ * Fastify is declared here and nowhere else, and never appears in a handler's type.
+ */
+
+export { type BytesResponse, bytes, isBytesResponse } from './bytes.js'
+export { type CommandEndpoint, commandEndpoints, commandRoutes } from './commands.js'
+export {
+  type CrudBuses,
+  type CrudResource,
+  crudResources,
+  crudRoutes,
+} from './crud.js'
+export {
+  clearRouteRegistry,
+  defineRouteFacet,
+  registeredRoutes,
+} from './module.js'
+export { type QueryEndpoint, queryEndpoints, queryRoutes } from './queries.js'
+export {
+  type Cookie,
+  isResponded,
+  type Responded,
+  respond,
+  serializeCookie,
+} from './respond.js'
+export {
+  describeRoute,
+  type ErrorDescriptor,
+  type HttpMethod,
+  type Route,
+  type RouteDefinition,
+  type RouteDescriptor,
+  type RouteRequest,
+  route,
+  routeName,
+} from './route.js'
+export {
+  type ActorResolver,
+  createHttpServer,
+  type HttpServer,
+  type HttpServerOptions,
+  type InjectedResponse,
+} from './server.js'
