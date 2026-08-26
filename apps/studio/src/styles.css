@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/*
+ * Studio's own surface. The theme a *site* is built with is stored as tokens in the
+ * application and edited in the Design section (SPEC.md §62); these variables are
+ * the editor's chrome and are deliberately not the same thing.
+ */
+@theme {
+  --color-ink: oklch(0.21 0.02 265);
+  --color-ink-soft: oklch(0.48 0.02 265);
+  --color-ink-faint: oklch(0.68 0.015 265);
+  --color-surface: oklch(1 0 0);
+  --color-surface-sunken: oklch(0.975 0.003 265);
+  --color-surface-raised: oklch(1 0 0);
+  --color-line: oklch(0.91 0.005 265);
+  --color-line-soft: oklch(0.95 0.004 265);
+  --color-accent: oklch(0.55 0.19 264);
+  --color-accent-soft: oklch(0.96 0.02 264);
+  --color-danger: oklch(0.55 0.2 25);
+  --color-danger-soft: oklch(0.96 0.03 25);
+  --color-positive: oklch(0.6 0.15 155);
+  --color-positive-soft: oklch(0.95 0.04 155);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-surface-sunken text-ink font-sans antialiased;
+  }
+
+  /* A focus ring that is visible on every surface Studio uses. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+}
