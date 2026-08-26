@@ -99,16 +99,37 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
     const context = contextOrInternal()
     const startedAt = performance.now()
 
-    const audit = (outcome: 'succeeded' | 'failed', metadata?: Record<string, unknown>) =>
-      options.audit.record({
-        action: definition.name,
-        source: context.source,
-        requestId: context.requestId,
-        ...(context.actor === undefined ? {} : { actor: context.actor }),
-        outcome,
-        durationMs: performance.now() - startedAt,
-        ...(metadata === undefined ? {} : { metadata }),
-      })
+    /**
+     * Records the attempt, and never fails because of it.
+     *
+     * The audit log is written after the transaction has already committed, so a
+     * failure here cannot undo anything — and turning a successful publish into an
+     * error because logging broke would be the wrong trade every time (SPEC.md §67).
+     */
+    const audit = async (
+      outcome: 'succeeded' | 'failed',
+      metadata?: Record<string, unknown>,
+      entity?: { readonly entityType: string; readonly entityId: string },
+    ) => {
+      try {
+        await options.audit.record({
+          action: definition.name,
+          source: context.source,
+          requestId: context.requestId,
+          ...(context.actor === undefined ? {} : { actor: context.actor }),
+          outcome,
+          durationMs: performance.now() - startedAt,
+          ...(entity ?? {}),
+          ...(metadata === undefined ? {} : { metadata }),
+        })
+      } catch (error) {
+        options.logger.error('The audit log could not be written', {
+          command: definition.name,
+          requestId: context.requestId,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
 
     // 1. Validation.
     const parsed = definition.input.parse(rawInput)
@@ -165,8 +186,17 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         await options.events.emit(event.name, event.payload as PayloadOf<string>)
       }
 
-      // 7. Audit.
-      await audit('succeeded', { revisions: revisions.length, events: queued.length })
+      // 7. Audit. The first revision names what was acted on; a command that touched
+      // several says how many.
+      const acted = revisions[0]
+
+      await audit(
+        'succeeded',
+        { revisions: revisions.length, events: queued.length },
+        acted === undefined
+          ? undefined
+          : { entityType: acted.entityType, entityId: acted.entityId },
+      )
 
       return result
     } catch (error) {

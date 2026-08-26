@@ -6,6 +6,7 @@
  * introspection, policies, revisions — follows from the declarations in the modules,
  * not from anything written here.
  */
+import { audit, auditModule } from '@assemora/audit'
 import { auth, policies, resolveActor } from '@assemora/auth'
 import { createApplication, createLogger } from '@assemora/core'
 import { dataTransactions, useAdapter } from '@assemora/data'
@@ -31,10 +32,18 @@ useAdapter(createMemoryAdapter())
 useStorage(localStorage({ root: MEDIA_ROOT, baseUrl: '/api/media' }))
 
 const app = createApplication({
-  modules: [auth(), blog(), pages({ blocks: [Hero, Section, Faq] }), media(), revisionsModule()],
+  modules: [
+    auth(),
+    blog(),
+    pages({ blocks: [Hero, Section, Faq] }),
+    media(),
+    revisionsModule(),
+    auditModule(),
+  ],
   authorization: policies(),
   transactions: dataTransactions(),
   revisions: revisions(),
+  audit: audit(),
   logger: createLogger(),
 })
 

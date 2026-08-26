@@ -26,6 +26,9 @@ importers:
 
   apps/playground:
     dependencies:
+      '@assemora/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@assemora/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -124,6 +127,25 @@ importers:
       vite:
         specifier: 8.2.2
         version: 8.2.2(@types/node@24.13.3)(jiti@2.7.0)
+
+  packages/audit:
+    dependencies:
+      '@assemora/core':
+        specifier: workspace:*
+        version: link:../core
+      '@assemora/data':
+        specifier: workspace:*
+        version: link:../data
+      '@assemora/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@assemora/database':
+        specifier: workspace:*
+        version: link:../database
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
 
   packages/auth:
     dependencies:

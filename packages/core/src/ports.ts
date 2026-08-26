@@ -178,6 +178,15 @@ export type AuditEntry = {
   readonly actor?: AssemoraContext['actor']
   readonly outcome: 'succeeded' | 'failed'
   readonly durationMs: number
+  /**
+   * What was acted on, when the command said so (SPEC.md §67).
+   *
+   * Taken from the revisions the command collected, so a handler does not have to
+   * declare it twice. Absent when a command wrote no revision, and absent when the
+   * command failed before reaching one — which is itself worth recording.
+   */
+  readonly entityType?: string
+  readonly entityId?: string
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 

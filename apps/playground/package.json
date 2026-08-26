@@ -18,6 +18,7 @@
     "dev:web": "vite --config web/vite.config.ts"
   },
   "dependencies": {
+    "@assemora/audit": "workspace:*",
     "@assemora/auth": "workspace:*",
     "@assemora/core": "workspace:*",
     "@assemora/data": "workspace:*",
@@ -26,10 +27,10 @@
     "@assemora/media": "workspace:*",
     "@assemora/openapi": "workspace:*",
     "@assemora/pages": "workspace:*",
+    "@assemora/react": "workspace:*",
     "@assemora/resources": "workspace:*",
     "@assemora/revisions": "workspace:*",
     "@assemora/schema": "workspace:*",
-    "@assemora/react": "workspace:*",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

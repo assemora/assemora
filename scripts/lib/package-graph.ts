@@ -20,6 +20,7 @@ export type PackageName =
   | 'auth'
   | 'media'
   | 'revisions'
+  | 'audit'
   | 'mcp'
   | 'sdk'
   | 'react'
@@ -40,6 +41,7 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
   auth: ['schema', 'core', 'data'],
   media: ['schema', 'core', 'data'],
   revisions: ['schema', 'core', 'data'],
+  audit: ['schema', 'core', 'data'],
   mcp: ['schema', 'core', 'resources', 'pages'],
   sdk: ['schema'],
   react: ['schema'],
