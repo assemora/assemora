@@ -16,6 +16,14 @@
  * Fastify is declared here and nowhere else, and never appears in a handler's type.
  */
 
+export {
+  type AssetsOptions,
+  assetCacheControl,
+  assetContentType,
+  findAsset,
+  resolveAsset,
+  type ServedAsset,
+} from './assets.js'
 export { type BytesResponse, bytes, isBytesResponse } from './bytes.js'
 export { type CommandEndpoint, commandEndpoints, commandRoutes } from './commands.js'
 export {

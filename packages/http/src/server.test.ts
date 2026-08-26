@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   AssemoraError,
   command,
@@ -653,5 +656,62 @@ describe('the headers every response carries (SPEC.md §85)', () => {
     })
 
     expect(response.headers['content-security-policy']).toBe("default-src 'none'")
+  })
+})
+
+describe('a single-page application lives beside the API, not inside it', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'assemora-studio-'))
+
+    await writeFile(join(root, 'index.html'), '<!doctype html><title>Studio</title>')
+    await mkdir(join(root, 'assets'), { recursive: true })
+    await writeFile(join(root, 'assets', 'main-8f3a1c2b.js'), 'console.log(1)')
+
+    server.mountAssets({ path: '/studio', root })
+  })
+
+  it('serves the entry document at the mount itself', async () => {
+    const answered = await server.inject({ method: 'GET', url: '/studio' })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.headers['content-type']).toBe('text/html; charset=utf-8')
+    expect(answered.body).toContain('Studio')
+  })
+
+  it('serves it at the trailing slash too, because a browser sends both', async () => {
+    expect((await server.inject({ method: 'GET', url: '/studio/' })).statusCode).toBe(200)
+  })
+
+  it('serves an asset with the caching a fingerprint earns', async () => {
+    const answered = await server.inject({
+      method: 'GET',
+      url: '/studio/assets/main-8f3a1c2b.js',
+    })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+  })
+
+  it('hands an unknown path to the router in the browser', async () => {
+    const answered = await server.inject({ method: 'GET', url: '/studio/pages/42/history' })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.body).toContain('Studio')
+  })
+
+  it('is not below the API prefix, and is not an endpoint anybody documented', async () => {
+    expect((await server.inject({ method: 'GET', url: '/api/studio' })).statusCode).toBe(404)
+    expect(app.registry.section('routes').map((entry) => entry.name)).toEqual([])
+  })
+
+  it('refuses a path that climbs out of the directory', async () => {
+    const answered = await server.inject({
+      method: 'GET',
+      url: '/studio/..%2f..%2f..%2fetc%2fpasswd',
+    })
+
+    expect(answered.statusCode).toBe(404)
   })
 })

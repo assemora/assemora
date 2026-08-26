@@ -64,7 +64,20 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/developer', component: Developer }),
 ]
 
-export const router = createRouter({ routeTree: rootRoute.addChildren(routes) })
+/**
+ * Where Studio is mounted.
+ *
+ * A generated project serves Studio at `/studio` and its API at `/api` on the same
+ * origin, so the session cookie is first-party in production the way it is in
+ * development. Vite fills `BASE_URL` in from the `base` it was built with, so the
+ * router and the bundle can never disagree about it.
+ */
+const basepath = import.meta.env.BASE_URL.replace(/\/+$/, '')
+
+export const router = createRouter({
+  routeTree: rootRoute.addChildren(routes),
+  ...(basepath === '' ? {} : { basepath }),
+})
 
 declare module '@tanstack/react-router' {
   interface Register {

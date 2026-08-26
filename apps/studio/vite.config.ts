@@ -4,7 +4,17 @@ import { defineConfig } from 'vite'
 
 const API = process.env.ASSEMORA_API ?? 'http://127.0.0.1:4000'
 
+/**
+ * Where the built bundle expects to be served from.
+ *
+ * The published package is built for `/studio/`, because that is where a generated
+ * project mounts it — the API keeps `/api` on the same origin, so nothing about the
+ * session changes. Development serves it at the root and leaves this alone.
+ */
+const base = process.env.ASSEMORA_STUDIO_BASE ?? '/'
+
 export default defineConfig({
+  base,
   plugins: [react(), tailwind()],
   server: {
     port: 5173,

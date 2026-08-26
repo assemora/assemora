@@ -21,6 +21,7 @@ import rateLimit from '@fastify/rate-limit'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import Fastify from 'fastify'
 
+import { type AssetsOptions, findAsset } from './assets.js'
 import { isBytesResponse } from './bytes.js'
 import { commandEndpoints, commandRoutes } from './commands.js'
 import { crudResources, crudRoutes } from './crud.js'
@@ -91,6 +92,15 @@ export type HttpServer = {
   mountCommands(): HttpServer
   /** Mounts every registered query as an endpoint (SPEC.md §15). */
   mountQueries(): HttpServer
+  /**
+   * Serves a directory of files, outside the API prefix.
+   *
+   * A single-page application is not an endpoint: it lives at the origin's root
+   * rather than below `/api`, and a stylesheet has nothing to say in OpenAPI. So
+   * these are not described in the Schema Registry, which is the difference between
+   * this and every other mount here.
+   */
+  mountAssets(options: AssetsOptions): HttpServer
   listen(port: number, host?: string): Promise<string>
   close(): Promise<void>
   /** Sends a request without a socket. What the tests use. */
@@ -356,6 +366,34 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
 
     mountQueries() {
       return server.mount(...queryRoutes(queryEndpoints(options.registry), options.queries))
+    },
+
+    mountAssets(assets) {
+      const base = assets.path.replace(/\/+$/, '')
+
+      const serve = async (request: FastifyRequest, reply: FastifyReply) => {
+        const requested = (request.params as { '*'?: string })['*'] ?? ''
+        const found = await findAsset(assets, requested)
+
+        if (found === undefined) {
+          return await reply.status(404).send({
+            error: { code: 'NOT_FOUND', message: 'No such file' },
+          })
+        }
+
+        return await reply
+          .status(200)
+          .header('content-type', found.contentType)
+          .header('cache-control', found.cacheControl)
+          .header('content-length', found.size)
+          .send(found.stream())
+      }
+
+      // `/studio` and `/studio/` are the same document, and a browser sends both.
+      app.route({ method: 'GET', url: base === '' ? '/' : base, handler: serve })
+      app.route({ method: 'GET', url: `${base}/*`, handler: serve })
+
+      return server
     },
 
     async listen(port, host = '127.0.0.1') {

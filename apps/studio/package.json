@@ -1,7 +1,7 @@
 {
   "name": "@assemora/studio",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -11,9 +11,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "ASSEMORA_STUDIO_BASE=/studio/ vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:root": "vite build"
   },
   "dependencies": {
     "@assemora/react": "workspace:*",
@@ -30,5 +31,17 @@
     "@vitejs/plugin-react": "6.1.0",
     "tailwindcss": "4.3.3",
     "vite": "8.2.2"
-  }
+  },
+  "description": "Assemora Studio: the visual application, served beside an application it does not know",
+  "exports": {
+    "./assets": {
+      "types": "./assets.d.ts",
+      "import": "./assets.js"
+    }
+  },
+  "files": [
+    "dist",
+    "assets.js",
+    "assets.d.ts"
+  ]
 }
