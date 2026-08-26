@@ -171,3 +171,55 @@ describe('a preview is not a way around anything', () => {
     expect(rows[0]?.title).toBe('After')
   })
 })
+
+describe('a batch is previewed as a sequence (SPEC.md §74)', () => {
+  it('lets the second command see what the first one did', async () => {
+    const previews = await run(() =>
+      app.commands.dryRunAll([
+        { command: 'notes.rename', input: { id: 'one', title: 'Middle' } },
+        { command: 'notes.rename', input: { id: 'one', title: 'Last' } },
+      ]),
+    )
+
+    // The second saw 'Middle', which only exists because the first ran and was not
+    // undone before it.
+    expect(previews[1]?.changes[0]?.patch).toEqual({ title: { from: 'Middle', to: 'Last' } })
+  })
+
+  it('undoes the whole sequence, not each step', async () => {
+    await run(() =>
+      app.commands.dryRunAll([
+        { command: 'notes.rename', input: { id: 'one', title: 'Middle' } },
+        { command: 'notes.rename', input: { id: 'one', title: 'Last' } },
+      ]),
+    )
+
+    expect(rows[0]?.title).toBe('Before')
+  })
+
+  it('refuses the batch before running any of it when one step cannot be previewed', async () => {
+    await expect(
+      run(() =>
+        app.commands.dryRunAll([
+          { command: 'notes.rename', input: { id: 'one', title: 'Middle' } },
+          { command: 'files.upload', input: { name: 'x.png' } },
+        ]),
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_PREVIEWABLE' })
+
+    expect(rows[0]?.title).toBe('Before')
+  })
+
+  it('fails the batch if a later step fails, and undoes the earlier ones', async () => {
+    await expect(
+      run(() =>
+        app.commands.dryRunAll([
+          { command: 'notes.rename', input: { id: 'one', title: 'Middle' } },
+          { command: 'notes.rename', input: { id: 'nowhere', title: 'x' } },
+        ]),
+      ),
+    ).rejects.toThrow()
+
+    expect(rows[0]?.title).toBe('Before')
+  })
+})

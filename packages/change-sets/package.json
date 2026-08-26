@@ -1,0 +1,38 @@
+{
+  "name": "@assemora/change-sets",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Proposed changes: dry run, diff, approval and apply (SPEC.md \u00a773, \u00a774)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/change-sets"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@assemora/schema": "workspace:*",
+    "@assemora/core": "workspace:*",
+    "@assemora/data": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "@assemora/database": "workspace:*"
+  }
+}

@@ -42,6 +42,22 @@ export type CommandContext = AssemoraContext & {
    * record-level rule sits in the mutation path like every other check.
    */
   authorize(subject: string, action: string, record: unknown): Promise<void>
+  /**
+   * Runs another command from inside this one (SPEC.md §14).
+   *
+   * The nested command opens a savepoint inside this transaction, so if the outer
+   * one fails the inner writes go with it. `changesets.apply` is what needs this:
+   * applying a proposal means running the commands it proposed, in the applier's
+   * own context and under the applier's own permissions.
+   */
+  execute(command: string, input: unknown): Promise<unknown>
+  /**
+   * Previews a sequence of commands without performing any of them (SPEC.md §73).
+   *
+   * Used by `changesets.propose` to turn a proposal into a diff, and by
+   * `changesets.apply` to check that the world has not moved underneath it.
+   */
+  preview(proposals: readonly Proposal[]): Promise<readonly Preview[]>
 }
 
 export type CommandDefinition<S extends Shape, R> = {
@@ -75,6 +91,12 @@ export type ChangedEntity = {
   readonly before: unknown
   readonly after: unknown
   readonly patch: Patch
+}
+
+/** One command somebody is proposing, not yet run (SPEC.md §74). */
+export type Proposal = {
+  readonly command: string
+  readonly input: unknown
 }
 
 /**
@@ -130,6 +152,15 @@ export type CommandBus = {
    */
   dryRun<S extends Shape, R>(definition: CommandDefinition<S, R>, input: unknown): Promise<Preview>
   dryRun(name: string, input: unknown): Promise<Preview>
+  /**
+   * Previews several commands as one sequence, and undoes all of them together
+   * (SPEC.md §74).
+   *
+   * They run inside one transaction, so the second sees what the first did — "add a
+   * block, then set its title" is one proposal, and previewing the steps separately
+   * would leave the second one referring to something that had been rolled back.
+   */
+  dryRunAll(proposals: readonly Proposal[]): Promise<readonly Preview[]>
   has(name: string): boolean
   names(): readonly string[]
 }
@@ -222,6 +253,8 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         authorize: async (subject, action, record) => {
           await options.authorization.authorizeRecord?.({ subject, action, record, context })
         },
+        execute: (name, input) => bus.execute(name, input),
+        preview: (proposals) => bus.dryRunAll(proposals),
 
         revise: (draft) => {
           revisions.push({
@@ -234,18 +267,18 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       }
 
       // 3-5. Transaction, handler, revisions. A preview undoes all three.
-      const result = await options.transactions.run(
-        async () => {
-          const handled = await (
-            definition.handle as (input: unknown, context: CommandContext) => Promise<unknown>
-          )(parsed.value, commandContext)
+      // In a preview this is a nested transaction — a savepoint — inside the one
+      // the caller opened and will undo. A step must not undo itself, or the step
+      // after it would not see what it did (SPEC.md §74).
+      const result = await options.transactions.run(async () => {
+        const handled = await (
+          definition.handle as (input: unknown, context: CommandContext) => Promise<unknown>
+        )(parsed.value, commandContext)
 
-          if (revisions.length > 0) await options.revisions.record(revisions)
+        if (revisions.length > 0) await options.revisions.record(revisions)
 
-          return handled
-        },
-        preview ? { rollback: true } : undefined,
-      )
+        return handled
+      })
 
       if (preview) {
         // No events: nothing became durable, and a listener cannot be un-notified.
@@ -320,17 +353,40 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
     // `async`, so a refusal is a rejection: a method that promises a Promise must
     // not throw before there is one.
     async dryRun(target: AnyCommand | string, input: unknown): Promise<never> {
-      const definition = resolve(target)
+      const [only] = await bus.dryRunAll([
+        { command: typeof target === 'string' ? target : target.name, input },
+      ])
 
-      if (!definition.previewable) {
-        throw new AssemoraError(
-          'NOT_PREVIEWABLE',
-          `"${definition.name}" does something a transaction cannot undo, so it cannot be previewed`,
-          { status: 422 },
-        )
+      return only as never
+    },
+
+    async dryRunAll(proposals: readonly Proposal[]): Promise<readonly Preview[]> {
+      const definitions = proposals.map((proposal) => resolve(proposal.command))
+
+      // Checked before anything opens: a batch that cannot be previewed should say so
+      // rather than run half of itself and undo it.
+      for (const definition of definitions) {
+        if (!definition.previewable) {
+          throw new AssemoraError(
+            'NOT_PREVIEWABLE',
+            `"${definition.name}" does something a transaction cannot undo, so it cannot be previewed`,
+            { status: 422 },
+          )
+        }
       }
 
-      return (await run(definition, input, true)) as never
+      const previews: Preview[] = []
+
+      await options.transactions.run(
+        async () => {
+          for (const [index, definition] of definitions.entries()) {
+            previews.push((await run(definition, proposals[index]?.input, true)) as Preview)
+          }
+        },
+        { rollback: true },
+      )
+
+      return previews
     },
 
     has(name) {

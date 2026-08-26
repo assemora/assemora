@@ -41,6 +41,9 @@
       "path": "packages/audit/tsconfig.build.json"
     },
     {
+      "path": "packages/change-sets/tsconfig.build.json"
+    },
+    {
       "path": "packages/mcp/tsconfig.build.json"
     },
     {
