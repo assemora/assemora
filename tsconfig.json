@@ -1,0 +1,56 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/schema/tsconfig.build.json"
+    },
+    {
+      "path": "packages/core/tsconfig.build.json"
+    },
+    {
+      "path": "packages/database/tsconfig.build.json"
+    },
+    {
+      "path": "packages/data/tsconfig.build.json"
+    },
+    {
+      "path": "packages/database-postgres/tsconfig.build.json"
+    },
+    {
+      "path": "packages/resources/tsconfig.build.json"
+    },
+    {
+      "path": "packages/pages/tsconfig.build.json"
+    },
+    {
+      "path": "packages/http/tsconfig.build.json"
+    },
+    {
+      "path": "packages/openapi/tsconfig.build.json"
+    },
+    {
+      "path": "packages/auth/tsconfig.build.json"
+    },
+    {
+      "path": "packages/media/tsconfig.build.json"
+    },
+    {
+      "path": "packages/revisions/tsconfig.build.json"
+    },
+    {
+      "path": "packages/mcp/tsconfig.build.json"
+    },
+    {
+      "path": "packages/sdk/tsconfig.build.json"
+    },
+    {
+      "path": "packages/react/tsconfig.build.json"
+    },
+    {
+      "path": "packages/plugin/tsconfig.build.json"
+    },
+    {
+      "path": "packages/cli/tsconfig.build.json"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "assemora",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.6.4",
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck && tsc -p scripts/tsconfig.json && tsc -p tests/tsconfig.json",
+    "test": "vitest run",
+    "test:types": "vitest run --typecheck.only",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "boundaries": "node --disable-warning=ExperimentalWarning scripts/check-boundaries.ts",
+    "clean": "turbo run clean && rm -rf .turbo",
+    "verify": "pnpm boundaries && pnpm lint && pnpm build && pnpm typecheck && pnpm test",
+    "test:integration": "vitest run tests/integration"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.10",
+    "@types/node": "24.13.3",
+    "turbo": "2.10.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}

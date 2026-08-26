@@ -1,0 +1,259 @@
+# Assemora — working rules for Claude Code
+
+You are developing **Assemora**: a TypeScript framework and CMS where the same
+application layer is driven by developers (TypeScript API), humans (Studio) and
+AI agents (MCP).
+
+`SPEC.md` in the repository root is the product and architecture source of truth.
+Read it before changing anything architectural. `docs/adr/` records decisions that
+have already been made — do not reverse one without writing a new ADR.
+
+## Current state
+
+- **Phase 0 (repository foundation) — done.** Workspace, package boundaries,
+  TypeScript, Vitest, Biome, boundary checker, ADRs.
+- **Phase 1 (`@assemora/schema` + `@assemora/core`) — done.** Schema primitives with
+  inference, the kernel, and the single mutation path of SPEC.md §14.
+- **Phase 2 (`@assemora/data`) — done.** `model()`, the column DSL, the query
+  builder, the Query AST, model instances, scopes and relations. The adapter
+  contract and an in-memory adapter were pulled forward into `@assemora/database`,
+  because SPEC.md §109 requires queries that actually run.
+- **Phase 3 (`@assemora/database-postgres`) — done.** Query AST → Drizzle,
+  transactions, JSONB, batched relation loading, schema DDL and a migration runner,
+  with integration tests against a real PostgreSQL.
+- **Phase 4 (`@assemora/resources`) — done.** Static and dynamic resources, the
+  field registry, the `entries.*` CRUD commands, filtering, search and pagination.
+- **Phase 5 (`@assemora/http` + `@assemora/openapi` + `@assemora/sdk`) — done.**
+  `route()`, the Fastify adapter, generated REST CRUD, OpenAPI 3.1, the API Explorer
+  introspection endpoint and the SDK generator. The contract of §98 runs as a test.
+- **Phase 6 (`@assemora/auth`) — done.** Users, sessions, roles, permissions,
+  policies, API tokens and agent identities. Every CRUD command passes policies, and
+  an application no longer needs `permitAll()`.
+- **Phase 7 (`@assemora/pages` + `@assemora/revisions` + `@assemora/media`) — done.**
+  The block tree, drafts, publishing, revisions with restore, optimistic concurrency
+  and the media library with a local storage driver.
+- **Phase 8 (`apps/studio`) — done.** Login, navigation, resource CRUD, media, the
+  API Explorer, pages, the block builder, revision history, users and the developer
+  section — all driven by the Schema Registry: Studio has no list of collections, no
+  hand-written form and no list of block types. `apps/playground` is the reference
+  application it is developed against, and now ships its own frontend bundle, which
+  is what the builder canvas renders inside (ADR-0017, ADR-0018).
+  `@assemora/react` was pulled forward from phase 10 for that reason: SPEC.md §59
+  requires the canvas to run the real renderer, not a copy of it.
+
+Only `mcp`, `plugin` and `cli` still export just a `PACKAGE` marker. That is scaffolding, not design — replace it with the real public API of
+the phase that owns the package (each package README states its phase).
+
+Decisions phase 1 already fixed, which phase 2 builds on:
+
+- `core` owns the ports for authorization, transactions, revisions and audit;
+  packages above it register implementations (ADR-0008).
+- Authorization denies by default. `permitAll()` is the explicit, deliberately blunt
+  opt-out.
+- The Schema Registry lives in `core` and stores descriptors typed only through
+  `@assemora/schema`. It must never import types from a package above it.
+- `.models()`, `.resources()` and `.routes()` reach `module()` through module facets
+  plus interface augmentation (ADR-0009).
+- Block tree types belong in `@assemora/schema`, not `@assemora/pages`, or
+  `@assemora/react` drags the server layer into browser builds.
+- A relation's target is accepted as `unknown` so mutual relations do not hit
+  TypeScript's circular-reference error (ADR-0010). Relation *names* stay typed.
+- The query builder is immutable and produces a Query AST. Nothing may reach an
+  adapter's own query API, and `@assemora/data` must never learn about PostgreSQL.
+
+Decisions the second half of phase 8 added (ADR-0018):
+
+- `server.mountQueries()` publishes every registered query as `GET /queries/<name>`,
+  the read half of `mountCommands()`. Query-string values are decoded against the
+  query's own declared input schema. A read belongs to the package that owns the
+  data — `pages.list`, `media.list`, `auth.users.list` are queries in their packages.
+- `list` and `get` both mean `read` in `subjectOf`, for every subject. A permission is
+  held by any wildcard above it: `articles.*` grants `articles.update`.
+- `BlockNode.design` carries the seven universal controls of SPEC.md §61, beside
+  `props` rather than inside it. Every value is a token; the theme decides what a
+  token looks like, and nothing there can express CSS.
+- A block may be added before it is written. `pages.publish` refuses a tree holding an
+  unfinished block and names the field.
+- Every tree command answers with the tree it produced, so the canvas redraws without
+  a read and Studio never reimplements a tree operation.
+- `revisions.undo` / `revisions.redo` are commands; the stack is derived from the
+  history, not held in a tab. A revision carries `sequence` because ordering decides
+  what undo does and `createdAt` cannot separate two commits in one millisecond.
+- `revisions.restore` restores a revision's `after` — "put it back the way it was
+  then". `to: 'before'` reverses it instead.
+- The builder canvas is an iframe loading the *application's* frontend at `/preview`.
+  `@assemora/react` owns the renderer and the `postMessage` protocol both ends read.
+- `diffTrees()` in `@assemora/schema` says "the hero's title changed" instead of
+  handing back two block trees.
+- `createHttpServer({ security })` sends a Content Security Policy, `nosniff` and a
+  referrer policy on every response (SPEC.md §85). `frameAncestors` is the one an
+  application must set: the builder canvas frames `/preview`, and nothing else may.
+
+An adversarial review after the phase found six things worth knowing, all now fixed
+and covered by tests:
+
+- A query whose *input* names what it reads has to authorize twice, like a command
+  does. `QueryContext.authorize(subject, action, record)` is that second question, and
+  `revisions.list` asks it — otherwise one `revisions.read` opened the history of
+  every entity in the application.
+- A role, an API token and an agent are each a way to mint a credential, so all three
+  refuse to grant a permission the actor does not hold themselves.
+- A stored file is served as its own type only if that type is safe to render;
+  anything else is `application/octet-stream` with `Content-Disposition: attachment`.
+- An ordinary edit retires the redo branch. Without that, redo reached past a newer
+  edit and overwrote it with a state the page had left.
+- A restorer says what it *replaced*, and the revision of a restore records that
+  rather than the other side of the revision it applied — the two differ exactly when
+  an old revision is restored after later edits.
+- `null` is a state a restorer must handle: undoing a creation deletes, and restoring
+  a deletion re-creates.
+
+Decisions phase 8 added to the HTTP layer (ADR-0017):
+
+- `bytes(data, type)` and `respond(body, { cookies, headers, status })` are the two
+  ways a handler answers with something other than a plain JSON body. Both are
+  deliberately narrow; neither names a server library.
+- `server.mountCommands()` publishes every registered command as
+  `POST /commands/<name>`. Safe because the bus validates and authorizes first, and
+  authorization denies by default — not because the list is curated.
+- CSRF lives in `@assemora/http`: a mutating request with cookies and no
+  `Authorization` header must repeat the CSRF cookie in a header (SPEC.md §85).
+- `/auth/login`, `/auth/me` and the media URLs are declared by the *application*,
+  because `auth` and `media` may not depend on `http`. `apps/playground` is the
+  reference implementation of that contract.
+
+Carried into phase 3 deliberately, do not mistake them for oversights:
+
+- `create()` takes `Partial<Record>` and validates at runtime; compile-time required
+  fields land with resources in phase 4.
+- `.with()` types the head of a relation path; deeper segments are runtime-checked.
+- `belongsToMany` is declared and described but not yet loaded by any adapter.
+- `decimal()` carries a string, not a `Decimal` value type (SPEC.md §18).
+- Column defaults live in the data layer, not in the generated DDL (ADR-0011).
+- Schema *diffing* is not implemented; `assemora db:generate` lands in phase 10.
+- CRUD is one generic command set (`entries.create/update/delete`) addressed by
+  resource name, matching the MCP tools of §70 (ADR-0012).
+- A resource's writes are reachable only through those commands; `PERSISTENCE` is
+  behind a symbol so bypassing the mutation path is deliberate.
+- Optimistic concurrency (§66) is stored but not enforced; it lands with pages in
+  phase 7.
+- Dynamic entries sort by their own columns only, not by a key inside the JSONB.
+- A resource read is projected to its declared, non-hidden fields; the model row
+  behind it is reachable through `Resource.model`, never through `list()`.
+- Every adapter must agree on what a `Condition` means, and
+  `tests/integration/adapter-conformance.test.ts` is what proves it (ADR-0013). A new
+  operator arrives with its conformance case.
+- `ASSEMORA_REQUIRE_POSTGRES=1` turns an unreachable database into a failing
+  integration suite instead of a silently skipped one.
+- Reads go through the Query Bus, writes through the Command Bus. `@assemora/http`
+  serves resources without depending on them (ADR-0014).
+- Describing a route and mounting it are separate acts; registration is idempotent.
+- A hidden field never reaches the OpenAPI document or the generated SDK.
+- Authorization asks twice: permissions before the write, the policy rule once the
+  record is loaded (ADR-0015). A command name is also its permission name.
+- Passwords are Argon2id; tokens are SHA-256 digests of 256 random bits. Neither is
+  ever stored as written, and a token's plaintext exists only when it is issued.
+- Block tree types live in `@assemora/schema`; `@assemora/pages` owns the behaviour
+  (ADR-0016). Every tree edit is a pure function, and the commands are thin wrappers.
+- `expectedVersion` is optional: stating it turns a lost update into a 409 (§66).
+- The restorer registry is a core seam, like the ports — `revisions` restores an
+  entity without knowing what it is.
+
+Known gaps, each with a reason rather than an oversight:
+
+- A command and a query declare an input schema but no *output* schema, so their
+  generated endpoints appear in OpenAPI and the SDK with an undocumented response.
+  Closing it means adding `output` to `command()` and `query()` and writing one for
+  every existing handler — worth doing, and not what SPEC.md §115 asked for.
+- The Design section of SPEC.md §58 is not built: SPEC.md §62 fixes the theme token
+  document but declares no table, no commands and no routes for it. That contract has
+  to be designed before a screen can edit it.
+- Nothing implements core's `AuditPort`, so SPEC.md §67's audit log is collected and
+  discarded. Developer → Logs waits on it.
+
+- `.with('posts')` does not add the relation to the instance type. ADR-0010 erased the
+  relation target's type to make mutual relations declarable at all; typing the loaded
+  shape means revisiting that trade-off in a new ADR, not patching around it.
+- `whereJson`'s path and value are `string` and `unknown`. Typing a JSON path against
+  the document type is possible and wanted; it is a design task of its own.
+- `json<T>()` takes a type argument nothing validates at runtime. SPEC.md §17 asks for
+  exactly that shape; a checked variant would take a schema instead of a type.
+- Row-level concurrency (locks, lost updates) is untested. It needs `for update` in the
+  Query AST, which belongs with optimistic concurrency in phase 7 (SPEC.md §66).
+
+## Commands
+
+```bash
+pnpm verify           # boundaries + lint + build + typecheck + test — run before finishing a task
+pnpm test:integration # PostgreSQL suite; skips itself when no database is reachable
+                      # it imports built packages, so build first — `vitest` alone
+                      # can pass against a stale dist. `pnpm verify` builds for you.
+pnpm boundaries    # package dependency rules (SPEC.md §8)
+pnpm lint          # Biome check
+pnpm format        # Biome write
+pnpm build         # turbo run build (tsc project references)
+pnpm typecheck     # per-package tsc --noEmit + scripts
+pnpm test          # Vitest
+pnpm test:types    # type-level tests only (*.test-d.ts)
+```
+
+Two processes are needed to look at Studio:
+
+```bash
+pnpm --filter @assemora/playground dev   # the application, on :4000
+pnpm --filter @assemora/studio dev       # Studio, on :5173, proxying /api
+```
+
+The playground seeds itself on first boot and signs in with `ada@assemora.dev`.
+
+## Non-negotiable rules
+
+- `SPEC.md` is the source of truth. When architecture is ambiguous, prefer the
+  solution that preserves schema-first design and clean user-facing code.
+- Public API priority: **beautiful > readable > type-safe > internally simple.**
+  Never change a public API merely to make the implementation easier.
+- Never expose Drizzle, Fastify, React or any other implementation library through
+  the normal public API. Ownership of those libraries is enforced by
+  `pnpm boundaries`.
+- No decorators in primary Assemora APIs.
+- One schema declaration feeds runtime validation, database, Studio, OpenAPI, SDK
+  and MCP. Never duplicate schemas between those subsystems.
+- All mutations go through the Command Bus. Studio, REST, SDK, CLI and MCP share
+  the same application logic — MCP never gets its own business logic or direct DB
+  access.
+- Never bypass Policies. Never bypass Revisions for content mutations.
+- No dependency cycles between packages; new edges require an entry in
+  `scripts/lib/package-graph.ts` plus an ADR.
+- Never use `any` to silence TypeScript. Use `unknown` and validate. Local,
+  documented exceptions only.
+- Pages are stored as a block tree, never as an HTML blob.
+- Do not skip phases to produce a visual demo sooner. Studio and AI are clients of
+  a stable application layer, not its designers.
+- Run `pnpm verify` before completing a task.
+
+## Language
+
+Everything in this repository is written in English: code, comments, identifiers,
+documentation, ADRs, test names and commit messages. No exceptions.
+
+## Style
+
+ESM, single quotes, no semicolons, trailing commas, 2-space indent, small
+functions, explicit domain names. Biome enforces formatting — do not hand-format.
+
+TypeScript is configured with `strict`, `noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes` and `erasableSyntaxOnly`. Do not weaken these flags.
+
+## Git
+
+One logically complete change per task. Never mix refactoring, a new feature and a
+repository-wide reformat in the same commit.
+
+## Detailed rules
+
+@.claude/rules/architecture.md
+@.claude/rules/public-api.md
+@.claude/rules/data-layer.md
+@.claude/rules/security.md
+@.claude/rules/testing.md
+@.claude/rules/studio.md

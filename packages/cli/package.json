@@ -1,0 +1,31 @@
+{
+  "name": "@assemora/cli",
+  "version": "0.0.0",
+  "description": "Assemora CLI: generators, migrations, introspection",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@assemora/schema": "workspace:*",
+    "@assemora/core": "workspace:*",
+    "@assemora/data": "workspace:*",
+    "@assemora/database-postgres": "workspace:*",
+    "@assemora/openapi": "workspace:*",
+    "@assemora/sdk": "workspace:*"
+  }
+}
