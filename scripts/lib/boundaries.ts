@@ -4,6 +4,7 @@ import {
   implementationLibraries,
   type PackageName,
   publishedNames,
+  terminalPackages,
 } from './package-graph.ts'
 
 const SCOPE = '@assemora/'
@@ -206,6 +207,20 @@ const checkImports = (manifest: PackageManifest): Violation[] => {
   return violations
 }
 
+/** Nothing depends on the top of the graph, so nothing can cycle through it. */
+const checkTerminal = (manifest: PackageManifest): Violation[] =>
+  manifest.dependencies
+    .map(internalName)
+    .filter(
+      (dependency): dependency is PackageName =>
+        dependency !== undefined && terminalPackages.includes(dependency as PackageName),
+    )
+    .map((dependency) => ({
+      package: manifest.directory,
+      rule: 'terminal-package',
+      message: `"${published(dependency)}" is the top of the graph and nothing may depend on it; it assembles the other packages for an application (SPEC.md §8, §9)`,
+    }))
+
 /** Cycles between packages are forbidden (SPEC.md §8). */
 export const findCycles = (manifests: readonly PackageManifest[]): string[][] => {
   const graph = new Map<string, string[]>()
@@ -254,6 +269,7 @@ export const checkBoundaries = (manifests: readonly PackageManifest[]): Violatio
     ...checkDependencyFree(manifest),
     ...checkTsconfigReferences(manifest),
     ...checkImports(manifest),
+    ...checkTerminal(manifest),
   ])
 
   const cycles = findCycles(manifests).map((cycle) => ({

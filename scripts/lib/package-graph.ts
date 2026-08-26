@@ -28,6 +28,7 @@ export type PackageName =
   | 'plugin'
   | 'cli'
   | 'create-assemora'
+  | 'assemora'
 
 /** Allowed workspace dependencies for every package. */
 export const allowedDependencies: Record<PackageName, readonly PackageName[]> = {
@@ -51,6 +52,26 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
   plugin: ['schema', 'core'],
   cli: ['schema', 'core', 'data', 'database-postgres', 'openapi', 'sdk', 'create-assemora'],
   'create-assemora': [],
+  // The umbrella of SPEC.md §9. It is the only package allowed to depend on
+  // everything, because it is the only one nothing depends on: it exists to put the
+  // pieces together for an application, and a cycle through it is impossible.
+  assemora: [
+    'schema',
+    'core',
+    'database',
+    'data',
+    'database-postgres',
+    'resources',
+    'pages',
+    'http',
+    'openapi',
+    'auth',
+    'media',
+    'revisions',
+    'audit',
+    'change-sets',
+    'mcp',
+  ],
 }
 
 /**
@@ -62,7 +83,19 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
  */
 export const publishedNames: Partial<Record<PackageName, string>> = {
   'create-assemora': 'create-assemora',
+  // `import { assemora } from 'assemora'` is the line SPEC.md §9 writes, and
+  // `@assemora/assemora` is not that line.
+  assemora: 'assemora',
 }
+
+/**
+ * Packages nothing may depend on.
+ *
+ * The umbrella is the top of the graph. Letting anything import it would put every
+ * package below it on the far side of a cycle, so the ban is machine-checked rather
+ * than remembered.
+ */
+export const terminalPackages: readonly PackageName[] = ['assemora']
 
 /**
  * Implementation libraries and their single owning package.

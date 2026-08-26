@@ -243,3 +243,33 @@ describe('a package published under an unscoped name', () => {
     ).toEqual([])
   })
 })
+
+describe('the top of the graph', () => {
+  it('refuses a package that depends on the umbrella, and says why', () => {
+    const violations = checkBoundaries([
+      manifest({
+        directory: 'http',
+        dependencies: ['assemora'],
+        tsconfigReferences: ['../assemora/tsconfig.build.json'],
+      }),
+    ])
+
+    expect(violations.map((violation) => violation.rule)).toContain('terminal-package')
+    expect(violations.find((violation) => violation.rule === 'terminal-package')?.message).toContain(
+      'nothing may depend on it',
+    )
+  })
+
+  it('lets the umbrella depend on what it assembles', () => {
+    expect(
+      rules([
+        manifest({
+          directory: 'assemora',
+          name: 'assemora',
+          dependencies: ['@assemora/http', '@assemora/pages'],
+          tsconfigReferences: ['../http/tsconfig.build.json', '../pages/tsconfig.build.json'],
+        }),
+      ]),
+    ).toEqual([])
+  })
+})
