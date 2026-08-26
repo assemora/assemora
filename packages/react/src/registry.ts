@@ -14,7 +14,7 @@
  * ```
  */
 import type { BlockNode } from '@assemora/schema'
-import type { ComponentType, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 export type BlockViewProps<P = Readonly<Record<string, unknown>>> = {
   /** The block itself: its id, its type, its version. */
@@ -25,8 +25,20 @@ export type BlockViewProps<P = Readonly<Record<string, unknown>>> = {
   readonly children: ReactNode
 }
 
-export type BlockView<P = Readonly<Record<string, unknown>>> = ComponentType<BlockViewProps<P>>
+/**
+ * A block's view: a function of its props.
+ *
+ * Deliberately not `ComponentType`, which also covers a class component — and a class
+ * carries `defaultProps?: Partial<P>`, putting `P` in a covariant position. Under
+ * `exactOptionalPropertyTypes` that alone stops a `BlockView<HeroProps>` from being
+ * assignable to `BlockView<never>`, so every registry entry in every application
+ * would need a cast. Nobody writes a block as a class, and this is what that costs.
+ */
+export type BlockView<P = Readonly<Record<string, unknown>>> = (
+  props: BlockViewProps<P>,
+) => ReactNode
 
+/** Views of any prop shape, side by side, which is what a registry holds. */
 export type BlockViews = Readonly<Record<string, BlockView<never>>>
 
 export type BlockRegistryOptions = {

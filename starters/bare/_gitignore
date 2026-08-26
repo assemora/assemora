@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Real credentials. `.env.example` documents every variable this project reads.
+.env
+
+# `.assemora/` is deliberately *not* ignored. `assemora db:generate` diffs the schema
+# snapshot in it rather than a live database, so two people who do not share the
+# snapshot generate the same migration twice.

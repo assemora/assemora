@@ -34,6 +34,28 @@ const camel = (value: string): string => {
 
 const quoteKey = (key: string): string => (RESERVED.test(key) ? JSON.stringify(key) : key)
 
+/**
+ * Whether an element type has to be bracketed before `[]` is put after it.
+ *
+ * `readonly 'a' | 'b'[]` parses as `'a' | ('b'[])`, and `readonly readonly T[][]` is
+ * refused outright — so an array of a union or of an array is invalid TypeScript
+ * unless it is grouped. An identifier or an object literal needs nothing, and
+ * bracketing it anyway would put noise in every generated line.
+ */
+const grouped = (type: string): string => {
+  if (type.startsWith('readonly ')) return `(${type})`
+
+  let depth = 0
+
+  for (const character of type) {
+    if (character === '{' || character === '(' || character === '[') depth += 1
+    else if (character === '}' || character === ')' || character === ']') depth -= 1
+    else if (depth === 0 && (character === '|' || character === '&')) return `(${type})`
+  }
+
+  return type
+}
+
 /** JSON Schema as TypeScript. What travels over the wire, not what the server holds. */
 export const toTypeScript = (schema: JsonSchema | undefined, indent = ''): string => {
   if (schema === undefined) return 'unknown'
@@ -51,7 +73,7 @@ export const toTypeScript = (schema: JsonSchema | undefined, indent = ''): strin
     case 'boolean':
       return 'boolean'
     case 'array':
-      return `readonly ${toTypeScript(schema.items as JsonSchema | undefined, indent)}[]`
+      return `readonly ${grouped(toTypeScript(schema.items as JsonSchema | undefined, indent))}[]`
     case 'object': {
       const properties = (schema.properties as Record<string, JsonSchema> | undefined) ?? {}
       const required = new Set((schema.required as readonly string[] | undefined) ?? [])

@@ -24,7 +24,7 @@ import { FaqView, HeroView, MissingView, SectionView } from './views.tsx'
 import './theme.css'
 
 const registry = createBlockRegistry(
-  { hero: HeroView as never, section: SectionView as never, faq: FaqView as never },
+  { hero: HeroView, section: SectionView, faq: FaqView },
   { fallback: MissingView },
 )
 

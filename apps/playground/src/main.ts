@@ -1,106 +1,68 @@
 /**
- * A running Assemora application (SPEC.md §9).
+ * A running Assemora application (SPEC.md §9, ADR-0022).
  *
- * This is what an application file looks like once the framework is doing its job:
- * modules in, ports registered, server up. Everything the API offers — CRUD, OpenAPI,
- * introspection, policies, revisions — follows from the declarations in the modules,
- * not from anything written here.
+ * One call assembles it. CRUD, the OpenAPI document, the API Explorer, the session
+ * endpoints, the media URLs, the MCP endpoint, policies, revisions, the audit log and
+ * change sets all follow from the modules listed below and from the wiring `assemora`
+ * owns — none of it is written here, and a project that had to write it would be
+ * carrying a copy the framework could never correct.
+ *
+ * What is left is the part only this application can know: where its uploads live,
+ * where its frontend bundle was built, and which other origin is allowed to reach it.
  */
-import { audit, auditModule } from '@assemora/audit'
-import { auth, policies, resolveActor } from '@assemora/auth'
-import { changeSets } from '@assemora/change-sets'
-import { createApplication, createLogger } from '@assemora/core'
-import { dataTransactions, useAdapter } from '@assemora/data'
-import { createMemoryAdapter } from '@assemora/database'
-import { createHttpServer, route } from '@assemora/http'
-import { mcp } from '@assemora/mcp'
-import { localStorage, media, useStorage } from '@assemora/media'
-import { introspectionRoute, openApiRoute } from '@assemora/openapi'
-import { pages } from '@assemora/pages'
-import { revisions, revisionsModule } from '@assemora/revisions'
-import { string } from '@assemora/schema'
+import { join } from 'node:path'
 
-import { authRoutes, CSRF_COOKIE } from './auth-routes.ts'
+import { auth } from '@assemora/auth'
+import { createMemoryAdapter } from '@assemora/database'
+import { media } from '@assemora/media'
+import { pages } from '@assemora/pages'
+import { assemora } from 'assemora'
+
 import { blog, Faq, Hero, Section } from './blog.ts'
-import { mcpRoutes } from './mcp-routes.ts'
-import { mediaRoutes } from './media-routes.ts'
-import { previewRoutes } from './preview-routes.ts'
 import { seed } from './seed.ts'
 
 const PORT = Number(process.env.PORT ?? 4000)
+
+/**
+ * Where Studio is being developed, which is the whole reason this application exists.
+ *
+ * A deployed project serves Studio beside its own API on one origin and names no
+ * origins at all. This is the split-origin case the options exist for, and it needs to
+ * say two separate things: :5173 may *call* this API, and the Studio served from there
+ * may *frame* the preview. An origin trusted to fetch JSON has not thereby been
+ * trusted to put a logged-in interface inside an iframe of its own (SPEC.md §59, §85).
+ */
 const STUDIO_ORIGIN = process.env.STUDIO_ORIGIN ?? 'http://localhost:5173'
-const MEDIA_ROOT = new URL('../storage/', import.meta.url).pathname
 
-useAdapter(createMemoryAdapter())
-useStorage(localStorage({ root: MEDIA_ROOT, baseUrl: '/api/media' }))
-
-const app = createApplication({
-  modules: [
-    auth(),
-    blog(),
-    pages({ blocks: [Hero, Section, Faq] }),
-    media(),
-    revisionsModule(),
-    auditModule(),
-    changeSets(),
-    mcp({
-      project: {
-        name: 'Assemora playground',
-        description: 'A blog, built the way the framework intends',
-      },
-    }),
-  ],
-  authorization: policies(),
-  transactions: dataTransactions(),
-  revisions: revisions(),
-  audit: audit(),
-  logger: createLogger(),
+const app = assemora({
+  // In memory on purpose: this application is started, looked at, and thrown away.
+  // PostgreSQL is exercised by `pnpm test:integration`, against a real database.
+  database: createMemoryAdapter(),
+  // `revisions`, `audit` and `changesets` are deliberately absent: they are not
+  // features to opt into, and the umbrella registers them for every application.
+  modules: [auth(), blog(), pages({ blocks: [Hero, Section, Faq] }), media()],
+  // Written once because three subsystems ask: the OpenAPI title, the name the MCP
+  // server announces over the protocol, and what `assemora.describe` tells an agent
+  // this project is (SPEC.md §44, §71).
+  project: {
+    name: 'Assemora playground',
+    version: '0.0.0',
+    description: 'A blog, built the way the framework intends',
+  },
+  // An agent proposes and a person applies (SPEC.md §75). Switching this on is also
+  // what registers the module whose tools are generated from the registry.
+  mcp: true,
+  media: { root: join(import.meta.dirname, '../storage') },
+  // What Studio's builder canvas frames: this application's own bundle, with its own
+  // block views, so an editor sees the real renderer rather than a second one.
+  frontend: { root: join(import.meta.dirname, '../web/dist'), framedBy: [STUDIO_ORIGIN] },
+  origins: [STUDIO_ORIGIN],
 })
 
-const health = route.get('/health', {
-  description: 'Liveness',
-  tags: ['developer'],
-  response: { status: string() },
-  handler: () => ({ status: 'ok' }),
-})
-
-const server = createHttpServer({
-  registry: app.registry,
-  commands: app.commands,
-  queries: app.queries,
-  logger: app.logger,
-  resolveActor,
-  cors: { origins: [STUDIO_ORIGIN], credentials: true },
-  rateLimit: { max: 600, windowMs: 60_000 },
-  csrf: { cookie: CSRF_COOKIE },
-  // The builder canvas frames `/preview`, and nothing else may (SPEC.md §59, §85).
-  security: { frameAncestors: [STUDIO_ORIGIN] },
-})
-
-server
-  .mountRegistered()
-  .mountResources()
-  .mountCommands()
-  .mountQueries()
-  .mount(
-    ...authRoutes(app.commands),
-    ...mediaRoutes(),
-    ...mcpRoutes({ registry: app.registry, commands: app.commands, queries: app.queries }),
-    ...previewRoutes(),
-    health,
-    openApiRoute({
-      registry: app.registry,
-      info: {
-        title: 'Assemora playground',
-        version: '0.0.0',
-        description: 'A blog, built the way the framework intends',
-      },
-    }),
-    introspectionRoute(app.registry),
-  )
-
+// Two calls rather than one, so the seed runs against a booted application before the
+// first request can arrive at a half-filled one.
 await app.boot()
-await seed(app)
+await seed(app.app)
 
-console.log(`[playground] listening on ${await server.listen(PORT)}`)
+console.log(`[playground] listening on ${await app.listen(PORT)}`)
 console.log(`[playground] studio origin allowed: ${STUDIO_ORIGIN}`)

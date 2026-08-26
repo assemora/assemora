@@ -201,6 +201,7 @@ type CopyPlan = {
   readonly features: Features
   readonly excluded: readonly string[]
   readonly dropped: readonly string[]
+  readonly droppedScripts: readonly string[]
   readonly range: string
   readonly name: string
 }
@@ -216,7 +217,7 @@ type CopyPlan = {
 const rewritten = (plan: CopyPlan, path: string, target: string, text: string): string => {
   if (!target.endsWith('package.json')) return applyFeatures(text, plan.features, path)
 
-  const shared = { range: plan.range, drop: plan.dropped }
+  const shared = { range: plan.range, drop: plan.dropped, dropScripts: plan.droppedScripts }
 
   return target === 'package.json'
     ? projectPackageJson(text, path, { ...shared, name: plan.name })
@@ -302,6 +303,7 @@ export const scaffold = async (options: ScaffoldOptions): Promise<ScaffoldResult
     name,
     excluded: off.flatMap((entry) => entry.files),
     dropped: off.flatMap((entry) => entry.dependencies),
+    droppedScripts: off.flatMap((entry) => entry.scripts),
     range: dependencyRange(await packageVersion()),
   }
 

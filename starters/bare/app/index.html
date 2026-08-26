@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My site</title>
+    <!--
+      The whole stylesheet, because a starter that opens with a design system is a
+      starter people delete. Every class here is one a block view in app/blocks/ asks
+      for; add a block, add its rule.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        font: 16px/1.6 system-ui, sans-serif;
+      }
+      .hero {
+        padding: 6rem 1.5rem 4rem;
+        text-align: center;
+      }
+      .hero h1 {
+        margin: 0 0 0.5rem;
+        font-size: clamp(2rem, 6vw, 3.5rem);
+        line-height: 1.1;
+      }
+      .hero p {
+        margin: 0;
+        opacity: 0.65;
+      }
+      .rich-text {
+        max-width: 42rem;
+        margin: 0 auto;
+        padding: 0 1.5rem 5rem;
+        white-space: pre-wrap;
+      }
+      .missing {
+        margin: 1.5rem;
+        padding: 1rem;
+        border: 1px dashed currentColor;
+        opacity: 0.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="site"></div>
+    <script type="module" src="/preview.tsx"></script>
+  </body>
+</html>

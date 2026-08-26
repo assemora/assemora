@@ -10,8 +10,8 @@ read. If this stops being true, the framework has drifted.
 pnpm --filter @assemora/playground dev
 ```
 
-It listens on `:4000`, keeps everything in memory, and seeds three articles, a page
-and one user on first boot:
+It listens on `:4000`, keeps everything in memory, and seeds three articles, two pages
+and two users on first boot:
 
 ```text
 ada@assemora.dev
@@ -23,17 +23,26 @@ What it composes:
 | File | What it shows |
 | --- | --- |
 | `src/blog.ts` | `model()`, `resource()`, `block()`, `route()`, `module()` |
-| `src/auth-routes.ts` | The session endpoints Studio expects (ADR-0017) |
-| `src/media-routes.ts` | Serving stored files, by path and by library id |
-| `src/main.ts` | Ports, modules, and the whole HTTP surface in one screen |
-| `src/preview-routes.ts` | Serving this application's own frontend, which the builder canvas renders inside |
+| `src/main.ts` | `assemora()`: the whole application in one call (SPEC.md §9) |
 | `src/seed.ts` | Content created through commands, not through the database |
 | `web/src/views.tsx` | What this application's blocks look like (SPEC.md §57) |
 | `web/src/theme.css` | What a design token means here (SPEC.md §61, §62) |
 
-Everything else — CRUD, OpenAPI, the introspection endpoint, policies, revisions,
-the command endpoints and the query endpoints — follows from those declarations.
+Everything else — CRUD, OpenAPI, the introspection endpoint, the session endpoints,
+the media URLs, the MCP endpoint, policies, revisions, the audit log, the command
+endpoints and the query endpoints — is wiring the `assemora` package owns (ADR-0022).
+This application used to declare it by hand, and every generated project would have
+carried the same copy.
 
 The frontend bundle is built by `pnpm --filter @assemora/playground build` and served
-at `/api/preview`. Studio's builder canvas is an iframe pointed at it, which is what
-makes the preview the real thing rather than an imitation (SPEC.md §59).
+at `/preview` — at the origin root, beside the API rather than inside it, because a
+bundle is not an endpoint. Studio's builder canvas is an iframe pointed at it, which
+is what makes the preview the real thing rather than an imitation (SPEC.md §59).
+
+Two things a deployed project would not do, and why this one does:
+
+- It names `http://localhost:5173` as an allowed origin and as an allowed framer.
+  Studio has its own dev server here; a deployed project serves Studio beside its API
+  on one origin and names nothing.
+- It does not serve Studio itself. `assemora({ studio: true })` serves a *built*
+  bundle, and the point of this application is the Studio being rebuilt next to it.

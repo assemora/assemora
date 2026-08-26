@@ -1,0 +1,11 @@
+{
+  "features": {
+    "studio": {
+      "dependencies": ["@assemora/studio"]
+    },
+    "pages": {
+      "files": ["src/blocks", "app/blocks", "app/[slug]", "app/preview"],
+      "dependencies": ["@assemora/pages", "@assemora/react", "@assemora/schema"]
+    }
+  }
+}

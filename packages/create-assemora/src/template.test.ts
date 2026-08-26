@@ -91,6 +91,7 @@ describe('readManifest', () => {
     expect(manifest.studio).toStrictEqual({
       files: ['src/studio.ts'],
       dependencies: ['@assemora/studio'],
+      scripts: [],
     })
     expect(manifest.pages.files).toStrictEqual(['src/blocks'])
   })
@@ -100,9 +101,9 @@ describe('readManifest', () => {
     await write(root, 'templates/plain/package.json', '{}\n')
 
     expect(await readManifest(`${root}/templates/plain`)).toStrictEqual({
-      studio: { files: [], dependencies: [] },
-      pages: { files: [], dependencies: [] },
-      mcp: { files: [], dependencies: [] },
+      studio: { files: [], dependencies: [], scripts: [] },
+      pages: { files: [], dependencies: [], scripts: [] },
+      mcp: { files: [], dependencies: [], scripts: [] },
     })
   })
 

@@ -76,6 +76,8 @@ export type PackageJsonOptions = {
   readonly range: string
   /** Package names to remove, because the feature that wanted them was declined. */
   readonly drop: readonly string[]
+  /** Script names to remove, for the same reason. A script is not a dependency. */
+  readonly dropScripts?: readonly string[]
 }
 
 /**
@@ -121,6 +123,15 @@ export const projectPackageJson = (
     }
 
     manifest[section] = kept
+  }
+
+  const dropScripts = new Set(options.dropScripts ?? [])
+  const scripts = manifest.scripts
+
+  if (dropScripts.size > 0 && isRecord(scripts)) {
+    manifest.scripts = Object.fromEntries(
+      Object.entries(scripts).filter(([name]) => !dropScripts.has(name)),
+    )
   }
 
   return `${JSON.stringify(manifest, null, 2)}\n`

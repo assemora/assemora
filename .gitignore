@@ -4,6 +4,11 @@ dist/
 *.tsbuildinfo
 .assemora/
 coverage/
+# Next.js build output and the type file it regenerates, in starters/nextjs
+.next/
+next-env.d.ts
+# Machine-made copies of starters/, packed into create-assemora
+packages/create-assemora/templates/
 .env
 .env.*
 !.env.example

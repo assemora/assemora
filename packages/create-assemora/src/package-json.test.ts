@@ -90,3 +90,32 @@ describe('dependencyRange', () => {
     expect(isUnreleased('0.1.0')).toBe(false)
   })
 })
+
+describe('a script that belongs to a feature', () => {
+  const manifest = JSON.stringify({
+    name: 'starter',
+    scripts: { dev: 'assemora dev', build: 'vite build', typecheck: 'tsc --noEmit' },
+    dependencies: {},
+  })
+
+  it('goes when the feature does, because it would have nothing to run', () => {
+    const written = JSON.parse(
+      projectPackageJson(manifest, 'package.json', {
+        name: 'demo',
+        range: '^1.0.0',
+        drop: [],
+        dropScripts: ['build'],
+      }),
+    ) as { scripts: Record<string, string> }
+
+    expect(Object.keys(written.scripts)).toEqual(['dev', 'typecheck'])
+  })
+
+  it('stays when nothing declined it', () => {
+    const written = JSON.parse(
+      projectPackageJson(manifest, 'package.json', { name: 'demo', range: '^1.0.0', drop: [] }),
+    ) as { scripts: Record<string, string> }
+
+    expect(Object.keys(written.scripts)).toEqual(['dev', 'build', 'typecheck'])
+  })
+})

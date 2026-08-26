@@ -41,11 +41,19 @@ export type FeatureManifest = {
   readonly files: readonly string[]
   /** Package names removed from every `package.json` when the answer is no. */
   readonly dependencies: readonly string[]
+  /**
+   * Script names removed from `package.json` when the answer is no.
+   *
+   * A script is not a file and not a dependency, and it is the third thing a feature
+   * can own: a project with no page builder has no bundle, so its `build` script has
+   * nothing to run. A marker comment cannot say so, because JSON carries no comments.
+   */
+  readonly scripts: readonly string[]
 }
 
 export type TemplateManifest = Readonly<Record<Feature, FeatureManifest>>
 
-const EMPTY: FeatureManifest = { files: [], dependencies: [] }
+const EMPTY: FeatureManifest = { files: [], dependencies: [], scripts: [] }
 
 export type ResolveTemplateOptions = {
   /**
@@ -220,6 +228,7 @@ export const readManifest = async (directory: string): Promise<TemplateManifest>
     return {
       files: stringList(entry.files, file, `features.${feature}.files`),
       dependencies: stringList(entry.dependencies, file, `features.${feature}.dependencies`),
+      scripts: stringList(entry.scripts, file, `features.${feature}.scripts`),
     }
   }
 

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+
+# Written by `next dev`, and rewritten every time it runs. `tsconfig.json` gets the
+# same declarations from `"types": ["node", "next"]`, so nothing needs it checked in.
+next-env.d.ts
+
+# Real credentials. `.env.example` documents every variable this project reads, and
+# the read token `pnpm dev:api` prints on its first boot belongs here.
+.env
+
+# `.assemora/` is deliberately *not* ignored. `assemora db:generate` diffs the schema
+# snapshot in it rather than a live database, so two people who do not share the
+# snapshot generate the same migration twice.

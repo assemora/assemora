@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/.turbo", "!**/node_modules"]
+    "includes": ["**", "!**/dist", "!**/.turbo", "!**/node_modules", "!**/.next"]
   },
   "formatter": {
     "enabled": true,

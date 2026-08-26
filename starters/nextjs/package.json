@@ -1,0 +1,48 @@
+{
+  "name": "@assemora/starter-nextjs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs dev",
+    "dev:api": "assemora dev",
+    "dev:web": "next dev",
+    "start": "node scripts/dev.mjs start",
+    "start:api": "assemora start",
+    "start:web": "next start",
+    "build": "next build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "sdk:generate": "assemora sdk:generate",
+    "db:generate": "assemora db:generate",
+    "db:migrate": "assemora db:migrate",
+    "db:rollback": "assemora db:rollback",
+    "db:status": "assemora db:status"
+  },
+  "dependencies": {
+    "@assemora/auth": "workspace:*",
+    "@assemora/core": "workspace:*",
+    "@assemora/data": "workspace:*",
+    "@assemora/database": "workspace:*",
+    "@assemora/database-postgres": "workspace:*",
+    "@assemora/pages": "workspace:*",
+    "@assemora/react": "workspace:*",
+    "@assemora/resources": "workspace:*",
+    "@assemora/schema": "workspace:*",
+    "@assemora/sdk": "workspace:*",
+    "@assemora/studio": "workspace:*",
+    "assemora": "workspace:*",
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@assemora/cli": "workspace:*",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "typescript": "7.0.2"
+  }
+}

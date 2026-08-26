@@ -1,0 +1,59 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+
+    // Next compiles `app/` with its own bundler and insists on these four; `next dev`
+    // rewrites this file if they are wrong, so they are written the way it wants them.
+    // They are also what lets one config cover both halves of the project: bundler
+    // resolution *accepts* the explicit `./thing.ts` specifiers that `src/` needs —
+    // Node runs those files with no build step and refuses an extensionless import —
+    // where `nodenext`, which would require them, is not a resolution Next accepts.
+    // The cost is that nothing checks an extension is present, so write them.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+
+    "moduleDetection": "force",
+
+    // The repository's own settings, kept rather than relaxed. Next has no objection
+    // to any of them; they simply are not what `create-next-app` would have written.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "skipLibCheck": true,
+    "incremental": true,
+    "noEmit": true,
+
+    // `next` is here so that `import './globals.css'` typechecks on a fresh clone.
+    // The usual way to get that is the `next-env.d.ts` Next writes, but Next now
+    // fills that file with imports of types it only generates once `next dev` has
+    // run — and a project has to typecheck before it has ever been started.
+    "types": ["node", "next"],
+
+    // The editor plugin that checks the server/client boundary. `tsc` ignores it; it
+    // is here so that `next dev` does not rewrite this file to add it.
+    "plugins": [{ "name": "next" }]
+  },
+  "include": [
+    "src/**/*",
+    "app/**/*",
+    "assemora.config.ts",
+    "next.config.ts",
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

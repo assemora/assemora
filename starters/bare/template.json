@@ -1,0 +1,22 @@
+{
+  "features": {
+    "studio": {
+      "dependencies": ["@assemora/studio"]
+    },
+    "pages": {
+      "files": ["src/blocks", "app"],
+      "dependencies": [
+        "@assemora/pages",
+        "@assemora/react",
+        "@assemora/schema",
+        "@types/react",
+        "@types/react-dom",
+        "@vitejs/plugin-react",
+        "react",
+        "react-dom",
+        "vite"
+      ],
+      "scripts": ["build"]
+    }
+  }
+}

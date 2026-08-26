@@ -1,0 +1,42 @@
+{
+  "name": "@assemora/example-blog",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Relations, scopes and policies: the blog of SPEC.md §99, with authors and categories",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "assemora dev",
+    "start": "assemora start",
+    "build": "vite build --config app/vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "assemora db:generate",
+    "db:migrate": "assemora db:migrate",
+    "db:status": "assemora db:status"
+  },
+  "dependencies": {
+    "@assemora/auth": "workspace:*",
+    "@assemora/core": "workspace:*",
+    "@assemora/data": "workspace:*",
+    "@assemora/database": "workspace:*",
+    "@assemora/database-postgres": "workspace:*",
+    "@assemora/http": "workspace:*",
+    "@assemora/pages": "workspace:*",
+    "@assemora/react": "workspace:*",
+    "@assemora/resources": "workspace:*",
+    "@assemora/schema": "workspace:*",
+    "@assemora/studio": "workspace:*",
+    "assemora": "workspace:*",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@assemora/cli": "workspace:*",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "6.1.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  }
+}

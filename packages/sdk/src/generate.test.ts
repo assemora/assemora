@@ -108,3 +108,30 @@ describe('the emitted client', () => {
     expect(empty).not.toContain('undefined')
   })
 })
+
+describe('a type that has to be bracketed before it can be an array', () => {
+  it('groups a union, which would otherwise bind to the last member alone', () => {
+    expect(toTypeScript({ type: 'array', items: { enum: ['mobile', 'tablet'] } })).toBe(
+      'readonly ("mobile" | "tablet")[]',
+    )
+  })
+
+  it('groups an array of arrays, which TypeScript refuses ungrouped', () => {
+    expect(
+      toTypeScript({ type: 'array', items: { type: 'array', items: { type: 'string' } } }),
+    ).toBe('readonly (readonly string[])[]')
+  })
+
+  it('leaves a plain element alone rather than bracketing every line', () => {
+    expect(toTypeScript({ type: 'array', items: { type: 'string' } })).toBe('readonly string[]')
+  })
+
+  it('leaves an object literal alone, whatever its properties hold', () => {
+    expect(
+      toTypeScript({
+        type: 'array',
+        items: { type: 'object', properties: { size: { enum: ['sm', 'lg'] } } },
+      }),
+    ).toContain('readonly {')
+  })
+})

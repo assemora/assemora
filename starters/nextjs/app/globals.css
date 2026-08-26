@@ -1,0 +1,72 @@
+/*
+ * The whole stylesheet, because a starter that opens with a design system is a
+ * starter people delete. Every class here is one a block view in app/blocks/ or a
+ * route in app/ asks for; add a block, add its rule.
+ */
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.hero {
+  padding: 6rem 1.5rem 4rem;
+  text-align: center;
+}
+
+.hero h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  line-height: 1.1;
+}
+
+.hero p {
+  margin: 0;
+  opacity: 0.65;
+}
+
+.rich-text {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 5rem;
+  white-space: pre-wrap;
+}
+
+.prose {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+}
+
+.prose h1 {
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
+  line-height: 1.2;
+}
+
+.prose ul {
+  padding-left: 1.25rem;
+}
+
+.notice {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px dashed currentcolor;
+  opacity: 0.75;
+}
+
+.notice code {
+  font-family: ui-monospace, monospace;
+}
+
+.missing {
+  margin: 1.5rem;
+  padding: 1rem;
+  border: 1px dashed currentcolor;
+  opacity: 0.6;
+}

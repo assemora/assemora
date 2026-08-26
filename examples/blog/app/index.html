@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The blog</title>
+    <!--
+      Enough type to read the example. `examples/company` is where the theme lives:
+      the universal design controls of SPEC.md §61 are tokens, and §62's token
+      document is what decides what they look like.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        font: 16px/1.6 system-ui, sans-serif;
+      }
+      .hero {
+        padding: 5rem 1.5rem 3rem;
+        max-width: 44rem;
+        margin: 0 auto;
+      }
+      .hero h1 {
+        margin: 0 0 0.5rem;
+        font-size: clamp(2rem, 5vw, 3rem);
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+      }
+      .hero p,
+      .byline {
+        margin: 0;
+        opacity: 0.65;
+      }
+      .prose,
+      .feed {
+        max-width: 44rem;
+        margin: 0 auto;
+        padding: 0 1.5rem 2rem;
+      }
+      .feed h2 {
+        font-size: 0.85rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.5;
+      }
+      .feed article {
+        padding: 1.25rem 0;
+        border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+      }
+      .feed h3 {
+        margin: 0 0 0.25rem;
+        font-size: 1.25rem;
+      }
+      .feed a {
+        color: inherit;
+      }
+      .missing {
+        margin: 1.5rem;
+        padding: 1rem;
+        border: 1px dashed currentColor;
+        opacity: 0.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="site"></div>
+    <script type="module" src="/preview.tsx"></script>
+  </body>
+</html>

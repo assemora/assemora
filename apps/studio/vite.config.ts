@@ -23,8 +23,11 @@ export default defineConfig({
     proxy: {
       '/api': { target: API, changeOrigin: true },
       // The builder canvas is an iframe on this origin, so it shares the session
-      // cookie and Studio can talk to it (SPEC.md §59).
-      '/preview': { target: `${API}/api`, changeOrigin: true },
+      // cookie and Studio can talk to it (SPEC.md §59). It is proxied to the origin
+      // root rather than under `/api`: a bundle is not an endpoint, so `assemora`
+      // serves the application's frontend beside the API rather than inside it, and
+      // the asset URLs baked into that bundle are absolute from the root.
+      '/preview': { target: API, changeOrigin: true },
     },
   },
 })
