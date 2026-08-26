@@ -131,7 +131,8 @@ and commit messages.
 ## Contributing
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to get set up, and the rules a change is
-held to. Security reports go through [`SECURITY.md`](SECURITY.md), privately.
+held to. [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) applies everywhere the project
+is discussed. Security reports go through [`SECURITY.md`](SECURITY.md), privately.
 
 ## License
 

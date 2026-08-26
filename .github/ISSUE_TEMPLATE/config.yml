@@ -6,6 +6,9 @@ contact_links:
   - name: The specification
     url: https://github.com/assemora/assemora/blob/main/SPEC.md
     about: What Assemora is meant to be. Most "why is it like this" questions are answered here.
+  - name: Code of conduct
+    url: https://github.com/assemora/assemora/blob/main/CODE_OF_CONDUCT.md
+    about: How we treat each other here, and how to report a problem privately.
   - name: Decisions already taken
     url: https://github.com/assemora/assemora/tree/main/docs/adr
     about: Architecture decision records, with the alternatives that were rejected and why.

@@ -123,6 +123,12 @@ alternative was and why it lost.
 
 Run `pnpm verify` before you open the pull request.
 
+## How we treat each other
+
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — the Contributor Covenant, and it
+applies to issues, pull requests and anywhere else the project is discussed. It
+says how to report a problem, and reports are handled privately.
+
 ## Reporting something
 
 - A bug: [open an issue](https://github.com/assemora/assemora/issues/new/choose)
