@@ -1,11 +1,12 @@
 # Applications
 
-These directories are created on their own phases (SPEC.md §115, §117) and stay
-empty until then — pnpm ignores them while they have no `package.json`.
-
-- `studio/` — the Studio React SPA, phase 8.
-- `playground/` — a surface for exercising the API by hand, phase 8.
-- `docs/` — documentation site, phase 10.
+- `studio/` — Studio, the visual application (SPEC.md §58). A React SPA and a client
+  of the application layer: it holds no business logic the API does not have, and it
+  never reaches past the API to the database. It is also published, so a generated
+  project can serve it at `/studio` beside its own API.
+- `playground/` — a running Assemora application, and the surface Studio is developed
+  against. Three files, because `assemora()` owns the wiring now (ADR-0022).
+- `docs/` — the documentation site. It renders the Markdown in `docs/guide/`.
 
 Studio is a client of a stable application layer. Starting development there is
 forbidden (SPEC.md §118).

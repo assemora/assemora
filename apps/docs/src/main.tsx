@@ -1,0 +1,15 @@
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+
+import { App } from './app.tsx'
+import './styles.css'
+
+const container = document.querySelector('#guide')
+
+if (container === null) throw new Error('index.html needs a #guide element to render into')
+
+createRoot(container).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)

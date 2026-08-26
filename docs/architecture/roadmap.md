@@ -54,5 +54,17 @@ their own phases. Until they contain a `package.json`, pnpm ignores them.
 - **Phase 7 — complete.** `@assemora/pages`, `@assemora/revisions`,
   `@assemora/media`. Every builder operation of §60 is a command, and every content
   mutation leaves a revision that can be restored.
-- **Phase 8 — next.** `apps/studio`: login, navigation, resource CRUD, media and the
-  API Explorer first; pages and the builder after.
+- **Phase 8 — complete.** `apps/studio`. Every screen is driven by the Schema
+  Registry: Studio holds no list of collections, no hand-written form and no list of
+  block types, and the builder canvas runs the application's own renderer.
+- **Phase 9 — complete.** `@assemora/mcp`, `@assemora/audit`, `@assemora/change-sets`.
+  Every command and query is a tool, a mutation is a proposal until a person applies
+  it, and the mandatory scenario of §97 runs over the protocol.
+- **Phase 10 — complete.** `@assemora/cli`, `create-assemora`, `assemora`, both
+  starters, both examples and the guide. `pnpm create assemora demo` writes a project
+  that already has everything §124 promises, and `tests/integration/v1.test.ts`
+  asserts it rather than believing it.
+
+The `apps/`, `starters/` and `examples/` directories are no longer empty; every one
+of them is a workspace package that CI compiles, which is what stops a starter or an
+example from rotting quietly.

@@ -5,7 +5,7 @@ PostgreSQL adapter: Query AST translation, transactions, migrations (Drizzle ins
 **Implementation phase:** 3 — implemented.
 
 ```ts
-const adapter = createPostgresAdapter({ url: process.env.DATABASE_URL })
+const adapter = postgres({ url: process.env.DATABASE_URL })
 useAdapter(adapter)
 
 await applySchema(adapter, [User.descriptor, Post.descriptor])

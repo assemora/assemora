@@ -15,9 +15,12 @@ architecture. Decisions already taken live in [`docs/adr/`](docs/adr/).
 Early, and honest about it: nothing is published to npm yet and the public API is
 still free to change.
 
-Phases 0 to 9 are complete — the framework runs, Studio runs, and an agent can drive
-the same application over MCP. `@assemora/plugin` and `@assemora/cli` are still
-scaffolding; phase 10 (the CLI, starters and examples) is next (SPEC.md §117).
+All ten phases are complete. `pnpm create assemora demo` writes a project that
+already has a database schema, REST CRUD, Studio, OpenAPI, the API Explorer, a typed
+SDK and an MCP server — and `tests/integration/v1.test.ts` asserts every one of those
+rather than taking them on trust (SPEC.md §124).
+
+The guide is [`docs/guide/`](docs/guide/), and `apps/docs` renders it.
 
 | Package | What it is |
 | --- | --- |
@@ -38,6 +41,10 @@ scaffolding; phase 10 (the CLI, starters and examples) is next (SPEC.md §117).
 | `@assemora/audit` | What happened, who did it, and how it ended |
 | `@assemora/change-sets` | What an agent proposed, previewed and not yet applied |
 | `@assemora/mcp` | Every command and query, as a tool, generated from the registry |
+| `@assemora/plugin` | A module an npm package ships, and what the registry says it added |
+| `@assemora/cli` | The `assemora` executable: generators, migrations, introspection |
+| `assemora` | The umbrella: one call assembles all of the above (SPEC.md §9) |
+| `create-assemora` | `pnpm create assemora my-project` |
 
 Studio (`apps/studio`) is a client of that layer and holds no list of collections,
 no hand-written form and no list of block types: it asks the Schema Registry what
@@ -75,6 +82,21 @@ PostgreSQL without changing a character.
 
 Dependency graph review:
 [`docs/architecture/package-graph.md`](docs/architecture/package-graph.md).
+
+```ts
+export default assemora({
+  database: postgres({ url: process.env.DATABASE_URL }),
+  modules: [auth(), pages({ blocks }), media(), blog()],
+  studio: true,
+  api: true,
+  mcp: true,
+})
+```
+
+That is the whole application file. The umbrella is the one package allowed to depend
+on everything, because it is the one nothing depends on — and it holds wiring rather
+than behaviour, including the routes `auth`, `media` and `mcp` are forbidden to
+declare themselves.
 
 An agent reaches the same application through MCP, and every registered command and
 query is already a tool — nobody maintains a list. A mutation tool does not mutate:
@@ -116,13 +138,17 @@ rather than a silent skip.
 ## Layout
 
 ```text
-packages/     17 framework packages with fixed boundaries
+packages/     21 framework packages with fixed boundaries
 apps/         studio/, playground/, docs/
-starters/     nextjs, bare — phase 10
-examples/     blog, company — phase 10
-docs/         architecture/, adr/, rules/
+starters/     bare — what `create-assemora` writes; nextjs — Assemora behind Next
+examples/     blog — relations, scopes, policies; company — the block tree and a theme
+docs/         guide/, architecture/, adr/, rules/
 scripts/      boundary checker and hooks
 ```
+
+A generated project needs one process, not two: `assemora()` serves Studio at
+`/studio` beside its own API, on one origin, so the session cookie is first-party.
+This repository runs them apart because Studio is rebuilt beside the playground.
 
 Two processes are needed to look at Studio:
 

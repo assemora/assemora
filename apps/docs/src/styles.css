@@ -1,0 +1,270 @@
+/*
+ * One stylesheet, deliberately.
+ *
+ * A documentation site is a column of prose beside a list of links, and every token
+ * below is a plain custom property: there is nothing here a reader has to build to
+ * change, and nothing to learn before editing it.
+ */
+
+:root {
+  --surface: #ffffff;
+  --surface-sunken: #f5f6fa;
+  --ink: #16181f;
+  --ink-soft: #5b6274;
+  --line: #e2e5ee;
+  --brand: #2f3ba8;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #101219;
+    --surface-sunken: #171a23;
+    --ink: #e7e9f0;
+    --ink-soft: #9aa1b5;
+    --line: #262a36;
+    --brand: #9aa6ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+a {
+  color: var(--brand);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  gap: 3rem;
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 6rem;
+}
+
+/* --- the contents ---------------------------------------------------------- */
+
+nav {
+  position: sticky;
+  top: 2.5rem;
+  align-self: start;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+}
+
+.brand {
+  display: block;
+  margin-bottom: 1.5rem;
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+nav ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+nav a {
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.4rem;
+  color: var(--ink-soft);
+  font-size: 0.925rem;
+  text-decoration: none;
+}
+
+nav a:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+
+nav a[aria-current="page"] {
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.number {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.aside {
+  margin-top: 2rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+/* --- the page -------------------------------------------------------------- */
+
+main {
+  min-width: 0;
+  max-width: 46rem;
+}
+
+article h1 {
+  margin: 0 0 1.5rem;
+  font-size: 2rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+article h2 {
+  margin: 3rem 0 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  font-size: 1.3rem;
+  letter-spacing: -0.01em;
+}
+
+article h3 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+article p,
+article li {
+  overflow-wrap: break-word;
+}
+
+article ul,
+article ol {
+  padding-left: 1.25rem;
+}
+
+article li {
+  margin: 0.35rem 0;
+}
+
+article blockquote {
+  margin: 1.5rem 0;
+  padding: 0.25rem 1.25rem;
+  border-left: 3px solid var(--brand);
+  background: var(--surface-sunken);
+  border-radius: 0 0.4rem 0.4rem 0;
+}
+
+code {
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.3rem;
+  background: var(--surface-sunken);
+  font-family: var(--mono);
+  font-size: 0.86em;
+}
+
+pre {
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--surface-sunken);
+  line-height: 1.55;
+}
+
+pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.85rem;
+}
+
+table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin: 1.5rem 0;
+  border-collapse: collapse;
+  font-size: 0.925rem;
+}
+
+th,
+td {
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- previous and next ----------------------------------------------------- */
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+footer a {
+  display: flex;
+  flex-direction: column;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+footer a:hover {
+  border-color: var(--brand);
+}
+
+footer .next {
+  text-align: right;
+}
+
+.direction {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- narrow ---------------------------------------------------------------- */
+
+@media (max-width: 60rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2rem;
+  }
+
+  nav {
+    position: static;
+    max-height: none;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .aside {
+    display: none;
+  }
+}

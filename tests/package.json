@@ -24,7 +24,9 @@
     "@assemora/auth": "workspace:*",
     "@assemora/pages": "workspace:*",
     "@assemora/revisions": "workspace:*",
-    "@assemora/media": "workspace:*"
+    "@assemora/media": "workspace:*",
+    "assemora": "workspace:*",
+    "create-assemora": "workspace:*"
   },
   "dependencies": {
     "@assemora/audit": "workspace:*",

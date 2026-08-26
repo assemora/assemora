@@ -3,28 +3,16 @@
   "ui": "stream",
   "tasks": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "dist/**",
-        "*/dist/**",
-        "*.tsbuildinfo",
-        ".next/**",
-        "!.next/cache/**"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "*/dist/**", "*.tsbuildinfo", ".next/**", "!.next/cache/**"]
     },
     "typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "clean": {
       "cache": false
     }
   },
-  "globalEnv": [
-    "ASSEMORA_TEST_DATABASE_URL"
-  ]
+  "globalEnv": ["ASSEMORA_TEST_DATABASE_URL"]
 }
