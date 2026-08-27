@@ -35,13 +35,64 @@ export const currentAdapter = (): DatabaseAdapter => {
 }
 
 /**
+ * Work waiting for the OUTERMOST transaction to commit (ADR-0023).
+ *
+ * The store is the list itself, and a nested `transaction()` never replaces it — so
+ * every layer inside registers against the one commit that actually makes rows
+ * durable. A savepoint is not that commit: everything written under it is still the
+ * caller's to undo.
+ */
+const waiting = new AsyncLocalStorage<(() => Promise<void>)[]>()
+
+const drain = async (work: readonly (() => Promise<void>)[]): Promise<void> => {
+  for (const item of work) {
+    try {
+      await item()
+    } catch {
+      // Swallowed on purpose, and documented on `TransactionPort.afterCommit`: this
+      // runs after the commit, so there is no caller left to reject to, and one
+      // registration's failure must not cancel the next one's. Whoever registers
+      // reports its own failure — the command bus logs the job it could not queue.
+    }
+  }
+}
+
+/**
  * Runs an operation inside a transaction. Everything the operation awaits sees the
  * transactional adapter without being told about it.
  */
 export const transaction = <T>(operation: () => Promise<T>): Promise<T> => {
   const adapter = currentAdapter()
+  const run = () => adapter.transaction(() => scoped.run(adapter, operation))
 
-  return adapter.transaction(() => scoped.run(adapter, operation))
+  // Nested: the caller owns the commit, so anything registered inside keeps waiting
+  // for theirs.
+  if (waiting.getStore() !== undefined) return run()
+
+  const work: (() => Promise<void>)[] = []
+
+  // `.then` is attached outside `waiting.run`, so the work drains with no transaction
+  // in scope — a job dispatched by after-commit work has nothing left to wait for,
+  // and would otherwise be appended to a list that is already being read.
+  return waiting.run(work, run).then(async (value) => {
+    await drain(work)
+
+    return value
+  })
+}
+
+/**
+ * Holds `work` until the outermost transaction commits, and drops it if that
+ * transaction is undone. With none open, "after commit" is "now".
+ */
+const afterCommit = (work: () => Promise<void>): Promise<void> => {
+  const pending = waiting.getStore()
+
+  if (pending === undefined) return work()
+
+  pending.push(work)
+
+  return Promise.resolve()
 }
 
 /**
@@ -87,4 +138,5 @@ const rollingBack = async <T>(operation: () => Promise<T>): Promise<T> => {
 export const dataTransactions = (): TransactionPort => ({
   run: (operation, options) =>
     options?.rollback === true ? rollingBack(operation) : transaction(operation),
+  afterCommit,
 })

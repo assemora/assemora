@@ -9,6 +9,7 @@ import { type Container, createContainer } from './container.js'
 import { type AssemoraContext, type ContextInit, createContext, runInContext } from './context.js'
 import { ConfigurationError } from './errors.js'
 import { createEventBus, type EventBus } from './events.js'
+import { createJobBus, type JobBus, registerJobBus } from './jobs.js'
 import { createLogger, type Logger, silentWriter } from './logger.js'
 import { type LifecyclePhase, MODULE, type ModuleBuilder, type ModuleContext } from './module.js'
 import {
@@ -17,7 +18,9 @@ import {
   denyAll,
   discardAudit,
   discardRevisions,
+  type QueuePort,
   type RevisionPort,
+  runJobsHere,
   type TransactionPort,
   withoutTransactions,
 } from './ports.js'
@@ -34,6 +37,12 @@ export type ApplicationOptions = {
   readonly transactions?: TransactionPort
   readonly revisions?: RevisionPort
   readonly audit?: AuditPort
+  /**
+   * Defaults to running jobs in this process, awaited (ADR-0023). A job that vanishes
+   * in development and works in production is the worst of the available defaults, so
+   * an application with no queue registered still runs the work it schedules.
+   */
+  readonly queue?: QueuePort
   readonly logger?: Logger
 }
 
@@ -41,6 +50,7 @@ export type Application = {
   readonly container: Container
   readonly commands: CommandBus
   readonly queries: QueryBus
+  readonly jobs: JobBus
   readonly events: EventBus
   readonly registry: SchemaRegistry
   readonly logger: Logger
@@ -65,15 +75,41 @@ export const createApplication = (options: ApplicationOptions = {}): Application
 
   const queries = createQueryBus({ authorization, registry, logger, audit })
 
+  // The default queue runs this application's own jobs, and the bus that holds them
+  // needs a queue — so the reference is closed over rather than passed. Nothing calls
+  // it until something is dispatched, by which time both exist.
+  const queue: QueuePort = options.queue ?? runJobsHere((queued) => jobs.run(queued))
+
+  // One port for both buses: "after the commit" has to mean the same instant to a
+  // command's batch and to a `dispatch()` that never entered one (ADR-0023).
+  const transactions = options.transactions ?? withoutTransactions()
+
   const commands = createCommandBus({
     authorization,
-    transactions: options.transactions ?? withoutTransactions(),
+    transactions,
     revisions: options.revisions ?? discardRevisions(),
     audit,
     events,
+    queue,
     registry,
     logger,
   })
+
+  const jobs = createJobBus({
+    commands,
+    queries,
+    events,
+    container,
+    queue,
+    transactions,
+    registry,
+    logger,
+  })
+
+  // `dispatch()` and `runJob()` are free functions with no application in scope
+  // (SPEC.md §82), so the application makes itself findable, the way an entity makes
+  // its restorer findable.
+  registerJobBus(jobs)
 
   const modules = options.modules ?? []
   const names = new Set<string>()
@@ -89,6 +125,7 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     container,
     commands,
     queries,
+    jobs,
     events,
     registry,
     logger: logger.child({ module }),
@@ -122,6 +159,7 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     container,
     commands,
     queries,
+    jobs,
     events,
     registry,
     logger,

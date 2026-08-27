@@ -13,6 +13,8 @@ import {
   collectRevisions,
   denyAll,
   permitAll,
+  type QueuedJob,
+  type QueuePort,
   type RevisionEntry,
   type TransactionPort,
 } from './ports.js'
@@ -62,6 +64,18 @@ const harness = (overrides: Harness = {}) => {
       trace.push('transaction:commit')
       return result
     },
+    // This harness models no nesting, so every commit is the outermost one and work
+    // registered against it runs straight away.
+    afterCommit: (work) => work(),
+  }
+
+  const pushed: QueuedJob[] = []
+
+  const queue: QueuePort = {
+    push: async (jobs) => {
+      trace.push('queue')
+      pushed.push(...jobs)
+    },
   }
 
   const bus = createCommandBus({
@@ -70,11 +84,12 @@ const harness = (overrides: Harness = {}) => {
     revisions: tracedRevisions,
     audit: tracedAudit,
     events,
+    queue,
     registry,
     logger,
   })
 
-  return { bus, trace, events, registry, revisions, audit }
+  return { bus, trace, events, registry, revisions, audit, pushed }
 }
 
 const PublishPage = command('pages.publish', {
@@ -182,6 +197,7 @@ describe('command pipeline', () => {
         run: async () => {
           throw new Error('rolled back')
         },
+        afterCommit: (work) => work(),
       },
     })
     events.on('page.published', listener)

@@ -11,6 +11,7 @@ import type { AnyCommand, CommandBus } from './commands.js'
 import type { Container, Factory, Token } from './container.js'
 import { ConfigurationError } from './errors.js'
 import type { EventBus, PayloadOf } from './events.js'
+import type { AnyJob, JobBus } from './jobs.js'
 import type { Logger } from './logger.js'
 import type { AnyQuery, QueryBus } from './queries.js'
 import type { SchemaRegistry } from './registry.js'
@@ -19,6 +20,7 @@ export type ModuleContext = {
   readonly container: Container
   readonly commands: CommandBus
   readonly queries: QueryBus
+  readonly jobs: JobBus
   readonly events: EventBus
   readonly registry: SchemaRegistry
   readonly logger: Logger
@@ -43,6 +45,8 @@ export interface ModuleBuilder {
   commands(...definitions: AnyCommand[]): ModuleBuilder
   /** Read operations. They never reach the Command Bus (SPEC.md §15). */
   queries(...definitions: AnyQuery[]): ModuleBuilder
+  /** Durable work the module can schedule (SPEC.md §82). */
+  jobs(...definitions: AnyJob[]): ModuleBuilder
   provide<T>(key: Token<T>, factory: Factory<T>): ModuleBuilder
   on<K extends string>(
     event: K,
@@ -109,6 +113,16 @@ export const module = (name: string): ModuleBuilder => {
     queries(...definitions: AnyQuery[]) {
       registrations.push((context) => {
         for (const definition of definitions) context.queries.register(definition, name)
+      })
+      return builder
+    },
+
+    // A method rather than a facet, because a job is a thing core knows about. Facets
+    // exist so that core need not learn what a model or a resource is (ADR-0009), and
+    // `job()` lives here beside `command()` and `query()`.
+    jobs(...definitions: AnyJob[]) {
+      registrations.push((context) => {
+        for (const definition of definitions) context.jobs.register(definition, name)
       })
       return builder
     },

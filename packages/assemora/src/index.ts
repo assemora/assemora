@@ -34,6 +34,8 @@ export type {
   ApiOptions,
   AssemoraOptions,
   FrontendOptions,
+  JobsOptions,
+  JobWorker,
   McpOptions,
   MediaOptions,
   ProjectOptions,

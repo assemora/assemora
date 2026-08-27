@@ -1,0 +1,37 @@
+{
+  "name": "@assemora/queue-bullmq",
+  "version": "0.0.0",
+  "private": true,
+  "description": "BullMQ queue adapter: durable jobs on Redis (BullMQ inside)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/queue-bullmq"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@assemora/schema": "workspace:*",
+    "@assemora/core": "workspace:*",
+    "bullmq": "5.81.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
+  }
+}

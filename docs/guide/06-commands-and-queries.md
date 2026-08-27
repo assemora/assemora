@@ -13,6 +13,10 @@ forgotten because nobody chooses to call them, history is not something a featur
 remembers to write, and an agent's action passes exactly the checks a person's click
 passes.
 
+A command that schedules durable work adds one step to that line, between the revision
+and the events: the queue is handed the batch once the transaction has closed, so a
+command that rolls back queues nothing. [Jobs](13-jobs.md) is the page about it.
+
 Reads never go through the Command Bus and never cause side effects. They go through
 the **Query Bus**, which still validates and still authorizes.
 
@@ -51,6 +55,7 @@ The context carries what the pipeline needs from a handler:
 | --- | --- |
 | `context.revise(draft)` | records a reversible change, inside the transaction |
 | `context.emit(name, payload)` | queues a side effect; listeners run after the commit |
+| `context.dispatch(...jobs)` | schedules durable work; the queue is handed it after the commit |
 | `context.authorize(subject, action, record)` | the second authorization question |
 | `context.execute(name, input)` | runs another command, on a savepoint inside this one |
 | `context.preview(proposals)` | previews a sequence without performing any of it |
@@ -158,4 +163,6 @@ list is curated.
   which is what the checks above consult.
 - [Agents and MCP](10-agents-and-mcp.md) — dry run and change sets, which are this
   same pipeline with the transaction rolled back.
+- [Jobs](13-jobs.md) — the durable work a command schedules, and why it waits for the
+  commit.
 - `packages/core/README.md` — the ports core owns and the layers above implement.

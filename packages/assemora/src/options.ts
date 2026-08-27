@@ -14,7 +14,7 @@
  */
 import { resolve as resolvePath } from 'node:path'
 
-import type { Logger, ModuleBuilder } from '@assemora/core'
+import type { Logger, ModuleBuilder, QueuePort } from '@assemora/core'
 import type { DatabaseAdapter } from '@assemora/database'
 import type { ApiVersion, VersionDeclaration } from '@assemora/http'
 import type { MutationMode } from '@assemora/mcp'
@@ -162,6 +162,50 @@ export type FrontendOptions = {
   readonly framedBy?: readonly string[]
 }
 
+/**
+ * A worker, as the umbrella has to see one (SPEC.md §82).
+ *
+ * One method, because one is all a lifecycle needs from here: this package starts a
+ * worker when a process asks to be one and stops it before the modules and the
+ * database go, and everything between those two moments belongs to the adapter.
+ *
+ * Nothing in the type names a queue, which is what keeps `@assemora/queue-bullmq` out
+ * of this package's dependencies — the bargain Studio already makes. An adapter is the
+ * application's choice, and a hard edge would install Redis into every project that
+ * does not use one (ADR-0022, ADR-0023). `queue.work()` there answers with exactly
+ * this shape, structurally, without either package importing the other.
+ */
+export type JobWorker = {
+  /** Stops taking new work and waits for what is already running. */
+  stop(): Promise<void> | void
+}
+
+/**
+ * Where dispatched work goes, and how this process becomes one of the things that
+ * runs it (SPEC.md §82, ADR-0023).
+ *
+ * Leaving it out is not "no jobs". Core's default runs them in this process, awaited,
+ * so a job never silently vanishes in development — what it is not is *durable*: a
+ * restart loses whatever was in flight, and a slow job slows the request that
+ * scheduled it. `queue` is what fixes both, and there is deliberately no way to ask
+ * for a third answer where a dispatched job is quietly dropped.
+ */
+export type JobsOptions = {
+  /** The adapter every dispatched job is handed to. */
+  readonly queue: QueuePort
+  /**
+   * How to build the worker, for a process that calls `work()`.
+   *
+   * A function rather than a worker, and both halves of that matter. It is a function
+   * because `assemora()` runs whenever the config file is merely imported — which is
+   * what `assemora routes` does — and a worker built there would open a connection and
+   * start consuming production jobs to answer a question about routes (ADR-0021).
+   * It is separate from `queue` because one application definition has to serve two
+   * process shapes, and which one this process is belongs to its entry point.
+   */
+  readonly worker?: () => JobWorker | Promise<JobWorker>
+}
+
 export type SessionOptions = {
   /**
    * `Secure` on the session and CSRF cookies (SPEC.md §85).
@@ -195,6 +239,15 @@ export type AssemoraOptions = {
   /** Mounts the MCP endpoint and registers the module its tools introspect. */
   readonly mcp?: boolean | McpOptions
   readonly media?: MediaOptions
+  /**
+   * Durable background work (SPEC.md §82).
+   *
+   * Absent, jobs run in this process, awaited — the default core chose, because a job
+   * that vanishes in development and works in production is the worst of the answers
+   * available (ADR-0023). Naming a `queue` makes them durable; naming a `worker` as
+   * well is what lets `work()` turn a process into one that runs them.
+   */
+  readonly jobs?: JobsOptions
   readonly frontend?: FrontendOptions
   /**
    * Browser origins other than this one that may *call* this application (SPEC.md §85).

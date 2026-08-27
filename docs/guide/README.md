@@ -22,8 +22,9 @@ the detail behind the page that mentions it.
 | [10. Agents and MCP](10-agents-and-mcp.md) | The tools, dry run, change sets, the audit log |
 | [11. The CLI](11-the-cli.md) | The commands, `assemora.config.ts`, migrations |
 | [12. Deploying](12-deploying.md) | The database, storage, the security defaults |
+| [13. Jobs](13-jobs.md) | `job()`, `dispatch()`, the queue adapter, the worker process |
 
-## Reading it in less than twelve pages
+## Reading it in less than thirteen pages
 
 - **"Is this for me?"** — [1](01-what-assemora-is.md), then
   [2](02-getting-started.md).
@@ -35,6 +36,8 @@ the detail behind the page that mentions it.
   [5](05-resources.md) for the field kinds a block uses.
 - **"I want an agent to edit my site."** — [10](10-agents-and-mcp.md), and
   [6](06-commands-and-queries.md) for the pipeline it goes through.
+- **"I want work to happen after the response."** — [13](13-jobs.md), with
+  [6](06-commands-and-queries.md) for the commit it waits for.
 - **"I want to put this somewhere."** — [11](11-the-cli.md), [12](12-deploying.md).
 
 ## The code this guide is written against

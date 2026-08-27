@@ -15,7 +15,15 @@ export type Actor = {
   readonly id: string
 }
 
-export type ContextSource = 'studio' | 'rest' | 'sdk' | 'mcp' | 'cli' | 'internal'
+/**
+ * Where an operation came from.
+ *
+ * `'job'` is a worker running queued work (SPEC.md §82). It is its own source rather
+ * than the source that dispatched the job, because a row written by a worker was not
+ * written by the click that scheduled it, and an audit entry saying otherwise would
+ * be a forged one. The dispatching source travels in the job's envelope instead.
+ */
+export type ContextSource = 'studio' | 'rest' | 'sdk' | 'mcp' | 'cli' | 'job' | 'internal'
 
 export type AssemoraContext = {
   readonly requestId: string

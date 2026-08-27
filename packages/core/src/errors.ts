@@ -117,6 +117,18 @@ export class UnknownQueryError extends AssemoraError {
   }
 }
 
+/**
+ * Raised when a queue hands back work nothing declares (SPEC.md §82).
+ *
+ * Usually a job that was renamed or removed while older ones were still in the
+ * queue, which is why the worker refuses loudly rather than dropping the payload.
+ */
+export class UnknownJobError extends AssemoraError {
+  constructor(name: string) {
+    super('UNKNOWN_JOB', `Job "${name}" is not registered`, { status: 404 })
+  }
+}
+
 export class ConfigurationError extends AssemoraError {
   constructor(message: string) {
     super('CONFIGURATION_ERROR', message, { status: 500 })

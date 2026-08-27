@@ -26,7 +26,8 @@
     "@assemora/revisions": "workspace:*",
     "@assemora/media": "workspace:*",
     "assemora": "workspace:*",
-    "create-assemora": "workspace:*"
+    "create-assemora": "workspace:*",
+    "@assemora/queue-bullmq": "workspace:*"
   },
   "dependencies": {
     "@assemora/audit": "workspace:*",

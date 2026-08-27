@@ -60,10 +60,23 @@ have already been made — do not reverse one without writing a new ADR.
   documented and answering 404 was always possible, and versioning made it the
   default outcome.
 
+- **SPEC.md §82 — done.** `job()` is the third member of the family beside `command()`
+  and `query()`, `dispatch()` hands one to a `QueuePort`, and `@assemora/queue-bullmq`
+  is the production adapter (ADR-0023). A job dispatched inside a command waits for
+  the **outermost** transaction to commit, not for the command to return — an earlier
+  draft held it per command, and a review proved a nested rollback and an outer
+  `transaction()` both left the job queued against state that never existed. That seam
+  is `TransactionPort.afterCommit`, and events now use it too: a listener notified for
+  an undone change was the same bug.
+- Resolving an actor's permissions now checks that the user is still active, in
+  `permissionsOf` — the one funnel every path goes through. A job carries an actor
+  sealed into an envelope and replays it later, so a credential-time check structurally
+  cannot see it, and a deactivated person's queued job used to write as them. It costs
+  one extra row read per resolution and it is the only revocation the framework has.
+
 Still unbuilt from SPEC: §62 (the theme has a token document but no table, no commands
-and no routes — that contract has to be designed), §82 (jobs and a queue adapter), and
-the two halves of §88 nobody has needed yet — slow query logging and an error tracking
-adapter interface.
+and no routes — that contract has to be designed), and the two halves of §88 nobody
+has needed yet — slow query logging and an error tracking adapter interface.
 
 Decisions phase 10 added (ADR-0021, ADR-0022):
 

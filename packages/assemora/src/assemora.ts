@@ -34,7 +34,6 @@ import {
   type ModuleBuilder,
 } from '@assemora/core'
 import { dataTransactions, useAdapter } from '@assemora/data'
-import type { DatabaseAdapter } from '@assemora/database'
 import { commandEndpoints, commandRoutes, createHttpServer, type HttpServer } from '@assemora/http'
 import { mcp } from '@assemora/mcp'
 import { currentStorage, localStorage, type StorageDriver, useStorage } from '@assemora/media'
@@ -49,6 +48,7 @@ import {
   type AssemoraOptions,
   DEFAULT_PORT,
   defaultMediaRoot,
+  type JobWorker,
   type MediaOptions,
   type ResolvedApi,
   resolve,
@@ -89,7 +89,21 @@ export type AssemoraApplication = {
   /** Boots, then serves. Answers with the address it is listening on. */
   listen(port?: number, host?: string): Promise<string>
   /**
-   * Stops serving, stops the modules, closes the database. In that order.
+   * Boots, then works: this process starts pulling jobs off the queue (SPEC.md §82).
+   *
+   * The counterpart of `listen()`, and separate from it on purpose. One application
+   * definition has to serve two process shapes — the one that answers requests and the
+   * one that runs the work those requests schedule — and which of them a process is, is
+   * a property of its entry point rather than of the application. A process that is
+   * both calls both; a worker-only process calls this and nothing else.
+   *
+   * It is deliberately not part of `boot()`. The CLI boots this very application to
+   * answer `assemora routes` (ADR-0021), and a question about routes must not attach a
+   * consumer to the production queue and start running jobs out of it.
+   */
+  work(): Promise<void>
+  /**
+   * Stops serving, stops working, stops the modules, closes the database. In that order.
    *
    * Every step is attempted even when an earlier one fails, because the database is
    * the last of them and a connection pool nobody closed outlives the process that
@@ -106,16 +120,17 @@ const defaultPort = (): number => {
 }
 
 /**
- * The adapter's own `close()`, when it has one.
+ * An adapter's own `close()`, when it has one.
  *
- * `DatabaseAdapter` does not declare it — an in-memory adapter has nothing to close —
- * and `PostgresAdapter` does, because a connection pool outlives the process that
- * forgets it.
+ * Neither `DatabaseAdapter` nor `QueuePort` declares one — an in-memory adapter and a
+ * queue that runs jobs here have nothing to close — and the real ones do, because a
+ * connection pool outlives the process that forgets it. Asking rather than requiring is
+ * what lets both interfaces stay the narrow things they are.
  */
-const closable = (adapter: DatabaseAdapter): { close(): Promise<void> } | undefined => {
-  const candidate = adapter as { close?: unknown }
+const closable = (adapter: unknown): { close(): Promise<void> } | undefined => {
+  const candidate = adapter as { close?: unknown } | null | undefined
 
-  return typeof candidate.close === 'function'
+  return typeof candidate?.close === 'function'
     ? (candidate as { close(): Promise<void> })
     : undefined
 }
@@ -508,10 +523,28 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     // a table that is no longer part of the schema.
     ...(settings.revisions ? { revisions: revisions() } : {}),
     ...(settings.audit ? { audit: audit() } : {}),
+    // Left out, core runs jobs in this process rather than discarding them: a missing
+    // revision is an absence, a missing job is a lie (ADR-0023).
+    ...(options.jobs === undefined ? {} : { queue: options.jobs.queue }),
     logger,
   })
 
+  if (options.jobs === undefined && app.jobs.names().length > 0) {
+    // Not a refusal, and not silence either — the same bargain the default media root
+    // makes. In-process is a correct answer for a small deployment and the only honest
+    // one for development, but it is not the answer a durable queue gives, and an
+    // application whose work must survive a restart has to be able to see that it did
+    // not get one (SPEC.md §82).
+    logger.warn('Jobs run inside the process that schedules them', {
+      jobs: app.jobs.names(),
+      effect: 'a restart loses what is in flight, and a slow job slows the request',
+      option: 'jobs: { queue } for a durable queue',
+    })
+  }
+
   let booting: Promise<Application> | undefined
+  let working: Promise<void> | undefined
+  let worker: JobWorker | undefined
   let stopped = false
   let ready = false
 
@@ -556,6 +589,33 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     return booting
   }
 
+  /**
+   * One worker, whichever entry point asks for it, and none until one does.
+   *
+   * The worker is built here rather than when the application was declared, so that
+   * importing the config file — which is all `assemora routes` does — connects to
+   * nothing (ADR-0021).
+   */
+  const work = (): Promise<void> => {
+    working ??= (async () => {
+      const build = options.jobs?.worker
+
+      if (build === undefined) {
+        throw new ConfigurationError(
+          'This application declares no job worker, so there is nothing for work() to run. Pass jobs: { queue, worker } — worker is a function, so that importing this file does not start one.',
+        )
+      }
+
+      await boot()
+
+      worker = await build()
+
+      logger.info('Working the job queue')
+    })()
+
+    return working
+  }
+
   const shutdown = async (): Promise<void> => {
     if (stopped) return
 
@@ -589,6 +649,24 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
       })
     }
 
+    // Then the other intake. A worker stops by refusing new jobs and waiting for the
+    // ones already running, and those jobs execute commands — so it has to stop while
+    // the modules and the database are still there to run them. The other order
+    // strands a job halfway through the work it was queued to finish.
+    await attempt('worker', async () => {
+      // Started, or still starting. A shutdown that raced the first job would otherwise
+      // leave a worker holding the very connection this function came to close, and the
+      // failure of a start nobody awaited belongs to whoever called work().
+      await working?.catch(() => undefined)
+      await worker?.stop()
+    })
+
+    // And then its connections, once nothing is left that could push on them or pull
+    // from them. A queue adapter is only required to push, so this asks.
+    await attempt('queue', async () => {
+      await closable(options.jobs?.queue)?.close()
+    })
+
     await attempt('modules', () => app.shutdown())
     await attempt('database', async () => {
       await closable(options.database)?.close()
@@ -615,6 +693,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     container: app.container,
     commands: app.commands,
     queries: app.queries,
+    jobs: app.jobs,
     events: app.events,
     registry: app.registry,
     logger: app.logger,
@@ -629,6 +708,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     app: facade,
     server: served?.server,
     boot,
+    work,
     shutdown,
 
     async listen(port = defaultPort(), host) {

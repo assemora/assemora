@@ -72,7 +72,8 @@ export const createAgent = async (details: AgentDetails): Promise<CreatedAgent> 
   return { agentId: agent.id, token: issued.token, tokenId: token.id }
 }
 
-const isLive = (expiresAt: Date | null): boolean =>
+/** A credential with no expiry, or one whose expiry has not arrived. */
+export const isLive = (expiresAt: Date | null): boolean =>
   expiresAt === null || expiresAt.getTime() > Date.now()
 
 /** The actor a bearer token stands for, or nobody. */

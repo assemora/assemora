@@ -165,7 +165,8 @@ app.app       // the Application, un-booted
 app.server    // the HttpServer, or undefined when api: false
 await app.boot()      // boots once, and mounts what needs a filesystem
 await app.listen()    // boots, then serves; answers with the address
-await app.shutdown()  // server, then modules, then the database
+await app.work()      // boots, then runs the job queue (SPEC.md §82)
+await app.shutdown()  // server, worker, modules, database
 ```
 
 Nothing in `assemora()` is asynchronous, and it returns with the Schema Registry
@@ -180,6 +181,53 @@ mean the CLI's succeeded and `listen()`'s failed — with Studio and the preview
 are mounted by this package, missing from the application that did boot. One boot, two
 callers. `shutdown()` is the same: every step is attempted even if one throws, because
 the database is the last of them and a pool nobody closed outlives its process.
+
+## Jobs, and the process that runs them
+
+Say nothing and jobs run inside the process that schedules them, awaited — core's
+default, because a job that vanishes in development and works in production is the
+worst of the available answers (ADR-0023). The application logs one warning saying so,
+and only when it actually declares a job.
+
+```ts
+import { bullQueue } from '@assemora/queue-bullmq'
+
+const queue = bullQueue({ connection: { url: process.env.REDIS_URL ?? '' } })
+
+assemora({
+  …,
+  jobs: { queue, worker: () => queue.work({ concurrency: 4 }) },
+})
+```
+
+`queue` is where dispatched work goes — anything with `push(jobs)`. `worker` is *how to
+build* a worker — a function answering with anything that has `stop()` — and both halves
+of that are deliberate: it is a function because importing this file is all `assemora
+routes` does, and a worker built at import would consume production jobs to answer a
+question about routes. It is separate from `queue` because one application definition
+has to serve two process shapes.
+
+Which shape a process is belongs to its entry point, not to the application:
+
+```ts
+// src/server.ts        — serves
+await app.listen()
+
+// src/worker.ts        — works, and does nothing else
+await app.work()
+```
+
+A process that does both calls both. `@assemora/queue-bullmq` is deliberately not a
+dependency of this package: an adapter is the application's choice, and a hard edge
+would install Redis into every project that does not use one — the same bargain Studio
+makes. Nothing here names a queue; the two shapes are `{ push }` and `{ stop }`, and
+the adapter satisfies both without either package importing the other.
+
+`shutdown()` stops the worker after the server, then closes the queue, and only then
+the modules and the database. A worker stops by refusing new jobs and waiting for the
+ones already running, and those jobs execute commands — the other order strands one
+halfway through, or takes its connection away mid-job. The queue's own `close()` is
+asked for rather than required, exactly as the database adapter's is.
 
 ## What it costs
 

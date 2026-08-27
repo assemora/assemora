@@ -131,6 +131,30 @@ in a bucket or behind a CDN, that origin is added to `img-src` and `media-src`
 automatically, read off the storage driver you configured. Nothing else in the policy
 moves, and there is no option that widens it by hand.
 
+## Background work
+
+An application that declares a job and configures no queue runs its jobs inside the
+process that schedules them, awaited, and says so once on boot. That is a real answer
+for a small deployment; it is not a durable one, because a restart loses whatever was
+in flight and a slow job slows the request that scheduled it.
+
+```ts
+const queue = bullQueue({ connection: { url: process.env.REDIS_URL ?? '' } })
+
+assemora({ …, jobs: { queue, worker: () => queue.work({ concurrency: 4 }) } })
+```
+
+The worker is a second process, running the same application:
+
+```ts
+// src/worker.ts
+await createApp().work()
+```
+
+`listen()` serves, `work()` works, and a process that does both calls both. There is no
+`assemora worker` command — SPEC.md §77 fixes twenty-two of them and none is a worker.
+See [Jobs](13-jobs.md) for the whole of it.
+
 ## Environment
 
 The framework reads exactly two variables on its own:
@@ -181,6 +205,8 @@ queries are caught by tests and logs rather than by code review.
 
 ## Where to look next
 
+- [Jobs](13-jobs.md) — the queue adapter, the worker process and what it costs to have
+  neither.
 - [`SPEC.md`](../../SPEC.md) §85 to §89 for the requirements this page implements.
 - `packages/media/README.md` for every S3 option and what it signs.
 - `packages/assemora/README.md` for the whole default surface in one place.

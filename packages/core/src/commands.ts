@@ -18,10 +18,13 @@ import {
 import { type AssemoraContext, contextOrInternal } from './context.js'
 import { AssemoraError, UnknownCommandError, ValidationError } from './errors.js'
 import type { EventBus, PayloadOf } from './events.js'
+import { collectDispatches, type JobRequest, queuedFrom } from './jobs.js'
 import type { Logger } from './logger.js'
 import type {
   AuditPort,
   AuthorizationPort,
+  QueuedJob,
+  QueuePort,
   RevisionDraft,
   RevisionEntry,
   TransactionPort,
@@ -33,6 +36,17 @@ export type CommandContext = AssemoraContext & {
   readonly logger: Logger
   /** Queues a side effect. Listeners run after the transaction commits (SPEC.md §81). */
   emit<K extends string>(name: K, payload: PayloadOf<K>): void
+  /**
+   * Schedules durable work. Handed to the queue once the outermost transaction
+   * commits (SPEC.md §82).
+   *
+   * It exists for the reason `emit` exists, and the free `dispatch()` writes into the
+   * same batch: a job that reached a queue before a rollback would run against a
+   * world that never existed (ADR-0023). "The outermost" and not "this command's" —
+   * a command's own transaction may be a savepoint inside one that is still free to
+   * undo everything it wrote.
+   */
+  dispatch(...jobs: readonly JobRequest[]): void
   /** Records a reversible change. Written inside the transaction (SPEC.md §64). */
   revise(draft: RevisionDraft): void
   /**
@@ -132,6 +146,8 @@ export type Preview = {
   readonly changes: readonly ChangedEntity[]
   /** The events it would emit. None of them were emitted. */
   readonly events: readonly string[]
+  /** The jobs it would dispatch. None of them were queued. */
+  readonly jobs: readonly string[]
 }
 
 /**
@@ -201,9 +217,20 @@ export type CommandBusOptions = {
   readonly revisions: { record(entries: readonly RevisionEntry[]): Promise<void> }
   readonly audit: AuditPort
   readonly events: EventBus
+  /** Where a command's jobs go, once the change they were scheduled for is durable. */
+  readonly queue: QueuePort
   readonly registry: SchemaRegistry
   readonly logger: Logger
 }
+
+/**
+ * Refusals that will answer the same way tomorrow (SPEC.md §83).
+ *
+ * A queue is allowed to refuse work for two very different reasons, and the log line
+ * has to say which: an unreachable Redis is an outage, while a payload it cannot
+ * encode, or a job the workers do not have, is a defect nobody will fix by waiting.
+ */
+const PERMANENT_REFUSALS = new Set(['UNQUEUEABLE_PAYLOAD', 'VALIDATION_ERROR', 'UNKNOWN_JOB'])
 
 export const createCommandBus = (options: CommandBusOptions): CommandBus => {
   const registered = new Map<string, AnyCommand>()
@@ -256,6 +283,40 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       }
     }
 
+    /**
+     * Hands the batch to the queue, and never fails the command for it.
+     *
+     * By the time this runs the transaction has closed, and when the command was
+     * inside somebody else's transaction the caller has already returned — there is
+     * nobody left to reject to. So the report is the log, and it separates the two
+     * things that bring it here, because they call for opposite reactions:
+     *
+     * - a queue that could not be reached is an outage. The work is lost, the
+     *   command was right to commit, and time is what fixes it.
+     * - a payload a queue will never accept answers the same way forever, and
+     *   calling that an outage points whoever reads the log at Redis rather than at
+     *   the payload. `job()` refuses what core knows no queue can carry, so a
+     *   command fails at the dispatch that made the mistake and never gets here;
+     *   this is the backstop for a rule only the adapter has.
+     */
+    const handOver = async (jobs: readonly QueuedJob[]): Promise<void> => {
+      try {
+        await options.queue.push(jobs)
+      } catch (error) {
+        const permanent = error instanceof AssemoraError && PERMANENT_REFUSALS.has(error.code)
+
+        options.logger.error(
+          permanent ? 'A job was refused and will never run' : 'Jobs could not be queued',
+          {
+            command: definition.name,
+            requestId: context.requestId,
+            jobs: jobs.map((job) => job.name),
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        )
+      }
+    }
+
     // 1. Validation.
     const parsed = definition.input.parse(rawInput)
 
@@ -276,11 +337,31 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       const revisions: RevisionEntry[] = []
       const queued: { readonly name: string; readonly payload: unknown }[] = []
 
+      /**
+       * Every command holds its own jobs, and hands them to the transaction seam.
+       *
+       * A nested command used to share the caller's array, which meant its jobs
+       * outlived its own rollback: the savepoint took the rows, the revisions and
+       * the events, and left the jobs sitting in the outer command's batch to be
+       * queued when the outer one committed. Jobs were the only stage of the
+       * pipeline that survived a rollback (ADR-0023).
+       *
+       * Nesting is not the whole of it either — two top-level commands inside one
+       * `transaction()` are not nested at all, and the first one still must not
+       * queue anything the second one's failure will undo. So the batch is handed
+       * to `transactions.afterCommit` rather than pushed at step 6, and it is the
+       * outermost commit that decides.
+       */
+      const dispatched: QueuedJob[] = []
+
       const commandContext: CommandContext = {
         ...context,
         logger: options.logger.child({ command: definition.name }),
         emit: (name, payload) => {
           queued.push({ name, payload })
+        },
+        dispatch: (...jobs) => {
+          for (const request of jobs) dispatched.push(queuedFrom(request, context))
         },
         authorize: async (subject, action, record) => {
           await options.authorization.authorizeRecord?.({ subject, action, record, context })
@@ -302,18 +383,21 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       // In a preview this is a nested transaction — a savepoint — inside the one
       // the caller opened and will undo. A step must not undo itself, or the step
       // after it would not see what it did (SPEC.md §74).
-      const result = await options.transactions.run(async () => {
-        const handled = await (
-          definition.handle as (input: unknown, context: CommandContext) => Promise<unknown>
-        )(parsed.value, commandContext)
+      const result = await collectDispatches(dispatched, () =>
+        options.transactions.run(async () => {
+          const handled = await (
+            definition.handle as (input: unknown, context: CommandContext) => Promise<unknown>
+          )(parsed.value, commandContext)
 
-        if (revisions.length > 0) await options.revisions.record(revisions)
+          if (revisions.length > 0) await options.revisions.record(revisions)
 
-        return handled
-      })
+          return handled
+        }),
+      )
 
       if (preview) {
-        // No events: nothing became durable, and a listener cannot be un-notified.
+        // Neither events nor jobs: nothing became durable, and a job cannot be un-run
+        // any more than a listener can be un-notified (SPEC.md §73).
         await audit('previewed', { changes: revisions.length })
 
         return {
@@ -327,12 +411,25 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
             patch: diff(revision.before, revision.after),
           })),
           events: queued.map((event) => event.name),
+          jobs: dispatched.map((job) => job.name),
         } satisfies Preview
       }
 
-      // 6. Events, only once the change is durable.
-      for (const event of queued) {
-        await options.events.emit(event.name, event.payload as PayloadOf<string>)
+      // 6. Jobs and events, only once the change is durable — which is the outermost
+      // commit and not this command's own `run()`, because that one may be a
+      // savepoint somebody else is still free to undo (ADR-0023).
+      //
+      // Both halves are one registration, so the queue keeps going first: it is the
+      // durable half, and a listener taking its time must not delay work that has to
+      // survive this process.
+      if (dispatched.length > 0 || queued.length > 0) {
+        await options.transactions.afterCommit(async () => {
+          if (dispatched.length > 0) await handOver(dispatched)
+
+          for (const event of queued) {
+            await options.events.emit(event.name, event.payload as PayloadOf<string>)
+          }
+        })
       }
 
       // 7. Audit. The first revision names what was acted on; a command that touched
@@ -341,7 +438,11 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
 
       await audit(
         'succeeded',
-        { revisions: revisions.length, events: queued.length },
+        {
+          revisions: revisions.length,
+          events: queued.length,
+          jobs: dispatched.length,
+        },
         acted === undefined
           ? undefined
           : { entityType: acted.entityType, entityId: acted.entityId },

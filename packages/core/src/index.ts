@@ -45,6 +45,7 @@ export {
   ForbiddenError,
   NotFoundError,
   UnknownCommandError,
+  UnknownJobError,
   UnknownQueryError,
   ValidationError,
 } from './errors.js'
@@ -55,6 +56,21 @@ export {
   type PayloadOf,
   type Unsubscribe,
 } from './events.js'
+export {
+  type AnyJob,
+  clearJobBus,
+  createJobBus,
+  dispatch,
+  type JobBus,
+  type JobBusOptions,
+  type JobContext,
+  type JobDefinition,
+  type JobDescriptor,
+  type JobRequest,
+  job,
+  registerJobBus,
+  runJob,
+} from './jobs.js'
 export {
   createLogger,
   type LogFields,
@@ -90,6 +106,8 @@ export {
   discardAudit,
   discardRevisions,
   permitAll,
+  type QueuedJob,
+  type QueuePort,
   type RecordAuthorizationRequest,
   type RestoreResult,
   type Restorer,
@@ -98,6 +116,7 @@ export {
   type RevisionPort,
   registerRestorer,
   restorerFor,
+  runJobsHere,
   type TransactionOptions,
   type TransactionPort,
   withoutTransactions,

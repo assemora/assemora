@@ -7,7 +7,7 @@
  * register implementations — the check stays in the mutation path and cannot be
  * bypassed (see docs/architecture/package-graph.md).
  */
-import type { AssemoraContext } from './context.js'
+import type { Actor, AssemoraContext, ContextSource } from './context.js'
 import { ConfigurationError, ForbiddenError } from './errors.js'
 
 // --- authorization -----------------------------------------------------------
@@ -94,6 +94,25 @@ export type TransactionOptions = {
 
 export type TransactionPort = {
   run<T>(operation: () => Promise<T>, options?: TransactionOptions): Promise<T>
+  /**
+   * Holds `work` until the OUTERMOST transaction commits, and drops it if that
+   * transaction rolls back (SPEC.md §82, ADR-0023).
+   *
+   * "After the commit" is a transaction concept, not a command concept, which is
+   * why it lives here. A command that pushed to a queue at the end of its own
+   * `run()` would be right only when nothing else had a transaction open around it:
+   * a nested command's `run` is a savepoint, and two top-level commands inside one
+   * `transaction()` are two savepoints — in both cases the caller can still undo
+   * everything the command wrote, long after the command believed it had committed.
+   * Work registered here waits for the commit that actually makes rows durable.
+   *
+   * With no transaction open, "after commit" is "now": the work runs before this
+   * resolves. Inside one, this resolves as soon as the work is registered, so the
+   * caller has already returned by the time it runs — which is why the work has to
+   * report its own failures, and why nothing that could still be refused for good
+   * should be left this late (see `job()`).
+   */
+  afterCommit(work: () => Promise<void>): Promise<void>
 }
 
 /**
@@ -114,6 +133,9 @@ export const withoutTransactions = (): TransactionPort => ({
 
     return operation()
   },
+
+  // There is no commit to wait for, so waiting would defer the work forever.
+  afterCommit: (work) => work(),
 })
 
 // --- revisions ---------------------------------------------------------------
@@ -202,6 +224,82 @@ export const restorerFor = (entityType: string): Restorer | undefined => restore
 export const clearRestorers = (): void => {
   restorers.clear()
 }
+
+// --- jobs --------------------------------------------------------------------
+
+/**
+ * One job on its way to a queue, and everything a worker needs to run it
+ * (SPEC.md §82, ADR-0023).
+ *
+ * It is a wire format: it is serialized into a queue and read back by a process that
+ * shares nothing with the one that wrote it. Every field is here because a worker
+ * cannot recover it otherwise — which is also why the whole context is not. A worker
+ * saw no request, so it may not claim the user agent or the locale of one.
+ */
+export type QueuedJob = {
+  readonly name: string
+  /** Validated when the job was dispatched, and validated again when it is run. */
+  readonly payload: unknown
+  /**
+   * How many times the queue may try again after a failure.
+   *
+   * Declared by the job and interpreted by the adapter: what backoff means, and
+   * where a job goes once it has exhausted them, is the queue's business.
+   */
+  readonly retries: number
+  /**
+   * The request that scheduled the work, kept so the click, the command, the job and
+   * the commands the job runs share one id in the logs (SPEC.md §87).
+   */
+  readonly requestId: string
+  /**
+   * Whose action scheduled it. The worker restores it, so the job's own writes are
+   * authorized as that person and the audit log says who (SPEC.md §67).
+   */
+  readonly actor?: Actor
+  /**
+   * What kind of caller dispatched it. The job itself runs with source `'job'`,
+   * because a row written by a worker was not written by the studio click that
+   * scheduled it — this is what remains of where the work came from.
+   */
+  readonly dispatchedFrom: ContextSource
+}
+
+export type QueuePort = {
+  push(jobs: readonly QueuedJob[]): Promise<void>
+}
+
+/**
+ * Runs jobs in this process, awaited. The default, until a queue adapter is
+ * registered.
+ *
+ * It does not discard them. The other defaults discard because a missing revision is
+ * an absence, while a missing job is a lie: work an application was told would happen
+ * and that never did. Awaited rather than fired and forgotten, so a test is
+ * deterministic and a failure is read in development instead of lost.
+ *
+ * It does not retry either. `retries` is a declaration addressed to a queue, and this
+ * is not one; an application that needs them registers an adapter.
+ *
+ * A job that throws is not a push that failed. A real queue accepts the work, the
+ * worker fails, and whoever dispatched it is long gone — so this behaves the same
+ * way rather than teaching an application a failure mode production does not have.
+ * Every job gets its turn for the same reason: one bad job cancelling the ones
+ * behind it would drop work no queue would have dropped.
+ */
+export const runJobsHere = (run: (job: QueuedJob) => Promise<void>): QueuePort => ({
+  push: async (jobs) => {
+    for (const job of jobs) {
+      try {
+        await run(job)
+      } catch {
+        // Deliberately swallowed here and nowhere else: `JobBus.run` logs the failure
+        // against the job that had it, which is the only report that names which job
+        // of the batch went wrong.
+      }
+    }
+  },
+})
 
 // --- audit -------------------------------------------------------------------
 

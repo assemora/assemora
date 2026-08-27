@@ -33,6 +33,9 @@ const transactions = (): TransactionPort => ({
       throw error
     }
   },
+
+  // This fake models no nesting, so every commit is the outermost one.
+  afterCommit: (work) => work(),
 })
 
 const Rename = command('notes.rename', {

@@ -2,9 +2,10 @@
 
 A real application built on Assemora, and the one Studio is developed against.
 
-It is deliberately small — a model, a resource, three blocks, one hand-written route
-and a module — because SPEC.md §99 says an application file should be short enough to
-read. If this stops being true, the framework has drifted.
+It is deliberately small — a model, a resource, three blocks, one hand-written route,
+one command, the job that command implies, and a module — because SPEC.md §99 says an
+application file should be short enough to read. If this stops being true, the
+framework has drifted.
 
 ```bash
 pnpm --filter @assemora/playground dev
@@ -22,11 +23,18 @@ What it composes:
 
 | File | What it shows |
 | --- | --- |
-| `src/blog.ts` | `model()`, `resource()`, `block()`, `route()`, `module()` |
+| `src/blog.ts` | `model()`, `resource()`, `block()`, `route()`, `command()`, `job()`, `module()` |
 | `src/main.ts` | `assemora()`: the whole application in one call (SPEC.md §9) |
 | `src/seed.ts` | Content created through commands, not through the database |
 | `web/src/views.tsx` | What this application's blocks look like (SPEC.md §57) |
 | `web/src/theme.css` | What a design token means here (SPEC.md §61, §62) |
+
+`sitemap.generate` is the durable half. Publishing an article dispatches it *inside*
+the command, so a publish that rolls back queues nothing; publishing a page dispatches
+it from a `page.published` listener, because `pages.publish` belongs to
+`@assemora/pages` and this module cannot reach inside it. Neither configures a queue,
+so the work runs in this process and says so once on boot — the file it writes is
+`storage/sitemap.xml` (SPEC.md §82, ADR-0023).
 
 Everything else — CRUD, OpenAPI, the introspection endpoint, the session endpoints,
 the media URLs, the MCP endpoint, policies, revisions, the audit log, the command
