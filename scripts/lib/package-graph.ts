@@ -28,6 +28,7 @@ export type PackageName =
   | 'plugin'
   | 'cli'
   | 'create-assemora'
+  | 'queue-bullmq'
   | 'assemora'
 
 /** Allowed workspace dependencies for every package. */
@@ -61,6 +62,10 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
     'create-assemora',
   ],
   'create-assemora': [],
+  // The queue adapter of SPEC.md §82. It implements a port core declares, the way
+  // `database-postgres` implements the adapter contract `database` declares — and it
+  // is the only package allowed to name BullMQ.
+  'queue-bullmq': ['schema', 'core'],
   // The umbrella of SPEC.md §9. It is the only package allowed to depend on
   // everything, because it is the only one nothing depends on: it exists to put the
   // pieces together for an application, and a cycle through it is impossible.
@@ -80,6 +85,7 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
     'audit',
     'change-sets',
     'mcp',
+    'queue-bullmq',
   ],
 }
 
@@ -128,6 +134,8 @@ export const implementationLibraries: Record<string, PackageName> = {
   '@types/react': 'react',
   '@types/react-dom': 'react',
   '@modelcontextprotocol/sdk': 'mcp',
+  bullmq: 'queue-bullmq',
+  ioredis: 'queue-bullmq',
   '@node-rs/argon2': 'auth',
 }
 

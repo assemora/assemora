@@ -59,11 +59,27 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # The queue adapter of SPEC.md §82. An adapter tested only against a fake is an
+      # adapter nobody has run (ADR-0023).
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       ASSEMORA_TEST_DATABASE_URL: postgres://assemora:assemora@localhost:5432/assemora_test
+      ASSEMORA_TEST_REDIS_URL: redis://localhost:6379
       # Without this an unreachable database is a skipped suite rather than a failing
       # one, and CI would report success having tested nothing.
       ASSEMORA_REQUIRE_POSTGRES: '1'
+      # The same rule for the queue: a skipped adapter suite is CI reporting success
+      # having tested nothing (ADR-0023).
+      ASSEMORA_REQUIRE_REDIS: '1'
 
     steps:
       - uses: actions/checkout@v7
