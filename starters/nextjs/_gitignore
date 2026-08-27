@@ -12,6 +12,10 @@ next-env.d.ts
 # password and the read-only token the Next.js half identifies itself with.
 .env
 
+# Uploaded files, when the media library stores them on this disk. They belong to
+# whatever is running the project, not to its source.
+storage/
+
 # `.assemora/` is deliberately *not* ignored. `assemora db:generate` diffs the schema
 # snapshot in it rather than a live database, so two people who do not share the
 # snapshot generate the same migration twice.

@@ -9,7 +9,7 @@
  * The protocol implementation is `@modelcontextprotocol/sdk`, and this file is the
  * only thing in the repository that imports it (ADR-0020).
  */
-import type { CommandBus, QueryBus, SchemaRegistry } from '@assemora/core'
+import { type CommandBus, currentContext, type QueryBus, type SchemaRegistry } from '@assemora/core'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 
@@ -106,8 +106,12 @@ export const createMcpServer = (options: McpServerOptions): Server => {
     try {
       // The context — and therefore the actor — is established by whoever mounted
       // this server, before the request reaches here. That is what makes the actor's
-      // permissions apply (SPEC.md §76).
-      limit.check(name)
+      // permissions apply (SPEC.md §76), and it is what the ceiling counts against:
+      // keyed by the tool instead, one busy agent would lock every other agent out of
+      // that tool, while each agent got `tools × max` calls a minute overall.
+      const actor = currentContext()?.actor
+
+      limit.check(actor === undefined ? 'anonymous' : `${actor.type}:${actor.id}`)
 
       if (!tool.mutates) return answer(await options.queries.execute(name, input))
 

@@ -404,3 +404,46 @@ describe('a command reachable only from its own route is not a tool (SPEC.md §8
     await endpoint.close()
   })
 })
+
+describe('the ceiling counts agents, not tools (SPEC.md §76)', () => {
+  it('gives each actor its own allowance rather than one shared per tool', () => {
+    const limit = rateLimit({ max: 2, windowMs: 60_000 })
+
+    limit.check('agent:one')
+    limit.check('agent:one')
+
+    expect(() => limit.check('agent:one')).toThrow(/Too many calls/)
+    // The second agent is untouched by the first one's noise.
+    expect(() => limit.check('agent:two')).not.toThrow()
+  })
+
+  it('spends one allowance across every tool an actor calls', async () => {
+    const limited = await connectDirectly(
+      createMcpServer({
+        registry: app.registry,
+        commands: app.commands,
+        queries: app.queries,
+        rateLimit: rateLimit({ max: 2, windowMs: 60_000 }),
+      }),
+    )
+
+    const call = async (name: string) => {
+      const answered = (await app.run({ source: 'mcp', actor: { type: 'agent', id: 'one' } }, () =>
+        limited.handle({
+          jsonrpc: '2.0',
+          id: 7,
+          method: 'tools/call',
+          params: { name, arguments: {} },
+        }),
+      )) as { result: { content: { text: string }[] } }
+
+      return (JSON.parse(answered.result.content[0]?.text ?? '{}') as { error?: { code: string } })
+        .error?.code
+    }
+
+    expect(await call('assemora.describe')).toBeUndefined()
+    expect(await call('assemora.resources.list')).toBeUndefined()
+    // Two different tools, one actor: the third call is over the ceiling.
+    expect(await call('assemora.blocks.types')).toBe('RATE_LIMITED')
+  })
+})

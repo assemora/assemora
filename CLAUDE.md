@@ -252,16 +252,24 @@ Known gaps, each with a reason rather than an oversight:
   generic `/api/commands/*` routes any REST client does. Separating them means either
   a header the server would have to trust, or routes Studio alone may call — a
   decision, not a patch.
-- `auth.login` still accepts a caller-supplied `ipAddress` and `userAgent`, and is
-  publicly authorized, so it remains reachable as the MCP tool `assemora.auth.login`.
-  The umbrella closed the HTTP alias; the deeper fix is for `@assemora/auth` to take
-  those fields from the context, and for a command to be able to declare itself
-  route-only so the exclusion is not a list one package maintains by hand.
 - `frame-ancestors` is one header for the whole origin, so `frontend.framedBy` widens
   it on `/studio` too. Per-route security headers in `@assemora/http` would fix it.
 - `db:status` reports applied and pending migrations but not drift against a real
   database. That needs `adapter.introspect()` to return relations and enum values,
   which it does not — it reads columns only.
+- A session records no `ipAddress`. `request.ip` is the socket peer, which behind any
+  proxy is the load balancer, and trusting `X-Forwarded-For` without a configured
+  chain of trusted hops is the same forgery one layer down. It needs a `trustProxy`
+  option on `createHttpServer` and an `ipAddress` on the context; a column that lies
+  in every production deployment is worse than an empty one.
+- `string()` is `varchar(255)`, so an agent-supplied change-set title longer than that
+  fails on PostgreSQL where it succeeds in memory. `text()` versus `string()` for
+  free-form fields is a convention call nobody has made.
+- `revisions.undo` of a *deletion* re-creates the entry under a new id, because the
+  resource restorer goes through `PERSISTENCE.create`. A second undo then cannot find
+  it.
+- Studio's sidebar derives every item from the registry except Media, which is
+  hard-coded — so a project without `media()` shows a link to nothing.
 - `.with('posts')` does not add the relation to the instance type. ADR-0010 erased the
   relation target's type to make mutual relations declarable at all; typing the loaded
   shape means revisiting that trade-off in a new ADR, not patching around it.
