@@ -11,6 +11,7 @@ import { Builder } from '../screens/builder.tsx'
 import { ChangeSets } from '../screens/changesets.tsx'
 import { Collection } from '../screens/collection.tsx'
 import { Dashboard } from '../screens/dashboard.tsx'
+import { Design } from '../screens/design.tsx'
 import { Developer } from '../screens/developer.tsx'
 import { EntryForm } from '../screens/entry.tsx'
 import { History } from '../screens/history.tsx'
@@ -59,6 +60,7 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/pages/$id', component: Builder }),
   createRoute({ getParentRoute: () => rootRoute, path: '/pages/$id/history', component: History }),
   createRoute({ getParentRoute: () => rootRoute, path: '/media', component: MediaLibrary }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/design', component: Design }),
   createRoute({ getParentRoute: () => rootRoute, path: '/proposals', component: ChangeSets }),
   createRoute({ getParentRoute: () => rootRoute, path: '/users', component: Users }),
   createRoute({ getParentRoute: () => rootRoute, path: '/developer', component: Developer }),

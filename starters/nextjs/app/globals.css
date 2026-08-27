@@ -1,52 +1,60 @@
 /*
- * The whole stylesheet, because a starter that opens with a design system is a
- * starter people delete. Every class here is one a block view in app/blocks/ or a
- * route in app/ asks for; add a block, add its rule.
+ * This site's own rules, and only those (SPEC.md §61, §62, ADR-0024).
+ *
+ * The two things that are missing from this file were never this project's to write.
+ * The `:root` tokens — spacing, widths, colours, the type scale — and the
+ * `.assemora-design` rules the universal design controls need are served by the
+ * application at `/api/theme.css`, which `app/layout.tsx` links: the tokens come from
+ * the theme document, which a person edits in Studio's Design section and an agent
+ * proposes changes to, and the block rules are constant in every Assemora site.
+ * Pasting either of them here is the arbitrary global CSS §62 exists to remove.
+ *
+ * The reset is gone for the same reason: the generated stylesheet sets `box-sizing`
+ * and gives `body` its margin, family, size, line height and colours. A rule here
+ * repeating any of that would win — see below — and win against the theme, which is
+ * the one fight nothing in this file should pick.
+ *
+ * What is left is what a hero, a rich-text block and this project's two routes look
+ * like, written in theme tokens so that editing the theme moves them. Every class is
+ * one a block view in `app/blocks/` or a route in `app/` asks for; add a block, add
+ * its rule.
+ *
+ * These rules are unlayered and the generated stylesheet is inside `@layer assemora`,
+ * so everything here wins without counting selectors.
  */
 
-:root {
-  color-scheme: light dark;
-}
-
-body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
-  font-size: 16px;
-  line-height: 1.6;
-}
-
 .hero {
-  padding: 6rem 1.5rem 4rem;
+  padding: var(--space-xl) var(--space-sm) var(--space-lg);
   text-align: center;
 }
 
 .hero h1 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 var(--space-xs);
   font-size: clamp(2rem, 6vw, 3.5rem);
-  line-height: 1.1;
+  line-height: var(--leading-tight);
 }
 
 .hero p {
   margin: 0;
-  opacity: 0.65;
+  color: var(--ink-soft);
 }
 
 .rich-text {
-  max-width: 42rem;
+  max-width: var(--width-narrow);
   margin: 0 auto;
-  padding: 0 1.5rem 5rem;
+  padding: 0 var(--space-sm) var(--space-xl);
   white-space: pre-wrap;
 }
 
 .prose {
-  max-width: 42rem;
+  max-width: var(--width-narrow);
   margin: 0 auto;
-  padding: 4rem 1.5rem;
+  padding: var(--space-lg) var(--space-sm);
 }
 
 .prose h1 {
   font-size: clamp(1.75rem, 5vw, 2.5rem);
-  line-height: 1.2;
+  line-height: var(--leading-tight);
 }
 
 .prose ul {
@@ -54,19 +62,21 @@ body {
 }
 
 .notice {
-  margin: 1.5rem 0;
-  padding: 1rem;
-  border: 1px dashed currentcolor;
-  opacity: 0.75;
+  margin: var(--space-sm) 0;
+  padding: var(--space-sm);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink-soft);
 }
 
 .notice code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .missing {
-  margin: 1.5rem;
-  padding: 1rem;
-  border: 1px dashed currentcolor;
-  opacity: 0.6;
+  margin: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink-soft);
 }

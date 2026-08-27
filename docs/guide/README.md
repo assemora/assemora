@@ -23,8 +23,9 @@ the detail behind the page that mentions it.
 | [11. The CLI](11-the-cli.md) | The commands, `assemora.config.ts`, migrations |
 | [12. Deploying](12-deploying.md) | The database, storage, the security defaults |
 | [13. Jobs](13-jobs.md) | `job()`, `dispatch()`, the queue adapter, the worker process |
+| [14. The theme](14-theme.md) | Tokens, the five groups, the generated stylesheet, the Design section |
 
-## Reading it in less than thirteen pages
+## Reading it in less than fourteen pages
 
 - **"Is this for me?"** — [1](01-what-assemora-is.md), then
   [2](02-getting-started.md).
@@ -34,6 +35,8 @@ the detail behind the page that mentions it.
   [6](06-commands-and-queries.md), then [8](08-authentication.md).
 - **"I want a page builder."** — [7](07-pages-and-blocks.md), with
   [5](05-resources.md) for the field kinds a block uses.
+- **"I want it to look like us."** — [14](14-theme.md), then [7](07-pages-and-blocks.md)
+  for the controls that spend the tokens it defines.
 - **"I want an agent to edit my site."** — [10](10-agents-and-mcp.md), and
   [6](06-commands-and-queries.md) for the pipeline it goes through.
 - **"I want work to happen after the response."** — [13](13-jobs.md), with
@@ -46,6 +49,6 @@ the detail behind the page that mentions it.
   commented in place.
 - `examples/blog/` — relations, scopes, and a policy that lets an author edit their own
   article and nobody else's.
-- `examples/company/` — the block tree, nesting rules, the universal design controls and
-  a theme.
+- `examples/company/` — the block tree, nesting rules, the universal design controls, and
+  a theme set by a command rather than written as CSS.
 - `apps/playground/` — the reference application Studio is developed against.

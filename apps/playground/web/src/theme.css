@@ -1,113 +1,16 @@
 /*
- * The application's theme, as tokens (SPEC.md §62).
+ * This site's own rules, and only those.
  *
- * The universal design controls of §61 are token names — `lg`, `wide`, `center` — and
- * this is the one place that decides what they look like. A block never writes CSS
- * and neither does an agent: they choose a token, and the choices land here.
+ * The tokens are gone from here on purpose (SPEC.md §62, ADR-0024). `--space-lg`,
+ * `--width-wide` and `--surface-sunken` are the theme's answer now, served by the
+ * application at `/api/theme.css` and linked from `index.html` — along with the
+ * `.assemora-design` rules of §61, which were the same in every Assemora site and
+ * were therefore nobody's to hand-write.
+ *
+ * What is left is what a theme should never own: what a hero, a section and an FAQ
+ * look like in *this* application. It is unlayered, and the generated stylesheet is
+ * wrapped in `@layer assemora`, so everything here wins without counting selectors.
  */
-:root {
-  --space-none: 0;
-  --space-xs: 0.5rem;
-  --space-sm: 1rem;
-  --space-md: 2rem;
-  --space-lg: 4rem;
-  --space-xl: 6rem;
-  --space-2xl: 9rem;
-
-  --width-narrow: 34rem;
-  --width-normal: 48rem;
-  --width-wide: 68rem;
-
-  --surface: #ffffff;
-  --surface-sunken: #f6f7f9;
-  --brand: #4a5ed6;
-  --ink: #16181d;
-  --ink-soft: #5b6070;
-
-  --radius: 0.75rem;
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: var(--font);
-  color: var(--ink);
-  background: var(--surface);
-  line-height: 1.55;
-}
-
-/* The universal controls, applied. One wrapper, seven settings, no free-form CSS. */
-.assemora-design {
-  padding-top: var(--assemora-space-top, 0);
-  padding-bottom: var(--assemora-space-bottom, 0);
-  background-color: var(--assemora-background, transparent);
-  background-image: var(--assemora-background-image, none);
-  background-size: cover;
-  background-position: center;
-}
-
-.assemora-design[data-width="narrow"] > * {
-  max-width: var(--width-narrow);
-}
-.assemora-design[data-width="normal"] > * {
-  max-width: var(--width-normal);
-}
-.assemora-design[data-width="wide"] > * {
-  max-width: var(--width-wide);
-}
-.assemora-design[data-width="full"] > * {
-  max-width: none;
-}
-.assemora-design[data-width] > * {
-  margin-inline: auto;
-}
-
-.assemora-design[data-align="start"] {
-  text-align: left;
-}
-.assemora-design[data-align="center"] {
-  text-align: center;
-}
-.assemora-design[data-align="end"] {
-  text-align: right;
-}
-
-.assemora-design[data-container="narrow"] {
-  --container: var(--width-narrow);
-}
-.assemora-design[data-container="normal"] {
-  --container: var(--width-normal);
-}
-.assemora-design[data-container="wide"] {
-  --container: var(--width-wide);
-}
-
-@media (max-width: 640px) {
-  .assemora-design[data-hidden-mobile] {
-    display: none;
-  }
-}
-
-@media (min-width: 641px) and (max-width: 1024px) {
-  .assemora-design[data-hidden-tablet] {
-    display: none;
-  }
-}
-
-@media (min-width: 1025px) {
-  .assemora-design[data-hidden-desktop] {
-    display: none;
-  }
-}
-
-/* An editor sees what it is about to unhide; a visitor never gets here. */
-[data-assemora-hidden="true"] {
-  opacity: 0.4;
-}
 
 .hero {
   padding: var(--space-xl) var(--space-sm);
@@ -137,7 +40,7 @@ body {
 
 .hero img {
   width: 100%;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
 }
 
 .section {
@@ -169,7 +72,7 @@ body {
 
 .missing {
   border: 1px dashed #c9ccd6;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   color: var(--ink-soft);
   font-size: 0.875rem;
   margin: var(--space-sm);

@@ -74,9 +74,20 @@ have already been made — do not reverse one without writing a new ADR.
   cannot see it, and a deactivated person's queued job used to write as them. It costs
   one extra row read per resolution and it is the only revocation the framework has.
 
-Still unbuilt from SPEC: §62 (the theme has a token document but no table, no commands
-and no routes — that contract has to be designed), and the two halves of §88 nobody
-has needed yet — slow query logging and an error tracking adapter interface.
+- **SPEC.md §62 — done.** The theme is a stored document, not a hand-written
+  stylesheet: `@assemora/theme` owns it, `themeCss()` renders it, and the umbrella
+  serves it (ADR-0024). Three of the five groups have fixed keys derived from the
+  constants §61 already addresses by name, so a theme cannot lack the token a block
+  asks for. Every value is validated by kind and every declaration is built from
+  validated parts — §62's "AI must change theme tokens rather than generate arbitrary
+  global CSS" is therefore true by construction: `theme.update` is a command, so it is
+  an MCP tool by generation, and no tool anywhere takes CSS.
+- `theme.update` writes conditionally on the version it read, so `expectedVersion`
+  means what SPEC.md §66 says. A row lock would need `for update` in the Query AST,
+  which is a framework-wide change rather than the theme's to land alone.
+
+Still unbuilt from SPEC: the two halves of §88 nobody has needed yet — slow query
+logging and an error tracking adapter interface.
 
 Decisions phase 10 added (ADR-0021, ADR-0022):
 
@@ -310,8 +321,16 @@ Known gaps, each with a reason rather than an oversight:
   the document type is possible and wanted; it is a design task of its own.
 - `json<T>()` takes a type argument nothing validates at runtime. SPEC.md §17 asks for
   exactly that shape; a checked variant would take a schema instead of a type.
-- Row-level concurrency (locks, lost updates) is untested. It needs `for update` in the
-  Query AST, which belongs with optimistic concurrency in phase 7 (SPEC.md §66).
+- Row-level concurrency has no lock. `for update` is not in the Query AST, so a
+  command that must not lose an update writes conditionally on the version it read —
+  `@assemora/theme` does. That works and is arguably stronger for a single row, but it
+  is a pattern each command reimplements until `@assemora/data` grows a conditional
+  write.
+- `registeredModels()` is process-global and populated at import, so a module switched
+  off still contributes its tables to the generated schema. True of `theme: false` and
+  identically of revisions, audit and change sets.
+- Nothing tells an upgrading project that a release added a table. `db:status` reports
+  migration files, not drift, for the reason recorded above.
 - The pivot verbs sit below the Command Bus, at the level of `save()` — which is the
   right level for a mechanism, but `save()` has `entries.update` above it and a link
   has nothing above it at all. So a many-to-many is the one relation Studio, REST, the

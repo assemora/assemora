@@ -27,12 +27,13 @@ import {
 } from '@assemora/auth'
 import { clearRestorers, createLogger, type Logger, module, silentWriter } from '@assemora/core'
 import { model, string, uuid } from '@assemora/data'
-import { createMemoryAdapter, type DatabaseAdapter } from '@assemora/database'
+import { createMemoryAdapter, type DatabaseAdapter, type DatabaseContext } from '@assemora/database'
 import { clearRouteRegistry, type HttpServer, type InjectedResponse } from '@assemora/http'
 import { clearStorage, localStorage, media, s3Storage, useStorage } from '@assemora/media'
 import { block, clearBlockRegistry, pages } from '@assemora/pages'
 import { clearResourceRegistry, resource, select, text } from '@assemora/resources'
 import { Revision } from '@assemora/revisions'
+import { Theme } from '@assemora/theme'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { type AssemoraApplication, assemora } from './assemora.js'
@@ -1229,6 +1230,156 @@ describe('the bytes pass the policy the library passes (SPEC.md §51, §63)', ()
   })
 })
 
+describe('the theme, served (SPEC.md §62, ADR-0024)', () => {
+  /** What a `<link rel="stylesheet">` in a built document actually does. */
+  const load = async (server: HttpServer): Promise<InjectedResponse> => {
+    const pointer = await server.inject({ method: 'GET', url: '/api/theme.css' })
+
+    expect(pointer.statusCode).toBe(302)
+    expect(pointer.headers['cache-control']).toBe('no-store')
+
+    return server.inject({ method: 'GET', url: String(pointer.headers.location) })
+  }
+
+  const setBrand = (server: HttpServer, jar: Record<string, string>, colour: string) =>
+    server.inject({
+      method: 'POST',
+      url: '/api/commands/theme.update',
+      payload: { colors: { brand: colour } },
+      headers: asStudio(jar),
+    })
+
+  it('serves the tokens as a stylesheet, at a URL that is its own version', async () => {
+    const built = build({ modules: [notes()] })
+
+    await built.boot()
+
+    const server = serverOf(built)
+    const stylesheet = await load(server)
+
+    expect(stylesheet.statusCode).toBe(200)
+    expect(stylesheet.headers['content-type']).toBe('text/css; charset=utf-8')
+    // Immutable is a promise about a URL, and it is only honest because the URL is
+    // the hash of what it answers with.
+    expect(stylesheet.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+    expect(stylesheet.body).toContain('--space-xl:')
+    expect(stylesheet.body).toContain('.assemora-design[data-width="narrow"]')
+  })
+
+  it('sends a page somewhere else the moment a token changes', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+    const before = await server.inject({ method: 'GET', url: '/api/theme.css' })
+
+    expect((await setBrand(server, jar, '#0f766e')).statusCode).toBe(200)
+
+    const after = await server.inject({ method: 'GET', url: '/api/theme.css' })
+
+    // The whole point of the pair: the document never changed, and it is now pointing
+    // at a different stylesheet.
+    expect(after.headers.location).not.toBe(before.headers.location)
+    expect((await load(server)).body).toContain('--brand: #0f766e;')
+  })
+
+  it('sends a stale version on to the current one rather than lying about it', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+    const stale = String(
+      (await server.inject({ method: 'GET', url: '/api/theme.css' })).headers.location,
+    )
+
+    await setBrand(server, jar, '#0f766e')
+
+    const asked = await server.inject({ method: 'GET', url: stale })
+
+    expect(asked.statusCode).toBe(302)
+    expect(asked.headers.location).not.toBe(stale)
+    expect(asked.headers['cache-control']).toBe('no-store')
+  })
+
+  it('is a document a browser on this origin is allowed to load (SPEC.md §85)', async () => {
+    const built = build({ modules: [notes()] })
+
+    await built.boot()
+
+    const stylesheet = await load(serverOf(built))
+
+    // `style-src 'self'` is what lets the page use it, and the stylesheet is served
+    // from the very origin that sent the policy — so nothing here has to be widened.
+    expect(String(stylesheet.headers['content-security-policy'])).toContain(
+      "style-src 'self' 'unsafe-inline'",
+    )
+  })
+
+  it('still serves one for an application with no theme to edit', async () => {
+    const built = build({ modules: [notes()], theme: false })
+
+    await built.boot()
+
+    const server = serverOf(built)
+    const stylesheet = await load(server)
+
+    expect(stylesheet.statusCode).toBe(200)
+    expect(stylesheet.body).toContain('--space-xl:')
+    // Nothing to edit, and nothing that could have edited it.
+    expect(built.app.registry.find('commands', 'theme.update')).toBeUndefined()
+  })
+
+  it('does not open the document to everybody in order to serve the stylesheet', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+
+    const server = serverOf(built)
+
+    expect((await load(server)).statusCode).toBe(200)
+    // The overrides, the edit counter and when it was last touched are not public,
+    // and the route that hands over the CSS is what keeps them from having to be.
+    expect((await server.inject({ method: 'GET', url: '/api/queries/theme.get' })).statusCode).toBe(
+      403,
+    )
+  })
+
+  it('serves the defaults when the theme cannot be read at all', async () => {
+    // The failure this is about is a project that upgrades: `theme: true` is the
+    // default, so its schema gained a table, and until `assemora db:migrate` has run
+    // the row cannot be read. Every site's own stylesheet has stopped carrying
+    // `--space-*`, `--ink` and the block rules of §61, so a 500 here is not a missing
+    // feature — it is an unstyled site. `css.ts` argues the rule this applies:
+    // dropping what will not render degrades a page, and a stylesheet that fails
+    // takes it down.
+    const base = createMemoryAdapter()
+    const unmigrated: DatabaseAdapter = {
+      execute: <T>(query: Parameters<DatabaseAdapter['execute']>[0], context: DatabaseContext) =>
+        query.model === Theme.table
+          ? Promise.reject(new Error('relation "assemora_theme" does not exist'))
+          : base.execute<T>(query, context),
+      transaction: (callback) => base.transaction(callback),
+      introspect: () => base.introspect(),
+    }
+
+    const built = build({ modules: [notes()] }, unmigrated)
+
+    await built.boot()
+
+    const stylesheet = await load(serverOf(built))
+
+    expect(stylesheet.statusCode).toBe(200)
+    expect(stylesheet.body).toContain('--brand: #4a5ed6;')
+    expect(stylesheet.body).toContain('.assemora-design[data-width="narrow"]')
+  })
+})
+
 describe('every switch removes exactly what it names', () => {
   it('builds no server at all when the API is off', async () => {
     const built = build({ modules: [notes()], api: false })
@@ -1285,14 +1436,20 @@ describe('every switch removes exactly what it names', () => {
     expect(built.app.modules).not.toContain('mcp')
   })
 
-  it('adds revisions, audit and change sets that nobody asked for', async () => {
+  it('adds revisions, audit, change sets and a theme that nobody asked for', async () => {
     const built = build({ modules: [notes()] })
 
-    expect(built.app.modules).toEqual(['notes', 'revisions', 'audit', 'changesets'])
+    expect(built.app.modules).toEqual(['notes', 'revisions', 'audit', 'changesets', 'theme'])
   })
 
   it('takes them away again when they are switched off', () => {
-    const built = build({ modules: [notes()], revisions: false, audit: false, changeSets: false })
+    const built = build({
+      modules: [notes()],
+      revisions: false,
+      audit: false,
+      changeSets: false,
+      theme: false,
+    })
 
     expect(built.app.modules).toEqual(['notes'])
   })
@@ -1300,7 +1457,15 @@ describe('every switch removes exactly what it names', () => {
   it('never registers a module the application listed itself twice', () => {
     const built = build({ modules: [auth(), notes()], mcp: true })
 
-    expect(built.app.modules).toEqual(['auth', 'notes', 'revisions', 'audit', 'changesets', 'mcp'])
+    expect(built.app.modules).toEqual([
+      'auth',
+      'notes',
+      'revisions',
+      'audit',
+      'changesets',
+      'theme',
+      'mcp',
+    ])
   })
 })
 

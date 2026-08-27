@@ -322,6 +322,9 @@ importers:
       '@assemora/schema':
         specifier: workspace:*
         version: link:../schema
+      '@assemora/theme':
+        specifier: workspace:*
+        version: link:../theme
     devDependencies:
       '@assemora/pages':
         specifier: workspace:*
@@ -678,6 +681,25 @@ importers:
         specifier: workspace:*
         version: link:../http
 
+  packages/theme:
+    dependencies:
+      '@assemora/core':
+        specifier: workspace:*
+        version: link:../core
+      '@assemora/data':
+        specifier: workspace:*
+        version: link:../data
+      '@assemora/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@assemora/database':
+        specifier: workspace:*
+        version: link:../database
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+
   starters/bare:
     dependencies:
       '@assemora/auth':
@@ -823,6 +845,9 @@ importers:
       '@assemora/mcp':
         specifier: workspace:*
         version: link:../packages/mcp
+      '@assemora/theme':
+        specifier: workspace:*
+        version: link:../packages/theme
     devDependencies:
       '@assemora/auth':
         specifier: workspace:*

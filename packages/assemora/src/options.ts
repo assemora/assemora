@@ -274,6 +274,16 @@ export type AssemoraOptions = {
   readonly audit?: boolean
   /** What an agent proposes and a person applies (SPEC.md §73). On. */
   readonly changeSets?: boolean
+  /**
+   * The theme, as tokens a person and an agent may edit (SPEC.md §62). On.
+   *
+   * Switching it off removes the model and the two operations, and leaves the
+   * stylesheet exactly where it was: `<prefix>/theme.css` then renders the defaults,
+   * which is what a site that never opened Design looked like anyway (ADR-0024). It
+   * is the answer for a project whose design belongs to the developers who wrote it —
+   * not a way to stop serving one.
+   */
+  readonly theme?: boolean
 }
 
 /**
@@ -351,6 +361,7 @@ export type Settings = {
   readonly revisions: boolean
   readonly audit: boolean
   readonly changeSets: boolean
+  readonly theme: boolean
 }
 
 const apiOf = (value: AssemoraOptions['api']): ResolvedApi | undefined => {
@@ -420,4 +431,5 @@ export const resolve = (options: AssemoraOptions): Settings => ({
   revisions: options.revisions ?? true,
   audit: options.audit ?? true,
   changeSets: options.changeSets ?? true,
+  theme: options.theme ?? true,
 })

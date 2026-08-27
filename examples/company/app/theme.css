@@ -1,138 +1,31 @@
 /*
- * The theme (SPEC.md §62).
+ * This site's own rules, and only those (SPEC.md §62, ADR-0024).
  *
- * The universal design controls of §61 are token *names* — `xl`, `wide`, `center`,
- * `surface-sunken` — and this file is the single place that decides what one looks
- * like. A block never writes CSS and neither does an agent: both choose a token, and
- * the choice lands here.
+ * The two sections that used to open this file — the `:root` tokens and the
+ * `.assemora-design` rules of §61 — are gone, and neither of them was ever this
+ * site's to write. They are served by the application at `/api/theme.css`, which
+ * `index.html` links: the tokens come from the theme document, which a person edits
+ * in Studio's Design section and an agent proposes changes to, and the block rules
+ * are constant in every Assemora site. `src/seed.ts` is where this site's palette is
+ * set, through `theme.update`, like any other change.
  *
- * The first two sections are the contract `@assemora/react` renders against, and are
- * the same in every Assemora site. Everything after them is this site's own design.
+ * What is left is what a theme should never own — what a hero, a section, a feature
+ * card and an opening look like here. It is unlayered and the generated stylesheet is
+ * inside `@layer assemora`, so everything below wins without counting selectors.
  */
-
-:root {
-  --space-none: 0;
-  --space-xs: 0.5rem;
-  --space-sm: 1rem;
-  --space-md: 2rem;
-  --space-lg: 4rem;
-  --space-xl: 7rem;
-  --space-2xl: 10rem;
-
-  --width-narrow: 32rem;
-  --width-normal: 46rem;
-  --width-wide: 72rem;
-
-  --surface: #fbfbfd;
-  --surface-sunken: #eef0f7;
-  --brand: #2f3ba8;
-  --brand-soft: #e4e7fb;
-  --ink: #12141c;
-  --ink-soft: #5a6076;
-  --line: #dcdfe9;
-
-  --radius: 0.875rem;
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-
-/* The reset, first: a rule for `*` after one that ends in `*` is a specificity
- * trap, and the linter is right to say so. */
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: var(--font);
-  color: var(--ink);
-  background: var(--surface);
-  line-height: 1.55;
-}
 
 a {
   color: inherit;
 }
 
-/* --- the seven controls, applied ------------------------------------------- */
-
-.assemora-design {
-  padding-top: var(--assemora-space-top, 0);
-  padding-bottom: var(--assemora-space-bottom, 0);
-  background-color: var(--assemora-background, transparent);
-  background-image: var(--assemora-background-image, none);
-  background-size: cover;
-  background-position: center;
-}
-
-.assemora-design[data-width="narrow"] > * {
-  max-width: var(--width-narrow);
-}
-.assemora-design[data-width="normal"] > * {
-  max-width: var(--width-normal);
-}
-.assemora-design[data-width="wide"] > * {
-  max-width: var(--width-wide);
-}
-.assemora-design[data-width="full"] > * {
-  max-width: none;
-}
-.assemora-design[data-width] > * {
-  margin-inline: auto;
-}
-
-.assemora-design[data-align="start"] {
-  text-align: left;
-}
-.assemora-design[data-align="center"] {
-  text-align: center;
-}
-.assemora-design[data-align="end"] {
-  text-align: right;
-}
-
-.assemora-design[data-container="narrow"] {
-  --container: var(--width-narrow);
-}
-.assemora-design[data-container="normal"] {
-  --container: var(--width-normal);
-}
-.assemora-design[data-container="wide"] {
-  --container: var(--width-wide);
-}
-
-@media (max-width: 640px) {
-  .assemora-design[data-hidden-mobile] {
-    display: none;
-  }
-}
-
-@media (min-width: 641px) and (max-width: 1024px) {
-  .assemora-design[data-hidden-tablet] {
-    display: none;
-  }
-}
-
-@media (min-width: 1025px) {
-  .assemora-design[data-hidden-desktop] {
-    display: none;
-  }
-}
-
-/* An editor sees what it is about to unhide; a visitor never reaches this rule. */
-[data-assemora-hidden="true"] {
-  opacity: 0.4;
-}
-
-/* --- this site ------------------------------------------------------------- */
-
 .button {
   display: inline-block;
   margin-top: var(--space-sm);
   padding: 0.7rem 1.4rem;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--brand);
   color: var(--surface);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-decoration: none;
 }
 
@@ -163,7 +56,7 @@ a {
 
 .hero img {
   width: 100%;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
 }
 
 .section {
@@ -219,7 +112,7 @@ a {
   width: 2.25rem;
   height: 2.25rem;
   margin-bottom: var(--space-xs);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--brand-soft);
 }
 
@@ -261,7 +154,7 @@ a {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   margin-bottom: var(--space-xs);
 }
 
@@ -288,7 +181,7 @@ a {
 .empty,
 .missing {
   border: 1px dashed var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   color: var(--ink-soft);
   font-size: 0.9rem;
   margin: var(--space-sm);

@@ -32,6 +32,8 @@ export const Shell = () => {
   const { viewer, signOut } = useSession()
   const introspection = useIntrospection()
   const resources = introspection.data?.resources ?? []
+  const hasTheme =
+    introspection.data?.commands?.some((command) => command.name === 'theme.update') === true
 
   return (
     <div className="grid min-h-dvh grid-cols-[15rem_1fr] items-start">
@@ -67,12 +69,20 @@ export const Shell = () => {
             <NavLink to="/pages">All pages</NavLink>
           </Section>
 
-          <Section title="AI">
-            <NavLink to="/proposals">Proposals</NavLink>
-          </Section>
-
           <Section title="Library">
             <NavLink to="/media">Media</NavLink>
+          </Section>
+
+          {/* An application without `theme()` has no tokens, so it gets no link to
+              them — the registry decides, the way it decides the collections above. */}
+          {hasTheme && (
+            <Section title="Design">
+              <NavLink to="/design">Theme</NavLink>
+            </Section>
+          )}
+
+          <Section title="AI">
+            <NavLink to="/proposals">Proposals</NavLink>
           </Section>
 
           <Section title="Settings">

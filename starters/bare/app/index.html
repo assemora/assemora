@@ -5,42 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>My site</title>
     <!--
-      The whole stylesheet, because a starter that opens with a design system is a
-      starter people delete. Every class here is one a block view in app/blocks/ asks
-      for; add a block, add its rule.
+      The theme (SPEC.md §62). It defines what `xl`, `wide` and `surface-sunken` mean
+      and carries the rules the universal design controls need, so a block dragged
+      into the builder and given some spacing actually gets some. Edit it in Studio's
+      Design section — this address never changes, and the versioned one it answers
+      with is cached for a year.
+    -->
+    <link rel="stylesheet" href="/api/theme.css" />
+    <!--
+      Everything else, because a starter that opens with a design system is a starter
+      people delete. Every class here is one a block view in app/blocks/ asks for;
+      add a block, add its rule. The values are theme tokens where a theme has one.
     -->
     <style>
-      :root {
-        color-scheme: light dark;
-      }
-      body {
-        margin: 0;
-        font: 16px/1.6 system-ui, sans-serif;
-      }
       .hero {
-        padding: 6rem 1.5rem 4rem;
+        padding: var(--space-xl) var(--space-sm) var(--space-lg);
         text-align: center;
       }
       .hero h1 {
-        margin: 0 0 0.5rem;
+        margin: 0 0 var(--space-xs);
         font-size: clamp(2rem, 6vw, 3.5rem);
-        line-height: 1.1;
+        line-height: var(--leading-tight);
       }
       .hero p {
         margin: 0;
-        opacity: 0.65;
+        color: var(--ink-soft);
       }
       .rich-text {
-        max-width: 42rem;
+        max-width: var(--width-narrow);
         margin: 0 auto;
-        padding: 0 1.5rem 5rem;
+        padding: 0 var(--space-sm) var(--space-xl);
         white-space: pre-wrap;
       }
       .missing {
-        margin: 1.5rem;
-        padding: 1rem;
-        border: 1px dashed currentColor;
-        opacity: 0.6;
+        margin: var(--space-sm);
+        padding: var(--space-sm);
+        border: 1px dashed var(--line);
+        border-radius: var(--radius-md);
+        color: var(--ink-soft);
       }
     </style>
   </head>

@@ -38,7 +38,8 @@
     "@assemora/media": "workspace:*",
     "@assemora/openapi": "workspace:*",
     "@assemora/revisions": "workspace:*",
-    "@assemora/schema": "workspace:*"
+    "@assemora/schema": "workspace:*",
+    "@assemora/theme": "workspace:*"
   },
   "devDependencies": {
     "@assemora/pages": "workspace:*",

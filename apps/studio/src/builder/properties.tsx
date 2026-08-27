@@ -9,12 +9,10 @@ import type { BlockNode } from '@assemora/schema'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { BlockDescriptor } from '../api/introspection.ts'
+import { useThemeColors } from '../api/theme.ts'
 import { FieldInput } from '../screens/fields.tsx'
 import { Badge, Button, Empty } from '../ui/index.tsx'
 import { DesignControls } from './design.tsx'
-
-/** The colour tokens this application's theme offers. */
-const BACKGROUNDS = ['surface', 'surface-sunken', 'brand'] as const
 
 export const Properties = ({
   node,
@@ -45,6 +43,11 @@ export const Properties = ({
   const [tab, setTab] = useState<'content' | 'design'>('content')
   const [draft, setDraft] = useState<Record<string, unknown>>({})
   const pending = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // The theme is the list of colours there are, so it is also the list of backgrounds
+  // a block may be given (SPEC.md §62) — read from the served stylesheet, which needs
+  // no permission of its own and exists even where the theme is not editable. A
+  // person who may edit a block's design may see what colours the site has.
+  const colors = useThemeColors()
 
   const blockId = node?.id
 
@@ -142,7 +145,7 @@ export const Properties = ({
         ) : (
           <DesignControls
             design={node.design ?? {}}
-            backgrounds={BACKGROUNDS}
+            backgrounds={colors.data ?? []}
             onChange={onDesign}
           />
         )}

@@ -44,6 +44,9 @@
       "path": "packages/change-sets/tsconfig.build.json"
     },
     {
+      "path": "packages/theme/tsconfig.build.json"
+    },
+    {
       "path": "packages/mcp/tsconfig.build.json"
     },
     {

@@ -150,5 +150,5 @@ does not install a React application it will never serve.
 - `starters/bare/` in this repository is the project the scaffolder writes, with every
   decision commented in place.
 - `examples/blog/` and `examples/company/` are the two shapes that starter leaves out:
-  relations, scopes and policies in one; the block tree, nesting and a theme in the
-  other.
+  relations, scopes and policies in one; the block tree, nesting, and a [theme](14-theme.md)
+  its seed sets with a command in the other.

@@ -32,6 +32,7 @@
   "dependencies": {
     "@assemora/audit": "workspace:*",
     "@assemora/change-sets": "workspace:*",
-    "@assemora/mcp": "workspace:*"
+    "@assemora/mcp": "workspace:*",
+    "@assemora/theme": "workspace:*"
   }
 }

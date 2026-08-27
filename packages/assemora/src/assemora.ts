@@ -39,6 +39,7 @@ import { mcp } from '@assemora/mcp'
 import { currentStorage, localStorage, type StorageDriver, useStorage } from '@assemora/media'
 import { introspectionRoute, openApiRoute } from '@assemora/openapi'
 import { revisions, revisionsModule } from '@assemora/revisions'
+import { theme } from '@assemora/theme'
 
 import { authRoutes, CSRF_COOKIE } from './auth-routes.js'
 import { healthRoutes } from './health-routes.js'
@@ -56,6 +57,7 @@ import {
 } from './options.js'
 import { mountPreview } from './preview-routes.js'
 import { mountStudio } from './studio.js'
+import { themeRoutes } from './theme-routes.js'
 
 /**
  * A built application, and the server in front of it.
@@ -326,13 +328,17 @@ const refuseImpossible = (
 }
 
 /**
- * The three modules a developer should not have to list, plus the one a switch asks
+ * The four modules a developer should not have to list, plus the one a switch asks
  * for.
  *
  * Without revisions and audit an application silently throws its history away, and
- * without change sets an agent's first write is an unknown command. A module the
- * application listed itself wins: `createApplication` refuses a name twice, and
- * `auth({ policies: [...] })` must not be replaced by a bare one.
+ * without change sets an agent's first write is an unknown command. The theme is
+ * there for a quieter reason: §61's controls have been token *names* since phase 8,
+ * and until something owns what a name means, every project writes the same
+ * hand-rolled `theme.css` — the arbitrary global CSS SPEC.md §62 exists to replace
+ * (ADR-0024). A module the application listed itself wins: `createApplication`
+ * refuses a name twice, and `auth({ policies: [...] })` must not be replaced by a
+ * bare one.
  */
 const infrastructureFor = (settings: Settings, declared: ReadonlySet<string>): ModuleBuilder[] => {
   const modules: ModuleBuilder[] = []
@@ -340,6 +346,7 @@ const infrastructureFor = (settings: Settings, declared: ReadonlySet<string>): M
   if (settings.revisions && !declared.has('revisions')) modules.push(revisionsModule())
   if (settings.audit && !declared.has('audit')) modules.push(auditModule())
   if (settings.changeSets && !declared.has('changesets')) modules.push(changeSets())
+  if (settings.theme && !declared.has('theme')) modules.push(theme())
 
   if (settings.mcp !== undefined && !declared.has('mcp')) {
     modules.push(
@@ -440,6 +447,11 @@ const serve = (
     ...healthRoutes(isReady),
     ...(modules.has('auth') ? authRoutes(app.commands, settings.session) : []),
     ...(modules.has('media') ? mediaRoutes(app.queries) : []),
+    // Unconditional, and asked about the module rather than about the option: a site
+    // with no editable theme still needs the tokens its blocks render against, and an
+    // application that registered `theme()` itself has an editable one whatever the
+    // switch says (ADR-0024).
+    ...themeRoutes(api.prefix, modules.has('theme'), app.logger),
     ...(endpoint?.routes ?? []),
     ...(api.documentation
       ? [

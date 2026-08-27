@@ -40,6 +40,8 @@ export {
   type ContainerWidth,
   hiddenOnViewport,
   isPlainDesign,
+  RADIUS_SCALE,
+  type RadiusScale,
   SPACING_SCALE,
   type SpacingScale,
   VIEWPORTS,

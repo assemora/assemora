@@ -40,6 +40,16 @@ const Choice = ({
           {option}
         </option>
       ))}
+      {/*
+       * A token this block names that the theme no longer declares.
+       *
+       * It stays on screen and stays selected, because it is what the block actually
+       * says — dropping it would read as "theme default" and quietly rewrite the
+       * block the next time anybody touched another control.
+       */}
+      {value === undefined || options.includes(value) ? null : (
+        <option value={value}>{value} — not in the theme</option>
+      )}
     </Select>
   </Field>
 )

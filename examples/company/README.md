@@ -27,7 +27,8 @@ seeded until you type `pnpm seed`.
 | --- | --- |
 | `src/blocks.ts` | seven declarations, and the rule about what nests in what |
 | `src/server.ts` | the three pages, assembled with the builder's own commands |
-| `app/theme.css` | what every design token means |
+| `src/seed.ts` | the palette, set with `theme.update` rather than written in CSS |
+| `app/theme.css` | what a hero and a feature card look like — and nothing else |
 | `app/blocks.tsx` | one React view per block |
 | `src/routes.ts` | how a page reaches somebody with no account |
 
@@ -65,13 +66,16 @@ await design(app, home, hero, {
 })
 ```
 
-`xl` and `surface-sunken` mean whatever `app/theme.css` says they mean, and nothing
-in a page tree can express a colour, a pixel or a rule. That is what makes it safe to
-let an agent set them, and what keeps a redesign a change to one stylesheet.
+`xl` and `surface-sunken` mean whatever the *theme* says they mean, and nothing in a
+page tree can express a colour, a pixel or a rule. That is what makes it safe to let
+an agent set them.
 
-The first third of `app/theme.css` is the contract `@assemora/react` renders against
-and looks the same in every Assemora site; everything after it is this site's own
-design.
+The theme is a document too (SPEC.md §62). This site's palette is set in `src/seed.ts`
+with `theme.update` — one command, validated, authorized and undoable like every other
+— and the application renders it as a stylesheet at `/api/theme.css`, which
+`app/index.html` links. Nobody, not a person and not an agent, can put CSS in it:
+there is no command anywhere that takes any. `app/theme.css` is what is left over,
+and it is only what a hero, a section and a feature card look like here.
 
 ## Two blocks that read live data
 

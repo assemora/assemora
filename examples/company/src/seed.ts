@@ -76,15 +76,42 @@ const add = async (
 /**
  * The universal controls (SPEC.md §61).
  *
- * Every value is a token — `xl`, `wide`, `surface-sunken` — and `app/theme.css` is the
- * only place that decides what one looks like. Nothing here can express a colour or a
- * rule, which is exactly why an agent is allowed to set them.
+ * Every value is a token — `xl`, `wide`, `surface-sunken` — and the theme is the only
+ * place that decides what one looks like (see `brand` below). Nothing here can
+ * express a colour or a rule, which is exactly why an agent is allowed to set them.
  */
 const design = (app: Application, page: string, blockId: string, patch: BlockDesignPatch) =>
   app.commands.execute('blocks.design', { id: page, blockId, design: patch })
 
 const entry = (app: Application, resource: string, data: unknown) =>
   app.commands.execute('entries.create', { resource, data })
+
+/**
+ * What this company looks like (SPEC.md §62).
+ *
+ * Every value below used to be a line in `app/theme.css`, which meant a designer
+ * could not change one and an agent could not propose changing one. It is a command
+ * now, so it is validated, authorized, revised and undoable like everything else —
+ * and the Design section of Studio is looking at the same document.
+ *
+ * Only the differences from the framework defaults are set: a theme stores what
+ * somebody decided, not a copy of what they left alone (ADR-0024). `brand-soft` and
+ * `line` are absent from this list because the defaults already are this site's.
+ */
+const brand = (app: Application) =>
+  app.commands.execute('theme.update', {
+    colors: {
+      brand: '#2f3ba8',
+      ink: '#12141c',
+      'ink-soft': '#5a6076',
+      surface: '#fbfbfd',
+      'surface-sunken': '#eef0f7',
+    },
+    // Roomier than the default scale: this site is mostly whitespace and one idea.
+    spacing: { xl: '7rem', '2xl': '10rem' },
+    container: { narrow: '32rem', normal: '46rem', wide: '72rem' },
+    radius: { md: '0.875rem' },
+  })
 
 const landing = async (app: Application): Promise<void> => {
   const home = await newPage(app, 'home', 'Home')
@@ -256,6 +283,7 @@ export const seed = async (app: Application): Promise<void> => {
   await UserRole.create({ userId: admin.id, roleId: role.id })
 
   await app.run({ source: 'internal', actor: { type: 'user', id: admin.id } }, async () => {
+    await brand(app)
     await content(app)
     await landing(app)
     await teamPage(app)

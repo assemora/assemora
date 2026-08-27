@@ -168,9 +168,14 @@ Spacing (`spacingTop`, `spacingBottom`), width, alignment (`align`), background
 (`background`, `backgroundImage`), container width and responsive visibility
 (`hiddenOn`). **Every value is a token**, and nothing there can express
 CSS: a background is validated against `^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`, so `#ff0000`
-and `red; position: fixed` are both refused. What `md` or `narrow` looks like is the
-theme's answer, given once in a stylesheet (SPEC.md §62). That is what keeps the
-controls universal and what lets an agent restyle a page without emitting global CSS.
+and `red; position: fixed` are both refused.
+
+What `md`, `narrow` or `surface-sunken` looks like is [the theme](14-theme.md)'s answer,
+given once — as a stored document of tokens that renders to a stylesheet, not as a file
+each project writes by hand. `spacingTop: 'xl'` becomes `var(--space-xl)` and
+`background: 'brand'` becomes `var(--brand)`, and the theme is the list of colours a
+background may name. That is what keeps the controls universal and what lets an agent
+restyle a page without emitting global CSS.
 
 A control may be absent or explicitly `null`, and they are different answers: absent
 means "leave this alone", `null` means "clear it and let the theme decide again".
@@ -190,7 +195,9 @@ implementation of the frame's half, including the origin check both directions r
 
 ## Where to look next
 
+- [The theme](14-theme.md) — what the tokens above are worth, and who is allowed to
+  decide.
 - [Authentication](08-authentication.md) — who is allowed to publish.
 - [Agents and MCP](10-agents-and-mcp.md) — the same tree commands, as proposals.
-- `examples/company/` — seven blocks with a nesting rule, the design controls and a
-  theme that says what every token means.
+- `examples/company/` — seven blocks with a nesting rule, the design controls, and a
+  stylesheet that holds only what a theme should never own.

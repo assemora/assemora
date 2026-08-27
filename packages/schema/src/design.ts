@@ -25,7 +25,20 @@ export const BLOCK_ALIGNMENTS = ['start', 'center', 'end'] as const
 export const CONTAINER_WIDTHS = ['narrow', 'normal', 'wide', 'full'] as const
 export const VIEWPORTS = ['mobile', 'tablet', 'desktop'] as const
 
+/**
+ * The corner radii a theme has to define (SPEC.md §62).
+ *
+ * No control of §61 names one yet, so this scale exists here rather than in
+ * `@assemora/theme` for the reason the others do: the scale a theme defines and the
+ * scale a block would one day choose from must be one list, or they drift the moment
+ * somebody adds a control. `none` and `full` are the two ends that carry meaning on
+ * their own — a square corner and a pill — and three steps between them are enough
+ * for a token system that is not a CSS editor.
+ */
+export const RADIUS_SCALE = ['none', 'sm', 'md', 'lg', 'full'] as const
+
 export type SpacingScale = (typeof SPACING_SCALE)[number]
+export type RadiusScale = (typeof RADIUS_SCALE)[number]
 export type BlockWidth = (typeof BLOCK_WIDTHS)[number]
 export type BlockAlignment = (typeof BLOCK_ALIGNMENTS)[number]
 export type ContainerWidth = (typeof CONTAINER_WIDTHS)[number]

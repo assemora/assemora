@@ -33,6 +33,27 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Whether a failed request is worth sending again (SPEC.md §84).
+ *
+ * A refusal is an *answer*. The application understood the request and said no — no
+ * permission, no such record, a version that moved — and it will say the same thing a
+ * second later, so repeating it does nothing but delay the sentence the screen has to
+ * show. That is what a role which may not read the theme sees on the Design screen: a
+ * spinner for as long as the retries take, and then the 403 that was there all along.
+ *
+ * Anything else — a connection that dropped, an API in the middle of a restart —
+ * gets exactly one more attempt.
+ *
+ * Written to react-query's own signature so the query client can take it as it is.
+ * `failures` is how many attempts have already failed, so 0 is the first answer.
+ */
+export const worthRetrying = (failures: number, error: unknown): boolean => {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false
+
+  return failures < 1
+}
+
 const csrfToken = (): string | undefined => {
   for (const part of document.cookie.split(';')) {
     const [name, ...rest] = part.trim().split('=')
@@ -55,12 +76,12 @@ const failureOf = async (response: Response): Promise<ApiFailure> => {
   return { code: 'HTTP_ERROR', message: `The request failed with ${response.status}` }
 }
 
-const send = async (
+const request = async (
   method: string,
   path: string,
   body?: unknown,
   signal?: AbortSignal,
-): Promise<unknown> => {
+): Promise<Response> => {
   const token = csrfToken()
 
   const response = await fetch(`/api${path}`, {
@@ -76,6 +97,18 @@ const send = async (
   })
 
   if (!response.ok) throw new ApiError(response.status, await failureOf(response))
+
+  return response
+}
+
+const send = async (
+  method: string,
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<unknown> => {
+  const response = await request(method, path, body, signal)
+
   if (response.status === 204) return null
 
   return await response.json()
@@ -84,6 +117,17 @@ const send = async (
 export const api = {
   get: <T>(path: string, signal?: AbortSignal): Promise<T> =>
     send('GET', path, undefined, signal) as Promise<T>,
+
+  /**
+   * An answer that is not JSON.
+   *
+   * One address needs it: the generated stylesheet (SPEC.md §62). Every other thing
+   * this application serves Studio is a command's or a query's JSON body, which is
+   * why this is a second method rather than a mode of the first.
+   */
+  text: (path: string, signal?: AbortSignal): Promise<string> =>
+    request('GET', path, undefined, signal).then((response) => response.text()),
+
   post: <T>(path: string, body?: unknown): Promise<T> => send('POST', path, body) as Promise<T>,
   patch: <T>(path: string, body: unknown): Promise<T> => send('PATCH', path, body) as Promise<T>,
   delete: <T>(path: string): Promise<T> => send('DELETE', path) as Promise<T>,

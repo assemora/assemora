@@ -27,7 +27,7 @@ What it composes:
 | `src/main.ts` | `assemora()`: the whole application in one call (SPEC.md §9) |
 | `src/seed.ts` | Content created through commands, not through the database |
 | `web/src/views.tsx` | What this application's blocks look like (SPEC.md §57) |
-| `web/src/theme.css` | What a design token means here (SPEC.md §61, §62) |
+| `web/src/theme.css` | What this site's own blocks look like — the tokens are the theme's (SPEC.md §62) |
 
 `sitemap.generate` is the durable half. Publishing an article dispatches it *inside*
 the command, so a publish that rolls back queues nothing; publishing a page dispatches

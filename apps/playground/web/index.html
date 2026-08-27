@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Preview</title>
+    <!--
+      The theme (SPEC.md §62). This address never changes and is never cached; it
+      answers with the stylesheet's own version in the URL, which is cached forever.
+      A document built by a bundler cannot know that version, so it does not try.
+    -->
+    <link rel="stylesheet" href="/api/theme.css" />
   </head>
   <body>
     <div id="page"></div>

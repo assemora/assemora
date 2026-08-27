@@ -9,13 +9,17 @@ import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import { worthRetrying } from './api/client.ts'
 import { SessionProvider } from './api/session.tsx'
 import { router } from './app/router.tsx'
 import './styles.css'
 
 const client = new QueryClient({
+  // Every screen, rather than the one that noticed: a query the viewer may not run is
+  // a screen that has to explain itself, and every one of them was waiting out a
+  // retry before it could.
   defaultOptions: {
-    queries: { refetchOnWindowFocus: false, retry: 1 },
+    queries: { refetchOnWindowFocus: false, retry: worthRetrying },
   },
 })
 

@@ -126,6 +126,7 @@ app/                      the Next.js App Router
 <!-- assemora:end -->
   lib/assemora.ts         the HTTP client the pages read through
   layout.tsx, page.tsx    ordinary Next.js
+  globals.css             what this site looks like — the tokens are the theme's
 database/migrations/      generated SQL, reviewed like any other change
 assemora.config.ts        how the `assemora` command finds this project
 next.config.ts            where the two halves become one origin
@@ -194,7 +195,31 @@ Studio has no list of collections, no hand-written form and no list of block typ
 reads the Schema Registry, so it already knows about anything you declare.
 <!-- assemora:end -->
 
+## The theme
+
+`app/layout.tsx` links one stylesheet this project does not contain:
+
+```html
+<link rel="stylesheet" href="/api/theme.css" />
+```
+
+It is generated from the theme document (SPEC.md §62) — the colours, the type scale,
+the spacing steps, the container widths — and it arrives through the same `/api`
+rewrite as everything else, so the address is relative and there is nothing to
+configure. Edit it in Studio's **Design** section, or let an agent propose a change to
+it: the tokens are a stored document, so nobody, human or otherwise, is ever writing
+global CSS.
+
+`app/globals.css` is what is left over: what a hero, a rich-text block and this
+project's own routes look like. It reads the tokens by name — `var(--space-xl)`,
+`var(--ink-soft)` — and it is unlayered while the generated stylesheet sits inside
+`@layer assemora`, so whatever you write here wins without counting selectors.
+
 <!-- assemora:if pages -->
+That stylesheet is also what makes the universal design controls do anything. A block
+given `spacingTop: 'xl'` in the builder renders `var(--space-xl)`, and the rules that
+spend it are in the generated file rather than in a copy every project maintains.
+
 ## Pages
 
 A page is a tree of blocks with stable ids — never a blob of HTML. `src/blocks/` says

@@ -13,7 +13,8 @@ development exactly as it is in production.
 ## What is built
 
 All of SPEC.md §115: login, navigation, resource CRUD, media, the API Explorer,
-pages, the block builder, revision history, users and the developer section.
+pages, the block builder, revision history, users, the developer section — and Design,
+the five groups of theme tokens of SPEC.md §62.
 
 The builder's canvas is an iframe running the *application's* frontend — the real
 renderer, its block views, its theme (SPEC.md §59). Studio sends the tree in and gets
@@ -32,6 +33,10 @@ Studio holds no knowledge of any particular application. It asks
 - the builder's block palette is the registry's blocks, with their nesting rules
 - a block's properties panel is its own fields, drawn by the same inputs as a resource
   form — plus the seven universal design controls every block has (SPEC.md §61)
+- the backgrounds those controls offer are the colours the generated stylesheet
+  declares — a public artefact, so a person who may edit a block's design needs no
+  permission over the theme — and Design is the five groups of the document that
+  stylesheet is rendered from: Studio decides what no token means (SPEC.md §62)
 
 So a `resource()` or a `block()` added to an application appears here with no Studio
 change at all. Every write goes to a command through the API — never to the database,
