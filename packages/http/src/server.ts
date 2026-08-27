@@ -482,9 +482,30 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     return scheme?.toLowerCase() === 'bearer' && rest.join(' ').trim() !== ''
   }
 
-  const csrfFails = (method: HttpMethod, headers: Readonly<Record<string, string>>): boolean => {
+  const csrfFails = (
+    method: HttpMethod,
+    headers: Readonly<Record<string, string>>,
+    actor: Actor | undefined,
+  ): boolean => {
     if (options.csrf === undefined) return false
     if (method === 'get') return false
+
+    /**
+     * Nobody is signed in, so there is no ambient authority for another site to
+     * borrow — and a cookie the server no longer honours is not a credential.
+     *
+     * Asking about the *cookie header* instead is what locked people out of the login
+     * page: a session cookie outlives the session it names, so any browser that had
+     * signed in before a restart carried one, had no matching CSRF cookie, and was
+     * refused before the password was ever read. The message it got said the
+     * credentials were wrong, and they were not.
+     *
+     * Logging in is the case this distinguishes: it does not *use* the ambient
+     * credential, it establishes one. Forcing a victim's browser to sign in as
+     * somebody else is a different and much weaker attack than performing their
+     * mutations as them, and it is not what a double-submit token is for.
+     */
+    if (actor === undefined) return false
     if (headers.cookie === undefined || bearerPresented(headers.authorization)) return false
 
     const sent = headers[csrfHeader]
@@ -529,7 +550,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
 
       return runInContext(context, async () => {
         try {
-          if (csrfFails(definition.method, headers)) {
+          if (csrfFails(definition.method, headers, actor)) {
             throw new AssemoraError('CSRF_FAILED', 'This request is missing its CSRF token', {
               status: 403,
             })

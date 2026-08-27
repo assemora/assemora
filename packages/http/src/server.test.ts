@@ -513,9 +513,25 @@ describe('a handler may set cookies and a status of its own (SPEC.md §85)', () 
 })
 
 describe('CSRF protection for cookie-authenticated mutations (SPEC.md §85)', () => {
+  /**
+   * Somebody is signed in, because that is the whole subject.
+   *
+   * A double-submit token protects a mutation performed with an ambient credential.
+   * A resolver that answers with an actor is what makes the cookie one; a request the
+   * server cannot attribute to anybody has no authority for another site to borrow,
+   * and a stale cookie the server no longer honours is exactly that.
+   */
+  const signedIn = { type: 'user', id: ID } as const
+
   beforeEach(() => {
     clearRouteRegistry()
-    server = build({ csrf: {} })
+    server = build({
+      csrf: {},
+      resolveActor: async (headers) =>
+        headers.authorization !== undefined || headers.cookie?.includes('assemora_session') === true
+          ? signedIn
+          : undefined,
+    })
     server.mount(login)
   })
 
@@ -526,6 +542,23 @@ describe('CSRF protection for cookie-authenticated mutations (SPEC.md §85)', ()
       method: 'POST',
       url: '/api/auth/login',
       payload: { email: 'ada@x.io', password: 'longenough' },
+    })
+
+    expect(response.statusCode).toBe(201)
+  })
+
+  it('lets somebody sign in again with a cookie the server has stopped honouring', async () => {
+    await server.ready()
+
+    // The case this exists for: a session cookie outlives the session it names — the
+    // process restarted, the row expired, an administrator revoked it — and the
+    // browser keeps sending it. Refusing on the *cookie header* locked that person
+    // out of the login page itself and told them their password was wrong.
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'ada@x.io', password: 'longenough' },
+      headers: { cookie: 'assemora_stale=ses_fromlastweek' },
     })
 
     expect(response.statusCode).toBe(201)
@@ -552,7 +585,10 @@ describe('CSRF protection for cookie-authenticated mutations (SPEC.md §85)', ()
       method: 'POST',
       url: '/api/auth/login',
       payload: { email: 'ada@x.io', password: 'longenough' },
-      headers: { cookie: 'assemora_csrf=secret', 'x-csrf-token': 'guessed' },
+      headers: {
+        cookie: 'assemora_session=ses_abc; assemora_csrf=secret',
+        'x-csrf-token': 'guessed',
+      },
     })
 
     expect(response.statusCode).toBe(403)
@@ -565,7 +601,10 @@ describe('CSRF protection for cookie-authenticated mutations (SPEC.md §85)', ()
       method: 'POST',
       url: '/api/auth/login',
       payload: { email: 'ada@x.io', password: 'longenough' },
-      headers: { cookie: 'assemora_csrf=secret', 'x-csrf-token': 'secret' },
+      headers: {
+        cookie: 'assemora_session=ses_abc; assemora_csrf=secret',
+        'x-csrf-token': 'secret',
+      },
     })
 
     expect(response.statusCode).toBe(201)
@@ -578,7 +617,10 @@ describe('CSRF protection for cookie-authenticated mutations (SPEC.md §85)', ()
       method: 'POST',
       url: '/api/auth/login',
       payload: { email: 'ada@x.io', password: 'longenough' },
-      headers: { cookie: 'assemora_csrf=secret', authorization: 'Bearer ass_something' },
+      headers: {
+        cookie: 'assemora_session=ses_abc; assemora_csrf=secret',
+        authorization: 'Bearer ass_something',
+      },
     })
 
     expect(response.statusCode).toBe(201)
