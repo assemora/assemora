@@ -7,12 +7,13 @@
 import { randomUUID } from 'node:crypto'
 
 import { NotFoundError } from '@assemora/core'
-import type { DatabaseAdapter, TableDescriptor } from '@assemora/database'
+import type { TableDescriptor } from '@assemora/database'
 import { comparison, emptyQuery } from '@assemora/database'
 
 import type { AnyColumn } from './columns.js'
 import { definePivot, type PivotFields } from './pivot.js'
 import type { Fields, InferRecord } from './query.js'
+import { execute } from './runtime.js'
 
 const ORIGINAL: unique symbol = Symbol('assemora.original')
 
@@ -48,7 +49,6 @@ export type InstanceContext<F extends Fields> = {
   readonly table: TableDescriptor
   readonly columns: Readonly<Record<string, AnyColumn>>
   readonly computed: ComputedFunctions<F>
-  readonly adapter: () => DatabaseAdapter
   /**
    * Every declared model, for the far side of a `belongsToMany`: the join table takes
    * the type of the key it holds from the target's descriptor, and only the registry
@@ -135,7 +135,7 @@ export const createInstance = <F extends Fields, C extends ComputedValues>(
   }
 
   const write = async (operation: 'insert' | 'update' | 'delete', data?: Record<string, unknown>) =>
-    context.adapter().execute(
+    execute(
       {
         ...emptyQuery(context.table.name, operation),
         where: operation === 'insert' ? [] : [identify()],
@@ -192,12 +192,10 @@ export const createInstance = <F extends Fields, C extends ComputedValues>(
     },
 
     async refresh() {
-      const rows = await context
-        .adapter()
-        .execute<Record<string, unknown>[]>(
-          { ...emptyQuery(context.table.name), where: [identify()], limit: 1 },
-          { table: context.table },
-        )
+      const rows = await execute<Record<string, unknown>[]>(
+        { ...emptyQuery(context.table.name), where: [identify()], limit: 1 },
+        { table: context.table },
+      )
 
       const fresh = rows[0]
 
@@ -255,7 +253,6 @@ export const createInstance = <F extends Fields, C extends ComputedValues>(
       relation,
       row: instance,
       related: context.related,
-      adapter: context.adapter,
     })
   }
 

@@ -97,6 +97,9 @@ export {
   type Relation,
   type RelationOptions,
 } from './relations.js'
+// `execute` is not exported: it is the seam every query inside this package runs
+// through, and a caller reaching for it directly would be assembling a Query AST by
+// hand — which is `currentAdapter()`'s job, and is already as advanced as it looks.
 export {
   clearAdapter,
   currentAdapter,
@@ -104,3 +107,9 @@ export {
   transaction,
   useAdapter,
 } from './runtime.js'
+export {
+  clearSlowQueryLog,
+  DEFAULT_SLOW_QUERY_MS,
+  type SlowQueryLogOptions,
+  useSlowQueryLog,
+} from './slow-queries.js'

@@ -38,6 +38,7 @@ export type {
   JobWorker,
   McpOptions,
   MediaOptions,
+  ObservabilityOptions,
   ProjectOptions,
   RateWindow,
   SessionOptions,

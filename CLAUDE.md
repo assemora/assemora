@@ -86,8 +86,26 @@ have already been made — do not reverse one without writing a new ADR.
   means what SPEC.md §66 says. A row lock would need `for update` in the Query AST,
   which is a framework-wide change rather than the theme's to land alone.
 
-Still unbuilt from SPEC: the two halves of §88 nobody has needed yet — slow query
-logging and an error tracking adapter interface.
+- **SPEC.md §88 — done.** Request timing, slow query logging and the error tracking
+  adapter interface were the three halves left; structured logs, command timing and
+  `/health` + `/ready` were already there. The port follows the others in core: the
+  default *logs* rather than discarding, because most applications register nothing
+  and an error that vanishes for want of a reporter is worse than no port.
+- The line between a caller's mistake and an incident is `status >= 500`, plus
+  anything that is not an `AssemoraError` at all. SPEC.md §83 gave every error a
+  status precisely to say whose failure it is, so the line is drawn once in the error
+  model rather than re-argued in three layers.
+- Nothing on its way to a reporter carries what was thrown. The error is rebuilt from
+  a scrubbed first line and its `at` frames, capped in length, depth and frame count —
+  the redactor was quadratic (cubic on a keyword-dense message: 131 seconds for 10 000
+  characters) and it runs on a path that is already failing.
+- A slow-query line carries the model, the operation, the duration and the row count,
+  and never a value. A `where` holds whatever the caller passed, and a slow-query log
+  is the file that ends up in a ticket.
+
+Every section of SPEC.md is now implemented. What is left is not a section: nothing is
+published to npm, so `create-assemora` writes a dependency range that resolves to
+nothing and a generated project runs only from a checkout.
 
 Decisions phase 10 added (ADR-0021, ADR-0022):
 

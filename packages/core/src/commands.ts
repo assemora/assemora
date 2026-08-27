@@ -20,14 +20,18 @@ import { AssemoraError, UnknownCommandError, ValidationError } from './errors.js
 import type { EventBus, PayloadOf } from './events.js'
 import { collectDispatches, type JobRequest, queuedFrom } from './jobs.js'
 import type { Logger } from './logger.js'
-import type {
-  AuditPort,
-  AuthorizationPort,
-  QueuedJob,
-  QueuePort,
-  RevisionDraft,
-  RevisionEntry,
-  TransactionPort,
+import {
+  type AuditPort,
+  type AuthorizationPort,
+  captureError,
+  type ErrorReporting,
+  type ErrorTrackingPort,
+  logErrors,
+  type QueuedJob,
+  type QueuePort,
+  type RevisionDraft,
+  type RevisionEntry,
+  type TransactionPort,
 } from './ports.js'
 import type { CommandReach, SchemaRegistry } from './registry.js'
 
@@ -221,6 +225,13 @@ export type CommandBusOptions = {
   readonly queue: QueuePort
   readonly registry: SchemaRegistry
   readonly logger: Logger
+  /**
+   * Where a handler that threw is reported (SPEC.md §88).
+   *
+   * Defaults to writing the incident to `logger`, because a failure that vanished for
+   * want of a registered reporter would be worse than having no reporter at all.
+   */
+  readonly errors?: ErrorTrackingPort
 }
 
 /**
@@ -234,6 +245,11 @@ const PERMANENT_REFUSALS = new Set(['UNQUEUEABLE_PAYLOAD', 'VALIDATION_ERROR', '
 
 export const createCommandBus = (options: CommandBusOptions): CommandBus => {
   const registered = new Map<string, AnyCommand>()
+
+  const reporting: ErrorReporting = {
+    errors: options.errors ?? logErrors(options.logger),
+    logger: options.logger,
+  }
 
   /**
    * The one pipeline, entered two ways (SPEC.md §14, §73).
@@ -249,6 +265,26 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
   ): Promise<unknown> => {
     const context = contextOrInternal()
     const startedAt = performance.now()
+
+    /**
+     * Hoisted above everything that reads it, because a failure has to be able to say
+     * what the command had reached.
+     *
+     * SPEC.md §87 asks every log entry for `entityType` and `entityId` where they are
+     * available, and from the first `revise()` onwards they are — including inside the
+     * `catch`, where the pipeline previously knew what had been touched and said
+     * nothing about it.
+     */
+    const revisions: RevisionEntry[] = []
+
+    /** What the command acted on, as far as it got. The first revision names it. */
+    const actedOn = (): { entityType: string; entityId: string } | undefined => {
+      const first = revisions[0]
+
+      return first === undefined
+        ? undefined
+        : { entityType: first.entityType, entityId: first.entityId }
+    }
 
     /**
      * Records the attempt, and never fails because of it.
@@ -278,6 +314,7 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         options.logger.error('The audit log could not be written', {
           command: definition.name,
           requestId: context.requestId,
+          ...actedOn(),
           reason: error instanceof Error ? error.message : String(error),
         })
       }
@@ -310,6 +347,7 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
           {
             command: definition.name,
             requestId: context.requestId,
+            ...actedOn(),
             jobs: jobs.map((job) => job.name),
             reason: error instanceof Error ? error.message : String(error),
           },
@@ -321,6 +359,8 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
     const parsed = definition.input.parse(rawInput)
 
     if (!parsed.ok) {
+      // Audited and not captured. A caller who sent the wrong shape has been told so;
+      // an error tracker fed every 422 is a tracker nobody reads (SPEC.md §88).
       await audit('failed', { reason: 'VALIDATION_ERROR' })
       throw new ValidationError(parsed.issues)
     }
@@ -334,7 +374,6 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         context,
       })
 
-      const revisions: RevisionEntry[] = []
       const queued: { readonly name: string; readonly payload: unknown }[] = []
 
       /**
@@ -434,8 +473,6 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
 
       // 7. Audit. The first revision names what was acted on; a command that touched
       // several says how many.
-      const acted = revisions[0]
-
       await audit(
         'succeeded',
         {
@@ -443,9 +480,7 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
           events: queued.length,
           jobs: dispatched.length,
         },
-        acted === undefined
-          ? undefined
-          : { entityType: acted.entityType, entityId: acted.entityId },
+        actedOn(),
       )
 
       return result
@@ -453,6 +488,18 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       await audit('failed', {
         reason: error instanceof Error ? error.message : String(error),
       })
+
+      // 8. Error tracking (SPEC.md §88). After the audit, because the audit is the
+      // record of what happened and this is a copy sent to somebody else — and only
+      // for what the pipeline could not attribute to the caller: a denial, a stale
+      // version and a malformed uuid are all the pipeline doing its job.
+      await captureError(reporting, error, {
+        kind: 'command',
+        name: definition.name,
+        ...actedOn(),
+        durationMs: performance.now() - startedAt,
+      })
+
       throw error
     }
   }

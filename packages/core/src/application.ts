@@ -18,6 +18,8 @@ import {
   denyAll,
   discardAudit,
   discardRevisions,
+  type ErrorTrackingPort,
+  logErrors,
   type QueuePort,
   type RevisionPort,
   runJobsHere,
@@ -43,6 +45,14 @@ export type ApplicationOptions = {
    * an application with no queue registered still runs the work it schedules.
    */
   readonly queue?: QueuePort
+  /**
+   * Where an unexpected failure is reported (SPEC.md §88).
+   *
+   * Defaults to writing it to `logger`. Nothing is registered in most applications,
+   * and a default that discarded would take the failures out of the logs that already
+   * had them — the one default worse than having no port at all.
+   */
+  readonly errors?: ErrorTrackingPort
   readonly logger?: Logger
 }
 
@@ -72,8 +82,16 @@ export const createApplication = (options: ApplicationOptions = {}): Application
   const authorization = options.authorization ?? denyAll()
   // One audit port for both buses: a read and a write belong in the same log.
   const audit = options.audit ?? discardAudit()
+  // And one reporter, for the same reason: a read that broke and a write that broke
+  // belong in the same tracker (SPEC.md §88).
+  //
+  // It is not exposed on the application. The composition root that wires a reporter
+  // is the same one that wires the HTTP server, and it can hand the same port to
+  // both — whereas an `Application` that carried its ports would be the first of them
+  // to do so, for one consumer's convenience.
+  const errors = options.errors ?? logErrors(logger)
 
-  const queries = createQueryBus({ authorization, registry, logger, audit })
+  const queries = createQueryBus({ authorization, registry, logger, audit, errors })
 
   // The default queue runs this application's own jobs, and the bus that holds them
   // needs a queue — so the reference is closed over rather than passed. Nothing calls
@@ -93,6 +111,7 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     queue,
     registry,
     logger,
+    errors,
   })
 
   const jobs = createJobBus({

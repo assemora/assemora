@@ -10,7 +10,14 @@ import { type InferShape, object, type Schema, type Shape } from '@assemora/sche
 import { type AssemoraContext, contextOrInternal } from './context.js'
 import { UnknownQueryError, ValidationError } from './errors.js'
 import type { Logger } from './logger.js'
-import type { AuditPort, AuthorizationPort } from './ports.js'
+import {
+  type AuditPort,
+  type AuthorizationPort,
+  captureError,
+  type ErrorReporting,
+  type ErrorTrackingPort,
+  logErrors,
+} from './ports.js'
 import type { SchemaRegistry } from './registry.js'
 
 export type QueryContext = AssemoraContext & {
@@ -96,10 +103,23 @@ export type QueryBusOptions = {
    * agent read the user list.
    */
   readonly audit: AuditPort
+  /**
+   * Reads are tracked too (SPEC.md §88).
+   *
+   * A read that threw is as much an incident as a write that did — a listing nobody
+   * can load is an outage, and it is the half of the application a tracker wired only
+   * to the Command Bus would never hear about.
+   */
+  readonly errors?: ErrorTrackingPort
 }
 
 export const createQueryBus = (options: QueryBusOptions): QueryBus => {
   const registered = new Map<string, AnyQuery>()
+
+  const reporting: ErrorReporting = {
+    errors: options.errors ?? logErrors(options.logger),
+    logger: options.logger,
+  }
 
   const run = async (definition: AnyQuery, rawInput: unknown): Promise<unknown> => {
     const context = contextOrInternal()
@@ -126,6 +146,20 @@ export const createQueryBus = (options: QueryBusOptions): QueryBus => {
       }
     }
 
+    /**
+     * Only what could not be attributed to the caller (SPEC.md §88).
+     *
+     * A read is refused far more often than a write — a wrong filter, a denial, a
+     * page that is not there — and every one of those is the bus working. What is
+     * left is the read that broke.
+     */
+    const capture = (error: unknown) =>
+      captureError(reporting, error, {
+        kind: 'query',
+        name: definition.name,
+        durationMs: performance.now() - startedAt,
+      })
+
     const parsed = definition.input.parse(rawInput)
 
     if (!parsed.ok) {
@@ -143,6 +177,9 @@ export const createQueryBus = (options: QueryBusOptions): QueryBus => {
       await audit('failed', {
         reason: error instanceof Error ? error.message : String(error),
       })
+      // A `ForbiddenError` is filtered out; an authorization provider that could not
+      // reach its own tables is not.
+      await capture(error)
       throw error
     }
 
@@ -164,6 +201,7 @@ export const createQueryBus = (options: QueryBusOptions): QueryBus => {
       await audit('failed', {
         reason: error instanceof Error ? error.message : String(error),
       })
+      await capture(error)
       throw error
     }
   }

@@ -30,10 +30,12 @@ import {
   ConfigurationError,
   createApplication,
   createLogger,
+  type ErrorTrackingPort,
   type Logger,
+  logErrors,
   type ModuleBuilder,
 } from '@assemora/core'
-import { dataTransactions, useAdapter } from '@assemora/data'
+import { clearSlowQueryLog, dataTransactions, useAdapter, useSlowQueryLog } from '@assemora/data'
 import { commandEndpoints, commandRoutes, createHttpServer, type HttpServer } from '@assemora/http'
 import { mcp } from '@assemora/mcp'
 import { currentStorage, localStorage, type StorageDriver, useStorage } from '@assemora/media'
@@ -56,6 +58,7 @@ import {
   type Settings,
 } from './options.js'
 import { mountPreview } from './preview-routes.js'
+import { reportedOnce } from './reporting.js'
 import { mountStudio } from './studio.js'
 import { themeRoutes } from './theme-routes.js'
 
@@ -383,6 +386,7 @@ const serve = (
   api: ResolvedApi,
   modules: ReadonlySet<string>,
   isReady: () => boolean,
+  errors: ErrorTrackingPort,
 ): Served => {
   // Read off the driver this application actually configured, so a bucket or a CDN is
   // named in `img-src` and nothing else is (SPEC.md §63, §85).
@@ -393,6 +397,13 @@ const serve = (
     commands: app.commands,
     queries: app.queries,
     logger: app.logger,
+    // The same instance the buses were given: one failure is one report, whether it
+    // was thrown inside a command or by the layer in front of it (SPEC.md §88).
+    errors,
+    requestLog:
+      settings.observability.slowRequestMs === false
+        ? false
+        : { slowMs: settings.observability.slowRequestMs },
     prefix: api.prefix,
     ...(modules.has('auth') ? { resolveActor } : {}),
     // Registered only when there is something to allow, and always as a list. CORS is
@@ -499,9 +510,28 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     })
   }
 
-  // Both are process-wide, and both are set before anything is registered: a module's
-  // registration is user code, and user code may query.
+  // One reporter, held here rather than read off the application: the composition root
+  // that wires Sentry is the same one that wires the server, and both halves of
+  // SPEC.md §88 have to report an incident to the same place (ADR-0022).
+  //
+  // And one report per failure. Wiring the layers to a single port is what makes a
+  // failure reported twice possible at all — one layer catching what the layer inside
+  // it already reported — so the wiring is where that is answered.
+  const errors: ErrorTrackingPort = reportedOnce(settings.observability.errors ?? logErrors(logger))
+
+  // These are process-wide, and every one of them is set before anything is
+  // registered: a module's registration is user code, and user code may query.
   useAdapter(options.database)
+
+  // Registered unless it was switched off, so §88's slow query log is something an
+  // application has rather than something it remembers to ask for. It writes the shape
+  // of a query and never its values — a `where` carries whatever the caller passed.
+  //
+  // Switched off it clears rather than skips, for the reason `useAdapter` above
+  // overwrites: this application decides what the process does, and inheriting a log
+  // from whoever built one first is not a decision anybody made.
+  if (settings.observability.slowQueryMs === false) clearSlowQueryLog()
+  else useSlowQueryLog(logger, { slowerThanMs: settings.observability.slowQueryMs })
 
   // The module needs somewhere to put bytes whether or not the application said where
   // (SPEC.md §9). A driver registered with useStorage() before this call is left
@@ -538,6 +568,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     // Left out, core runs jobs in this process rather than discarding them: a missing
     // revision is an absence, a missing job is a lie (ADR-0023).
     ...(options.jobs === undefined ? {} : { queue: options.jobs.queue }),
+    errors,
     logger,
   })
 
@@ -566,7 +597,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   const served =
     settings.api === undefined
       ? undefined
-      : serve(app, settings, settings.api, registered, () => ready)
+      : serve(app, settings, settings.api, registered, () => ready, errors)
 
   /**
    * One boot, whichever half of the handle asks for it.

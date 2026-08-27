@@ -26,7 +26,7 @@ import {
   type ScopedQuery,
 } from './query.js'
 import { isRelation, type Relation } from './relations.js'
-import { currentAdapter } from './runtime.js'
+import { execute } from './runtime.js'
 
 export type ScopeMap<F extends Fields> = Readonly<Record<string, (query: Query<F>) => Query<F>>>
 
@@ -170,7 +170,6 @@ export const model = <
     },
     columns,
     computed: (options.computed ?? {}) as ComputedFunctions<F>,
-    adapter: currentAdapter,
     related: registeredModels,
   }
 
@@ -190,7 +189,6 @@ export const model = <
 
   const query = (): ScopedQuery<F, keyof S & string, Instance<F, C>> =>
     createQuery<F, keyof S & string, Instance<F, C>>(baseState(), {
-      adapter: currentAdapter,
       related: registeredModels,
       hydrate,
       scopes: (options.scopes ?? {}) as Readonly<Record<string, (query: never) => unknown>>,
@@ -235,7 +233,7 @@ export const model = <
     $infer: undefined as unknown as InferRecord<F>,
 
     async find(id: unknown) {
-      const rows = await currentAdapter().execute<Record<string, unknown>[]>(
+      const rows = await execute<Record<string, unknown>[]>(
         {
           ...emptyQuery(table),
           where: [

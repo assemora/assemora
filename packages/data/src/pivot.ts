@@ -12,16 +12,11 @@
  * `@assemora/database` derives — no adapter method and no operation is added for a
  * pivot, because a link table is a table (ADR-0001, ADR-0013).
  */
-import type {
-  DatabaseAdapter,
-  PivotAddress,
-  RelationDescriptor,
-  TableDescriptor,
-} from '@assemora/database'
+import type { PivotAddress, RelationDescriptor, TableDescriptor } from '@assemora/database'
 import { comparison, emptyQuery, pivotAddress } from '@assemora/database'
 
 import type { Fields } from './query.js'
-import { transaction } from './runtime.js'
+import { execute, transaction } from './runtime.js'
 
 /**
  * What a key column holds.
@@ -87,7 +82,6 @@ export type PivotContext = {
    */
   readonly row: Readonly<Record<string, unknown>>
   readonly related: () => Readonly<Record<string, TableDescriptor>>
-  readonly adapter: () => DatabaseAdapter
 }
 
 /**
@@ -186,7 +180,7 @@ export const definePivot = (target: object, context: PivotContext): void => {
     pivot: PivotAddress,
     only?: readonly RelatedKey[],
   ): Promise<Map<string, unknown>> => {
-    const rows = await context.adapter().execute<Record<string, unknown>[]>(
+    const rows = await execute<Record<string, unknown>[]>(
       {
         ...emptyQuery(pivot.table.name),
         where: [
@@ -201,7 +195,7 @@ export const definePivot = (target: object, context: PivotContext): void => {
   }
 
   const link = (pivot: PivotAddress, id: RelatedKey): Promise<unknown> =>
-    context.adapter().execute(
+    execute(
       {
         ...emptyQuery(pivot.table.name, 'insert'),
         data: { [pivot.ownerColumn]: pivot.ownerValue, [pivot.relatedColumn]: id },
@@ -210,7 +204,7 @@ export const definePivot = (target: object, context: PivotContext): void => {
     )
 
   const unlink = (pivot: PivotAddress, ids: readonly unknown[]): Promise<unknown> =>
-    context.adapter().execute(
+    execute(
       {
         ...emptyQuery(pivot.table.name, 'delete'),
         where: [

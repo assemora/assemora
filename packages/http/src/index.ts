@@ -41,6 +41,7 @@ export {
   registeredRoutes,
 } from './module.js'
 export { type QueryEndpoint, queryEndpoints, queryRoutes } from './queries.js'
+export { type RequestLogOptions, SLOW_REQUEST_MS } from './request-log.js'
 export {
   type Cookie,
   isResponded,

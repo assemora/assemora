@@ -7,11 +7,16 @@
  */
 import {
   type Actor,
+  type AssemoraContext,
   AssemoraError,
   type CommandBus,
   ConfigurationError,
+  captureError,
   createContext,
+  type ErrorReporting,
+  type ErrorTrackingPort,
   type Logger,
+  logErrors,
   type QueryBus,
   runInContext,
   type SchemaRegistry,
@@ -28,6 +33,12 @@ import { commandEndpoints, commandRoutes } from './commands.js'
 import { crudResources, crudRoutes } from './crud.js'
 import { registeredRoutes } from './module.js'
 import { queryEndpoints, queryRoutes } from './queries.js'
+import {
+  logRequest,
+  type RequestLogOptions,
+  type ServedRequest,
+  SLOW_REQUEST_MS,
+} from './request-log.js'
 import { isResponded, serializeCookie } from './respond.js'
 import {
   describeRoute,
@@ -47,6 +58,41 @@ export type HttpServerOptions = {
   readonly commands: CommandBus
   readonly queries: QueryBus
   readonly logger: Logger
+  /**
+   * The one structured line every request writes: method, route, status, duration
+   * (SPEC.md §88).
+   *
+   * On by default, because §88 lists request timing among the minimum an application
+   * ships with, and a line somebody has to switch on is not there on the night it is
+   * wanted. `requestLog: false` is the deliberate way to have none.
+   *
+   * ```ts
+   * createHttpServer({ registry, commands, queries, logger, requestLog: { slowMs: 250 } })
+   * ```
+   */
+  readonly requestLog?: RequestLogOptions | false
+  /**
+   * Where a failure this layer could not attribute to the caller is reported
+   * (SPEC.md §88).
+   *
+   * Defaults to writing the incident to `logger`, exactly as the buses do. A
+   * composition root that registers a real reporter should hand the same instance to
+   * `createApplication` and to this, so an incident reaches the same place wherever it
+   * was thrown.
+   *
+   * ```ts
+   * const errors = sentry()
+   *
+   * createApplication({ modules, errors })
+   * createHttpServer({ registry, commands, queries, logger, errors })
+   * ```
+   *
+   * A failure thrown inside a command and answered over HTTP then passes two layers
+   * that both report it, and this layer reports what it saw: the route and the status.
+   * Whether the tracker is told twice is the port's to decide, because the port is the
+   * only thing that sees both — `assemora()` wires one that drops the repeat.
+   */
+  readonly errors?: ErrorTrackingPort
   /** Everything is mounted below this. `/api` by default (SPEC.md §43). */
   readonly prefix?: string
   /**
@@ -169,6 +215,64 @@ const headersOf = (request: FastifyRequest): Record<string, string> => {
   return headers
 }
 
+/**
+ * One header, read the way `headersOf` reads them all: a header that arrived more than
+ * once is an array, and this layer takes no value from one.
+ */
+const headerOf = (request: FastifyRequest, name: string): string | undefined => {
+  const value = request.headers[name]
+
+  return typeof value === 'string' ? value : undefined
+}
+
+/**
+ * What this layer knows about a request that cannot be asked of the handler.
+ *
+ * Two things, and both are wanted after the handler has gone.
+ *
+ * The arrival time, because the line and the error report both say how long the
+ * request took, and Fastify keeps that time only when something else already asked it
+ * to — a logger, an `onResponse` hook, a handler timeout. Borrowing it made two
+ * options that read as independent silently coupled: switching off the request *log*
+ * left `reply.elapsedTime` at 0, so every *report* said the request took no time at
+ * all. Measured here, the duration means the same thing whatever else is switched on.
+ *
+ * And the context, because `onResponse` fires once the reply has been flushed, and
+ * because the requests that never reach a handler at all — a URL nothing matched, one
+ * the rate limit refused, a file — never open a context, so their line would carry
+ * none of §87's fields and could not be joined to the response the client saw.
+ */
+type ServedRequestState = {
+  readonly startedAt: number
+  /** Provisional until the actor is known; `handle` replaces it once it is. */
+  readonly context: AssemoraContext
+}
+
+/** What the resolver answered, or what it threw trying. */
+type Credentials = { readonly actor: Actor | undefined } | { readonly failed: unknown }
+
+/**
+ * Turns credentials into an actor without letting a failure escape the request.
+ *
+ * Resolving is I/O — a session row, a token digest, a database that may be down — so
+ * it can throw, and it runs before the request's own context is complete, because that
+ * context carries the actor this produces. A rejection here used to leave the route
+ * handler entirely and land in Fastify's own error handler, which puts the reason on
+ * the wire and reports it to nobody. The failure is carried into the guarded region
+ * instead, where every other failure of this request is already answered
+ * (SPEC.md §85, §88).
+ */
+const resolveCredentials = async (
+  resolve: ActorResolver | undefined,
+  headers: Readonly<Record<string, string>>,
+): Promise<Credentials> => {
+  try {
+    return { actor: await resolve?.(headers) }
+  } catch (failed) {
+    return { failed }
+  }
+}
+
 const failureOf = (error: unknown, requestId: string) => {
   if (error instanceof AssemoraError) {
     return { status: error.status, payload: error.toPayload(requestId) }
@@ -226,6 +330,54 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
   const prefix = options.prefix ?? '/api'
   const app: FastifyInstance = Fastify({ logger: false })
 
+  const reporting: ErrorReporting = {
+    errors: options.errors ?? logErrors(options.logger),
+    logger: options.logger,
+  }
+
+  const slowMs =
+    (options.requestLog === false ? undefined : options.requestLog?.slowMs) ?? SLOW_REQUEST_MS
+
+  /**
+   * What each request in flight arrived with (see `ServedRequestState`).
+   *
+   * A `WeakMap` rather than a property on the request, because Fastify's request
+   * object is a typed thing this layer does not get to extend — and because a key that
+   * is the request itself is freed with it, whatever the request did on its way out.
+   */
+  const state = new WeakMap<FastifyRequest, ServedRequestState>()
+
+  /**
+   * The request's state, established on arrival and read by everything after it.
+   *
+   * The request id is the caller's when it sent one, so a client that correlates its
+   * own calls keeps its thread through this application's logs, and a minted one
+   * otherwise: a line nothing can be joined to is half a line (SPEC.md §87).
+   */
+  const stateOf = (request: FastifyRequest): ServedRequestState => {
+    const already = state.get(request)
+
+    if (already !== undefined) return already
+
+    const requestId = headerOf(request, 'x-request-id')
+    const userAgent = headerOf(request, 'user-agent')
+    const arrived: ServedRequestState = {
+      startedAt: performance.now(),
+      context: createContext({
+        source: 'rest',
+        ...(requestId === undefined ? {} : { requestId }),
+        ...(userAgent === undefined ? {} : { userAgent }),
+      }),
+    }
+
+    state.set(request, arrived)
+
+    return arrived
+  }
+
+  /** Addresses that answer with files rather than endpoints, so the line can tell. */
+  const assetPaths = new Set<string>()
+
   const securityHeaders: Readonly<Record<string, string>> = {
     'content-security-policy': policyFor(options.security),
     // A response typed as JSON must not be guessed into being a script.
@@ -244,6 +396,18 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
    * (SPEC.md §85), which is why `mount` appends to this chain instead.
    */
   let ready = (async () => {
+    /**
+     * The first thing that happens to a request, and before the plugins deliberately.
+     *
+     * Hooks run in the order they were added, and `@fastify/rate-limit` refuses from an
+     * `onRequest` hook of its own. Stamping after it would leave exactly the requests it
+     * turned away with no arrival time and no context — and a client being throttled is
+     * one of the few times somebody reads these lines one by one (SPEC.md §85, §87).
+     */
+    app.addHook('onRequest', async (request) => {
+      stateOf(request)
+    })
+
     if (options.cors !== undefined) {
       await app.register(cors, {
         origin: [...options.cors.origins],
@@ -260,6 +424,39 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
 
     app.addHook('onSend', async (_request, reply) => {
       for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value)
+    })
+
+    if (options.requestLog === false) return
+
+    /**
+     * One line per request, and exactly one (SPEC.md §88).
+     *
+     * It hangs off the response rather than off the handler because that is the only
+     * place that is once per request and knows how it ended: a route that threw, a
+     * route that answered, a rate limit that refused before the handler ran, a URL
+     * that matched nothing, and a file — all of them arrive here, with the status
+     * that was actually sent and the duration measured from the moment the request
+     * arrived to the moment its reply was flushed.
+     */
+    app.addHook('onResponse', async (request, reply) => {
+      // Fastify's own name for whatever matched, so the line cannot drift from what is
+      // served and is a pattern rather than a URL. `undefined` when nothing matched.
+      const path = request.routeOptions.url
+
+      const { startedAt, context } = stateOf(request)
+
+      const served: ServedRequest = {
+        method: request.method,
+        ...(path === undefined ? {} : { path }),
+        status: reply.statusCode,
+        durationMs: performance.now() - startedAt,
+        ...(path !== undefined && assetPaths.has(path) ? { asset: true } : {}),
+      }
+
+      // Stepped back into rather than assumed: this hook fires once the reply has been
+      // flushed, and for a request no handler ever saw there was never a scope to be
+      // inside of. The line carries §87's fields either way.
+      runInContext(context, () => logRequest(options.logger, served, slowMs))
     })
   })()
 
@@ -296,110 +493,147 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     return sent === undefined || expected === undefined || sent !== expected
   }
 
-  const handle = (definition: Route) => async (request: FastifyRequest, reply: FastifyReply) => {
-    const headers = headersOf(request)
-    const requestId = headers['x-request-id'] ?? crypto.randomUUID()
-    const actor = await options.resolveActor?.(headers)
+  const handle =
+    (definition: Route, url: string) => async (request: FastifyRequest, reply: FastifyReply) => {
+      const headers = headersOf(request)
+      const { startedAt, context: arrived } = stateOf(request)
 
-    const context = createContext({
-      source: definition.source ?? 'rest',
-      requestId,
-      ...(actor === undefined ? {} : { actor }),
-      // Read off the request rather than out of a body, so a command that records it
-      // records what arrived instead of what the caller asked to be remembered
-      // (SPEC.md §85).
-      ...(headers['user-agent'] === undefined ? {} : { userAgent: headers['user-agent'] }),
-    })
+      /**
+       * The context of the request before it is known who is making it.
+       *
+       * It carries the request id the line and the response already use, and the route's
+       * own source. The user agent is read off the request rather than out of a body, so
+       * a command that records it records what arrived instead of what the caller asked
+       * to be remembered (SPEC.md §85).
+       */
+      const anonymously = createContext({
+        source: definition.source ?? 'rest',
+        requestId: arrived.requestId,
+        ...(arrived.userAgent === undefined ? {} : { userAgent: arrived.userAgent }),
+      })
 
-    return runInContext(context, async () => {
-      try {
-        if (csrfFails(definition.method, headers)) {
-          throw new AssemoraError('CSRF_FAILED', 'This request is missing its CSRF token', {
-            status: 403,
+      // Inside a context, because resolving credentials is database work — a session
+      // row, a token digest — and a slow query or a failure there is the "the session
+      // lookup is against a database that is down" case. Logged outside the request it
+      // came from, it names neither the request nor the client (SPEC.md §87).
+      const credentials = await runInContext(anonymously, () =>
+        resolveCredentials(options.resolveActor, headers),
+      )
+      const actor = 'actor' in credentials ? credentials.actor : undefined
+      const context = actor === undefined ? anonymously : createContext({ ...anonymously, actor })
+      const requestId = context.requestId
+
+      // The line is written after the handler has gone, and by then this is the context
+      // the request actually ran in.
+      state.set(request, { startedAt, context })
+
+      return runInContext(context, async () => {
+        try {
+          if (csrfFails(definition.method, headers)) {
+            throw new AssemoraError('CSRF_FAILED', 'This request is missing its CSRF token', {
+              status: 403,
+            })
+          }
+
+          // Before the check below and not after it: a resolver that threw did not
+          // answer "nobody", and calling that an unauthenticated request would tell
+          // the caller to log in about a fault of this deployment's own.
+          if ('failed' in credentials) throw credentials.failed
+
+          if (definition.auth && actor === undefined) {
+            throw new AssemoraError('UNAUTHORIZED', 'This endpoint requires authentication', {
+              status: 401,
+            })
+          }
+
+          const parse = (schema: (typeof definition)['params'], value: unknown, part: string) => {
+            if (schema === undefined) return {}
+
+            const result = schema.parse(value ?? {})
+
+            if (!result.ok) {
+              throw new ValidationError(
+                result.issues.map((issue) => ({ ...issue, path: [part, ...issue.path] })),
+              )
+            }
+
+            return result.value
+          }
+
+          const returned = await definition.handler({
+            params: parse(definition.params, request.params, 'params') as never,
+            query: parse(definition.query, request.query, 'query') as never,
+            body: parse(definition.body, request.body, 'body') as never,
+            headers,
+            actor,
+            context,
+            request,
           })
-        }
 
-        if (definition.auth && actor === undefined) {
-          throw new AssemoraError('UNAUTHORIZED', 'This endpoint requires authentication', {
-            status: 401,
-          })
-        }
+          const answer = isResponded(returned) ? returned.body : returned
+          const status = (isResponded(returned) ? returned.status : undefined) ?? definition.status
 
-        const parse = (schema: (typeof definition)['params'], value: unknown, part: string) => {
-          if (schema === undefined) return {}
+          if (isResponded(returned)) {
+            reply.headers({ ...returned.headers })
 
-          const result = schema.parse(value ?? {})
+            if (returned.cookies.length > 0) {
+              reply.header('set-cookie', returned.cookies.map(serializeCookie))
+            }
+          }
 
-          if (!result.ok) {
-            throw new ValidationError(
-              result.issues.map((issue) => ({ ...issue, path: [part, ...issue.path] })),
+          if (isBytesResponse(answer)) {
+            // Bytes leave as bytes. A response schema would have nothing to say about
+            // them, so it is not consulted (SPEC.md §41).
+            return await reply
+              .status(status)
+              .headers({ ...answer.headers })
+              .type(answer.contentType)
+              .send(Buffer.from(answer.body))
+          }
+
+          if (definition.response === undefined) {
+            return await reply.status(status).send(answer ?? null)
+          }
+
+          const serialized = definition.response.parse(answer)
+
+          if (!serialized.ok) {
+            // The handler answered with something the route promised not to return.
+            // Better a loud failure than a response nobody documented.
+            throw new AssemoraError(
+              'RESPONSE_MISMATCH',
+              `The handler of ${definition.method} ${definition.path} returned a value its response schema rejects`,
+              { status: 500, details: { issues: serialized.issues } },
             )
           }
 
-          return result.value
+          return await reply.status(status).send(serialized.value)
+        } catch (error) {
+          const failure = failureOf(error, requestId)
+
+          // The incident, not the request line: that one is written for every request
+          // by the `onResponse` hook, whatever the outcome, and a second line about
+          // the same event would only be a second opinion about it.
+          //
+          // Which failures are incidents is not decided here. A 422, a 403, a 404 and
+          // a 409 are all this layer doing its job and telling the caller so, and
+          // `captureError` draws that line once for the command pipeline, the Query
+          // Bus and this alike (SPEC.md §88).
+          await captureError(reporting, error, {
+            kind: 'request',
+            // The route, never the URL — an incident tracker groups by this, and
+            // `GET /api/articles/8f3a…` is a new issue on every request.
+            name: `${definition.method.toUpperCase()} ${url}`,
+            // Measured here, not read off the reply: Fastify keeps no time for a server
+            // whose request log is switched off, and a report is not the place to find
+            // that out (SPEC.md §87).
+            durationMs: performance.now() - startedAt,
+          })
+
+          return await reply.status(failure.status).send(failure.payload)
         }
-
-        const returned = await definition.handler({
-          params: parse(definition.params, request.params, 'params') as never,
-          query: parse(definition.query, request.query, 'query') as never,
-          body: parse(definition.body, request.body, 'body') as never,
-          headers,
-          actor,
-          context,
-          request,
-        })
-
-        const answer = isResponded(returned) ? returned.body : returned
-        const status = (isResponded(returned) ? returned.status : undefined) ?? definition.status
-
-        if (isResponded(returned)) {
-          reply.headers({ ...returned.headers })
-
-          if (returned.cookies.length > 0) {
-            reply.header('set-cookie', returned.cookies.map(serializeCookie))
-          }
-        }
-
-        if (isBytesResponse(answer)) {
-          // Bytes leave as bytes. A response schema would have nothing to say about
-          // them, so it is not consulted (SPEC.md §41).
-          return await reply
-            .status(status)
-            .headers({ ...answer.headers })
-            .type(answer.contentType)
-            .send(Buffer.from(answer.body))
-        }
-
-        if (definition.response === undefined) {
-          return await reply.status(status).send(answer ?? null)
-        }
-
-        const serialized = definition.response.parse(answer)
-
-        if (!serialized.ok) {
-          // The handler answered with something the route promised not to return.
-          // Better a loud failure than a response nobody documented.
-          throw new AssemoraError(
-            'RESPONSE_MISMATCH',
-            `The handler of ${definition.method} ${definition.path} returned a value its response schema rejects`,
-            { status: 500, details: { issues: serialized.issues } },
-          )
-        }
-
-        return await reply.status(status).send(serialized.value)
-      } catch (error) {
-        const failure = failureOf(error, requestId)
-
-        options.logger.error('Request failed', {
-          method: definition.method,
-          path: definition.path,
-          status: failure.status,
-        })
-
-        return await reply.status(failure.status).send(failure.payload)
-      }
-    })
-  }
+      })
+    }
 
   /** Every address this server serves, so a second claim on one can name the first. */
   const mounted = new Map<string, Route>()
@@ -490,7 +724,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           app.route({
             method: definition.method.toUpperCase() as 'GET',
             url,
-            handler: handle(definition),
+            handler: handle(definition, url),
           })
         })
       }
@@ -556,10 +790,17 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           .send(found.stream())
       }
 
+      // `/studio` and `/studio/` are the same document, and a browser sends both.
+      const entry = base === '' ? '/' : base
+      const below = `${base}/*`
+
+      // Named now rather than when a file is served, so the line for a request that
+      // never reached `serve` — a refusal, a 404 — still knows it was about a file.
+      assetPaths.add(entry).add(below)
+
       ready = ready.then(() => {
-        // `/studio` and `/studio/` are the same document, and a browser sends both.
-        app.route({ method: 'GET', url: base === '' ? '/' : base, handler: serve })
-        app.route({ method: 'GET', url: `${base}/*`, handler: serve })
+        app.route({ method: 'GET', url: entry, handler: serve })
+        app.route({ method: 'GET', url: below, handler: serve })
       })
 
       return server

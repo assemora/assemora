@@ -1,13 +1,17 @@
 /**
- * Where the data layer finds its adapter (SPEC.md §33).
+ * Where the data layer finds its adapter, and how it reaches it (SPEC.md §33, §88).
  *
  * The current adapter and the current transaction travel through AsyncLocalStorage,
- * so a developer never passes `tx` by hand.
+ * so a developer never passes `tx` by hand. `execute()` below is the one seam every
+ * query in this package runs through, which is what makes a query measurable without
+ * anything having to wrap the adapter itself.
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { ConfigurationError, type TransactionPort } from '@assemora/core'
-import type { DatabaseAdapter } from '@assemora/database'
+import type { DatabaseAdapter, DatabaseContext, QueryAst } from '@assemora/database'
+
+import { recordQuery } from './slow-queries.js'
 
 let ambient: DatabaseAdapter | undefined
 
@@ -32,6 +36,39 @@ export const currentAdapter = (): DatabaseAdapter => {
   }
 
   return adapter
+}
+
+/**
+ * Every statement the data layer runs (SPEC.md §88).
+ *
+ * The query builder, a model's `find()`, an instance's writes and the pivot verbs all
+ * reach the adapter through here rather than through `currentAdapter().execute`, so
+ * there is one place that knows how long a query took — and one place that would have
+ * to be edited again for anything else the data layer ever wants to measure.
+ *
+ * A function, and deliberately not a wrapped adapter. `currentAdapter()` hands the
+ * real adapter to the CLI and to `applySchema()`, which reach for methods only the
+ * PostgreSQL one has; a wrapper would either lose them, taking `db:migrate` with them,
+ * or forward them, and be a second definition of a contract that already has one
+ * (SPEC.md §31, ADR-0013).
+ */
+export const execute = async <T>(query: QueryAst, context: DatabaseContext): Promise<T> => {
+  const startedAt = performance.now()
+
+  try {
+    const answer = await currentAdapter().execute<T>(query, context)
+
+    recordQuery(query, performance.now() - startedAt, answer)
+
+    return answer
+  } catch (error) {
+    // Timed either way. A query that ran for four seconds and then failed is the one
+    // most worth knowing about, and a log that goes quiet exactly when the database
+    // starts refusing is the wrong log.
+    recordQuery(query, performance.now() - startedAt)
+
+    throw error
+  }
 }
 
 /**

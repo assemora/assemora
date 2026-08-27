@@ -8,7 +8,6 @@ import { AssemoraError } from '@assemora/core'
 import type {
   ComparisonOperator,
   Condition,
-  DatabaseAdapter,
   Order,
   QueryAst,
   RelationLoad,
@@ -26,6 +25,7 @@ import {
 
 import type { AnyColumn, ColumnValue } from './columns.js'
 import type { Relation } from './relations.js'
+import { execute } from './runtime.js'
 
 export type Fields = Readonly<Record<string, AnyColumn | Relation>>
 
@@ -100,7 +100,6 @@ export type QueryState = {
 }
 
 export type QueryRuntime<Row> = {
-  readonly adapter: () => DatabaseAdapter
   readonly related: () => Readonly<Record<string, TableDescriptor>>
   readonly hydrate: (row: Record<string, unknown>) => Row
   readonly scopes: Readonly<Record<string, (query: never) => unknown>>
@@ -306,7 +305,7 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
   })
 
   const run = async (): Promise<Row[]> => {
-    const rows = await runtime.adapter().execute<Record<string, unknown>[]>(toAst(), {
+    const rows = await execute<Record<string, unknown>[]>(toAst(), {
       table: state.table(),
       related: runtime.related(),
     })
@@ -412,12 +411,10 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
     },
 
     async count() {
-      return runtime
-        .adapter()
-        .execute<number>(
-          { ...toAst(), operation: 'count', order: [], with: [] },
-          { table: state.table() },
-        )
+      return execute<number>(
+        { ...toAst(), operation: 'count', order: [], with: [] },
+        { table: state.table() },
+      )
     },
 
     async exists() {

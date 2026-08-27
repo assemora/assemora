@@ -14,9 +14,10 @@
  */
 import { resolve as resolvePath } from 'node:path'
 
-import type { Logger, ModuleBuilder, QueuePort } from '@assemora/core'
+import type { ErrorTrackingPort, Logger, ModuleBuilder, QueuePort } from '@assemora/core'
+import { DEFAULT_SLOW_QUERY_MS } from '@assemora/data'
 import type { DatabaseAdapter } from '@assemora/database'
-import type { ApiVersion, VersionDeclaration } from '@assemora/http'
+import { type ApiVersion, SLOW_REQUEST_MS, type VersionDeclaration } from '@assemora/http'
 import type { MutationMode } from '@assemora/mcp'
 import type { StorageDriver } from '@assemora/media'
 
@@ -206,6 +207,55 @@ export type JobsOptions = {
   readonly worker?: () => JobWorker | Promise<JobWorker>
 }
 
+/**
+ * Where failures go, and when a slow query is written down (SPEC.md §88).
+ *
+ * §88's other halves need nothing here. The structured log is `logger`, the health and
+ * readiness endpoints are mounted whether or not anybody asks for them, and command
+ * and query timing is already in the audit row every application writes.
+ */
+export type ObservabilityOptions = {
+  /**
+   * Where an unexpected failure is reported.
+   *
+   * ```ts
+   * observability: { errors: sentry() }
+   * ```
+   *
+   * Defaults to the application's own structured log — core's `logErrors`, which is a
+   * floor rather than a switch: nothing disappears because nothing was registered. One
+   * port serves the command pipeline, the Query Bus and the server in front of them,
+   * so an incident is reported once however it was reached — a failure that passed two
+   * of those layers on its way out reaches this once, not twice.
+   *
+   * What reaches it is an incident and not a caller's mistake, and it never carries a
+   * command's input or an unredacted message — `captureError` in `@assemora/core` is
+   * where both of those are decided, once, for every layer.
+   */
+  readonly errors?: ErrorTrackingPort
+  /**
+   * A query at least this slow is logged, with its shape and never its values. 200ms.
+   *
+   * On, because §88 lists it among the minimum for v1 and an application that
+   * configured nothing should still be able to find out why a page is slow. It is not
+   * a firehose: the threshold sits above the whole-request budget of §89, so a healthy
+   * process writes nothing at all, and when it stops being healthy that is the thing
+   * worth knowing. `false` switches it off; `0` writes down every query, which is
+   * occasionally useful while looking at one endpoint and never in production.
+   */
+  readonly slowQueryMs?: number | false
+  /**
+   * How long a request may take before its line is a warning rather than information.
+   * A second.
+   *
+   * Every request writes one line whatever this is set to — method, route, status,
+   * duration — because §88 lists request timing among the minimum. This is what stops
+   * that from being a log nobody reads: the one request that took too long is written
+   * at a level somebody is alerted on. `false` stops the lines altogether.
+   */
+  readonly slowRequestMs?: number | false
+}
+
 export type SessionOptions = {
   /**
    * `Secure` on the session and CSRF cookies (SPEC.md §85).
@@ -262,6 +312,7 @@ export type AssemoraOptions = {
    */
   readonly origins?: readonly string[]
   readonly session?: SessionOptions
+  readonly observability?: ObservabilityOptions
   readonly logger?: Logger
   /**
    * Content history (SPEC.md §64). On, and a developer should not have to ask.
@@ -343,6 +394,19 @@ export type ResolvedSession = {
   readonly sameSite: 'strict' | 'lax'
 }
 
+export type ResolvedObservability = {
+  /**
+   * What the application named, and nothing when it named nothing.
+   *
+   * The default is `logErrors(logger)`, which needs the logger — and the logger is
+   * built where the application is, not here. So this is the one resolved value whose
+   * default is applied by `assemora()` rather than by `resolve()`.
+   */
+  readonly errors: ErrorTrackingPort | undefined
+  readonly slowQueryMs: number | false
+  readonly slowRequestMs: number | false
+}
+
 export type ResolvedProject = {
   readonly name: string
   readonly version: string
@@ -357,6 +421,7 @@ export type Settings = {
   readonly mcp: ResolvedMcp | undefined
   readonly frontend: ResolvedFrontend | undefined
   readonly session: ResolvedSession
+  readonly observability: ResolvedObservability
   readonly origins: readonly string[]
   readonly revisions: boolean
   readonly audit: boolean
@@ -426,6 +491,11 @@ export const resolve = (options: AssemoraOptions): Settings => ({
   session: {
     secure: options.session?.secure ?? true,
     sameSite: options.session?.sameSite ?? 'strict',
+  },
+  observability: {
+    errors: options.observability?.errors,
+    slowQueryMs: options.observability?.slowQueryMs ?? DEFAULT_SLOW_QUERY_MS,
+    slowRequestMs: options.observability?.slowRequestMs ?? SLOW_REQUEST_MS,
   },
   origins: options.origins ?? [],
   revisions: options.revisions ?? true,
