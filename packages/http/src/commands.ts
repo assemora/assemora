@@ -83,6 +83,9 @@ export const commandRoutes = (
     response: undefined,
     auth: false,
     source: undefined,
+    // A command belongs to the application rather than to a shape of its REST surface,
+    // so its generated endpoint is never published inside a version (SPEC.md §47).
+    version: undefined,
     status: 200,
     description: endpoint.description,
     tags: [endpoint.module ?? 'commands'],

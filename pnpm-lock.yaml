@@ -329,6 +329,9 @@ importers:
       '@assemora/resources':
         specifier: workspace:*
         version: link:../resources
+      '@assemora/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
@@ -651,6 +654,13 @@ importers:
       '@assemora/schema':
         specifier: workspace:*
         version: link:../schema
+    devDependencies:
+      '@assemora/core':
+        specifier: workspace:*
+        version: link:../core
+      '@assemora/http':
+        specifier: workspace:*
+        version: link:../http
 
   starters/bare:
     dependencies:

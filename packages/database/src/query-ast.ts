@@ -63,7 +63,16 @@ export type Order = {
   readonly direction: SortDirection
 }
 
-/** A relation to load alongside the row, addressed by its declared name. */
+/**
+ * A relation to load alongside the row, addressed by its declared name.
+ *
+ * A load carries no order of its own — `order` above sorts the rows the query
+ * selects, not the rows hanging off them. One exception is stated rather than left to
+ * the adapter: a `belongsToMany` arrives ordered by the *target's* key, ascending.
+ * A join table has no natural order, so without a rule the two adapters answer with
+ * the same rows in different orders and a unit test that reads `user.roles[0]` passes
+ * against the memory adapter and is wrong against PostgreSQL (ADR-0013).
+ */
 export type RelationLoad = {
   readonly relation: string
   readonly nested: readonly RelationLoad[]

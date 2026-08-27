@@ -9,6 +9,7 @@ import {
   type Actor,
   AssemoraError,
   type CommandBus,
+  ConfigurationError,
   createContext,
   type Logger,
   type QueryBus,
@@ -28,7 +29,14 @@ import { crudResources, crudRoutes } from './crud.js'
 import { registeredRoutes } from './module.js'
 import { queryEndpoints, queryRoutes } from './queries.js'
 import { isResponded, serializeCookie } from './respond.js'
-import { describeRoute, type HttpMethod, type Route, routeName } from './route.js'
+import {
+  describeRoute,
+  type HttpMethod,
+  type Route,
+  type RouteDescriptor,
+  routeName,
+} from './route.js'
+import { type ApiVersion, type VersionDeclaration, versionRoutes } from './version.js'
 
 export type ActorResolver = (
   headers: Readonly<Record<string, string>>,
@@ -98,6 +106,24 @@ export type HttpServer = {
   mountRegistered(): HttpServer
   /** Mounts generated CRUD for every resource the registry knows (SPEC.md §43). */
   mountResources(): HttpServer
+  /**
+   * Publishes everything the callback mounts under `/<name>` (SPEC.md §47).
+   *
+   * ```ts
+   * server.version('v1', (api) => {
+   *   api.resource(Articles)
+   * })
+   * ```
+   *
+   * answers at `/api/v1/articles`. A version may be opened more than once — it is a
+   * namespace, not a declaration — and the same resource may be published in several
+   * versions, because each one describes itself under its own path.
+   *
+   * `define` is called once, synchronously, and its return type is constrained rather
+   * than `void`: TypeScript accepts any return where `=> void` is wanted, so an
+   * `async` callback used to compile and publish nothing at all.
+   */
+  version<R extends VersionDeclaration>(name: string, define: (api: ApiVersion) => R): HttpServer
   /** Mounts every registered command as an endpoint (SPEC.md §14). */
   mountCommands(): HttpServer
   /** Mounts every registered query as an endpoint (SPEC.md §15). */
@@ -375,21 +401,90 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     })
   }
 
+  /** Every address this server serves, so a second claim on one can name the first. */
+  const mounted = new Map<string, Route>()
+
+  /** How a route names itself in a message: by the version it belongs to, if any. */
+  const publishedBy = (definition: Route): string =>
+    definition.version === undefined ? 'this application' : `version ${definition.version}`
+
+  /**
+   * Whether a description already in the registry is *this* route's description.
+   *
+   * Both sides are built by `describeRoute`, so the comparison is between two values of
+   * the same shape and key order. The module name is carried across rather than ignored:
+   * describing on a module and mounting on a server is the ordinary case, and only the
+   * owner differs between them.
+   */
+  const describesTheSame = (descriptor: RouteDescriptor, definition: Route): boolean =>
+    JSON.stringify(descriptor) === JSON.stringify(describeRoute(definition, descriptor.module))
+
+  /**
+   * What the Schema Registry describes but this server does not serve (SPEC.md §98, §121).
+   *
+   * The document is meant to be current *by construction*: every path in
+   * `/api/openapi.json`, every row in the API Explorer and every method in the
+   * generated SDK is a route somebody can call. A route described and then not mounted
+   * — a module's `.routes()` with no `mountRegistered()`, or one whose only address is
+   * now a version's — inverts that, and it does so silently.
+   */
+  const undocumentedGap = (): readonly string[] =>
+    options.registry
+      .section('routes')
+      .filter((descriptor) => !mounted.has(`${descriptor.method} ${prefix}${descriptor.path}`))
+      .map((descriptor) => descriptor.name)
+
+  const verifyEverythingDescribedIsServed = (): void => {
+    const missing = undocumentedGap()
+
+    if (missing.length === 0) return
+
+    throw new ConfigurationError(
+      `The Schema Registry describes ${missing.length === 1 ? 'a route' : 'routes'} this server does not serve, so /api/openapi.json, the API Explorer and the generated SDK would publish ${missing.length === 1 ? 'an address' : 'addresses'} that answer 404 (SPEC.md §98, §121): ${missing.join(', ')}. A module describes its routes with .routes() the moment the application is created — mount them with server.mountRegistered(), publish them under a version as well with api.mountRegistered(), or take them off the module and declare them where they are served.`,
+    )
+  }
+
+  /** Everything mounted, and everything described actually mounted. */
+  const settled = async (): Promise<void> => {
+    await ready
+    verifyEverythingDescribedIsServed()
+  }
+
   const server: HttpServer = {
     mount(...routes) {
       for (const definition of routes) {
-        // A module may already have described this route. Describing is a separate
-        // act from mounting, and doing both must not be an error (SPEC.md §42).
-        if (
-          options.registry.find('routes', routeName(definition.method, definition.path)) ===
-          undefined
-        ) {
-          options.registry.register('routes', describeRoute(definition))
-        }
-
         // Describing is synchronous, so the registry is complete the moment `mount`
         // returns; only the Fastify side waits for the plugins.
         const url = `${prefix}${definition.path}`
+        const address = `${definition.method} ${url}`
+        const already = mounted.get(address)
+
+        if (already !== undefined) {
+          // Fastify would refuse this at `ready()` with a string naming neither the
+          // version nor the call that generated the route, and by then the registry
+          // would already be holding whichever description arrived first.
+          throw new ConfigurationError(
+            `"${definition.method.toUpperCase()} ${url}" is already served by ${publishedBy(already)}, so ${publishedBy(definition)} cannot publish it too. One address is one declaration: leave the generated endpoint out with api.resource(name, { except: [...] }) when a route of your own replaces it, or give the second route a path of its own.`,
+          )
+        }
+
+        mounted.set(address, definition)
+
+        // A module may already have described this route. Describing is a separate
+        // act from mounting, and doing both must not be an error (SPEC.md §42).
+        const name = routeName(definition.method, definition.path)
+        const described = options.registry.find('routes', name)
+
+        if (described === undefined) {
+          options.registry.register('routes', describeRoute(definition))
+        } else if (!describesTheSame(described, definition)) {
+          // The registry cannot hold two entries under one name and keeps the first, so
+          // without this the document would describe one declaration and the server
+          // would answer with another — a lie no generated client could see through.
+          throw new ConfigurationError(
+            `"${name}" is already described in the Schema Registry by a different declaration${described.module === undefined ? '' : `, registered by module "${described.module}"`}. The document would describe that one and this server would answer with this one. Two routes cannot share an address: give one of them a path of its own.`,
+          )
+        }
 
         ready = ready.then(() => {
           app.route({
@@ -413,6 +508,22 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           commands: options.commands,
           queries: options.queries,
         }),
+      )
+    },
+
+    version(name, define) {
+      // Read now rather than held: the registry is complete before a server is built,
+      // and taking a snapshot here keeps this the same act `mountResources()` performs.
+      return server.mount(
+        ...versionRoutes(
+          {
+            name,
+            resources: crudResources(options.registry),
+            buses: { commands: options.commands, queries: options.queries },
+            registered: registeredRoutes(),
+          },
+          define,
+        ),
       )
     },
 
@@ -455,7 +566,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     },
 
     async listen(port, host = '127.0.0.1') {
-      await ready
+      await settled()
       return app.listen({ port, host })
     },
 
@@ -464,7 +575,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     },
 
     async inject(request) {
-      await ready
+      await settled()
 
       // Fastify's `inject` is overloaded for callback style, so the awaited shape has
       // to be named here. It is the one place this adapter admits to being Fastify.
@@ -491,7 +602,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     },
 
     async ready() {
-      await ready
+      await settled()
       await app.ready()
     },
   }

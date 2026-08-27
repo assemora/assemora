@@ -21,6 +21,12 @@ What the adapter guarantees, and why it is written down in ADR-0011:
 - Database identifiers are snake_case; `publishedAt` is stored as `published_at`.
 - Relations load in batches — one statement per relation, never one per row. The
   adapter counts statements so the integration suite can prove it (SPEC.md §89).
+  A `belongsToMany` is one statement too: the target table joined to the join table,
+  filtered by every owner key in the batch at once.
+- The join table behind a `belongsToMany` is derived by `@assemora/database`, never
+  here. `createSchemaSql` creates it with a foreign key and an index per side and the
+  pair unique, `dropSchemaSql` drops it, and a load reads the same derivation — so a
+  table nobody declared cannot be described two ways (SPEC.md §23, §24).
 - Driver errors are translated into Assemora errors, and the failing statement and
   its parameter values never leave the package (SPEC.md §83, §85).
 - A nested `transaction()` is a savepoint on the connection already open, so an outer

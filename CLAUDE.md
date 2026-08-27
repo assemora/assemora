@@ -51,6 +51,20 @@ have already been made — do not reverse one without writing a new ADR.
   plugin API, the S3 storage driver, the umbrella of SPEC.md §9, the scaffolder, both
   starters, both examples and the guide. Every package now exports its real API.
 
+- **After the phases: SPEC.md §24 and §47 — done.** Many-to-many is loaded by both
+  adapters and carries `attach`/`detach`/`sync`, and `server.version('v1', …)` puts a
+  resource at `/api/v1/articles` — in the registry, in OpenAPI, in the API Explorer
+  and in the generated SDK, with no edit to any of them, because the version is part
+  of the path rather than a fourth thing to compose. Mounting now refuses to start
+  when the registry describes an address the server does not serve: an endpoint
+  documented and answering 404 was always possible, and versioning made it the
+  default outcome.
+
+Still unbuilt from SPEC: §62 (the theme has a token document but no table, no commands
+and no routes — that contract has to be designed), §82 (jobs and a queue adapter), and
+the two halves of §88 nobody has needed yet — slow query logging and an error tracking
+adapter interface.
+
 Decisions phase 10 added (ADR-0021, ADR-0022):
 
 - The CLI imports the project's *application* at runtime through `assemora.config.ts`
@@ -207,7 +221,13 @@ Carried into phase 3 deliberately, do not mistake them for oversights:
 - `create()` takes `Partial<Record>` and validates at runtime; compile-time required
   fields land with resources in phase 4.
 - `.with()` types the head of a relation path; deeper segments are runtime-checked.
-- `belongsToMany` is declared and described but not yet loaded by any adapter.
+- `belongsToMany` is loaded by both adapters and carries the pivot verbs of SPEC.md
+  §24. The join table is derived once, by `joinTableDescriptor()` in
+  `@assemora/database`, because the DDL, the schema diff and the pivot writes all
+  need one and deriving it three times is how they come to disagree. A pivot with
+  columns of its own is an ordinary model with two `belongsTo` relations — declaring
+  one and pointing `through` at it is refused, because ADR-0011 keeps defaults out of
+  the DDL and its own `id` would arrive with nothing to put in it.
 - `decimal()` carries a string, not a `Decimal` value type (SPEC.md §18).
 - Column defaults live in the data layer, not in the generated DDL (ADR-0011).
 - Schema *diffing* is not implemented; `assemora db:generate` lands in phase 10.
@@ -279,6 +299,12 @@ Known gaps, each with a reason rather than an oversight:
   exactly that shape; a checked variant would take a schema instead of a type.
 - Row-level concurrency (locks, lost updates) is untested. It needs `for update` in the
   Query AST, which belongs with optimistic concurrency in phase 7 (SPEC.md §66).
+- The pivot verbs sit below the Command Bus, at the level of `save()` — which is the
+  right level for a mechanism, but `save()` has `entries.update` above it and a link
+  has nothing above it at all. So a many-to-many is the one relation Studio, REST, the
+  SDK and MCP cannot edit, and the audit log cannot see. `entries.link` / `unlink` /
+  `sync` following ADR-0012's generic CRUD is the shape; which side of a mutual
+  relation owns the fact, and what a policy on a link means, have to be decided first.
 
 ## Commands
 

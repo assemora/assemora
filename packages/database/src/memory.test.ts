@@ -18,6 +18,10 @@ const users: TableDescriptor = {
   columns: [],
   relations: [
     { name: 'posts', kind: 'hasMany', target: 'posts', foreignKey: 'authorId', ownerKey: 'id' },
+    // What `model()` describes for this kind: the join columns are derived from the two
+    // table names, so `foreignKey` names no column either table holds.
+    { name: 'roles', kind: 'belongsToMany', target: 'roles', foreignKey: 'userId', ownerKey: 'id' },
+    { name: 'tags', kind: 'belongsToMany', target: 'tags', foreignKey: 'userId', ownerKey: 'id' },
   ],
 }
 
@@ -28,6 +32,41 @@ const posts: TableDescriptor = {
   relations: [
     { name: 'author', kind: 'belongsTo', target: 'users', foreignKey: 'authorId', ownerKey: 'id' },
   ],
+}
+
+const roles: TableDescriptor = {
+  name: 'roles',
+  primaryKey: 'id',
+  columns: [],
+  relations: [
+    {
+      name: 'permissions',
+      kind: 'belongsToMany',
+      target: 'permissions',
+      foreignKey: 'roleId',
+      ownerKey: 'id',
+    },
+  ],
+}
+
+const permissions: TableDescriptor = {
+  name: 'permissions',
+  primaryKey: 'id',
+  columns: [],
+  relations: [],
+}
+
+/**
+ * A far side whose key is not called `id`.
+ *
+ * Every other fixture in the repository gives it one, so a load that reached for the
+ * literal `'id'` instead of reading the key back off the derivation passed everywhere.
+ */
+const tags: TableDescriptor = {
+  name: 'tags',
+  primaryKey: 'slug',
+  columns: [],
+  relations: [],
 }
 
 let adapter: MemoryAdapter
@@ -43,6 +82,37 @@ beforeEach(() => {
       { id: 'p1', authorId: 'u1', title: 'First', published: true },
       { id: 'p2', authorId: 'u1', title: 'Second', published: false },
       { id: 'p3', authorId: 'u2', title: 'Third', published: true },
+    ],
+    roles: [
+      { id: 'r1', name: 'admin' },
+      { id: 'r2', name: 'editor' },
+      { id: 'r3', name: 'auditor' },
+    ],
+    permissions: [
+      { id: 'x1', name: 'publish' },
+      { id: 'x2', name: 'delete' },
+    ],
+    // Named and shaped by `joinTableDescriptor`: the two table names sorted, and a
+    // column per side. Nothing declares these tables, and nothing has to.
+    roles_users: [
+      { userId: 'u1', roleId: 'r1' },
+      { userId: 'u1', roleId: 'r2' },
+      { userId: 'u2', roleId: 'r1' },
+    ],
+    permissions_roles: [
+      { roleId: 'r1', permissionId: 'x1' },
+      { roleId: 'r1', permissionId: 'x2' },
+      { roleId: 'r2', permissionId: 'x1' },
+    ],
+    // `id` here is a decoy: it is a column of the table and it is not its key, so a
+    // load that joined on the literal `'id'` finds nothing rather than the right rows.
+    tags: [
+      { slug: 'sql', name: 'SQL', id: 'tag-1' },
+      { slug: 'ml', name: 'ML', id: 'tag-2' },
+    ],
+    tags_users: [
+      { userId: 'u1', tagId: 'sql' },
+      { userId: 'u1', tagId: 'ml' },
     ],
   })
 })
@@ -283,6 +353,143 @@ describe('relations', () => {
     const nestedRow = rows[0] as { posts: { author: { name: string } }[] } | undefined
 
     expect(nestedRow?.posts[0]?.author.name).toBe('Ada')
+  })
+
+  const withRoles = (nested: { relation: string; nested: never[] }[] = []) =>
+    adapter.execute<Record<string, unknown>[]>(
+      {
+        ...emptyQuery('users'),
+        order: [{ field: 'id', direction: 'asc' }],
+        with: [{ relation: 'roles', nested }],
+      },
+      { table: users, related: { roles, permissions } },
+    )
+
+  const names = (value: unknown): unknown =>
+    Array.isArray(value) ? value.map((row: Record<string, unknown>) => row.name) : value
+
+  it('loads a belongsToMany through its join table', async () => {
+    const rows = await withRoles()
+
+    expect(rows.map((row) => names(row.roles))).toEqual([['admin', 'editor'], ['admin'], []])
+  })
+
+  it('tells an owner with no links apart from one that was never loaded', async () => {
+    const [, , alan] = await withRoles()
+
+    // An empty array, never null and never absent: `.with('roles')` was asked and
+    // answered, and the answer is that Alan holds none.
+    expect(alan?.roles).toEqual([])
+  })
+
+  it('gives the same target to every owner that links to it', async () => {
+    const [ada, grace] = await withRoles()
+    const first = (row: Record<string, unknown> | undefined) =>
+      (row?.roles as Record<string, unknown>[] | undefined)?.[0]
+
+    expect(first(ada)?.id).toBe('r1')
+    expect(first(grace)?.id).toBe('r1')
+  })
+
+  it('loads a nested path whose first hop is many-to-many', async () => {
+    const [ada] = await withRoles([{ relation: 'permissions', nested: [] }])
+    const loaded = ada?.roles as { name: string; permissions: unknown }[]
+
+    expect(loaded.map((role) => [role.name, names(role.permissions)])).toEqual([
+      ['admin', ['publish', 'delete']],
+      ['editor', ['publish']],
+    ])
+  })
+
+  it('orders the links by the far key, whatever order the rows are stored in', async () => {
+    adapter.seed('roles', [
+      { id: 'r3', name: 'auditor' },
+      { id: 'r2', name: 'editor' },
+      { id: 'r1', name: 'admin' },
+    ])
+    adapter.seed('roles_users', [
+      { userId: 'u1', roleId: 'r3' },
+      { userId: 'u1', roleId: 'r1' },
+      { userId: 'u1', roleId: 'r2' },
+    ])
+
+    const [ada] = await withRoles()
+
+    // PostgreSQL orders the join by the target's key, because a join has none of its
+    // own. This adapter has to answer with the same order or a unit test that reads
+    // `roles[0]` is green here and wrong in production — the disagreement ADR-0013
+    // exists to catch.
+    expect(names(ada?.roles)).toEqual(['admin', 'editor', 'auditor'])
+  })
+
+  it('joins the far side on the key that table names, not on `id`', async () => {
+    const [ada] = await adapter.execute<Record<string, unknown>[]>(
+      {
+        ...emptyQuery('users'),
+        order: [{ field: 'id', direction: 'asc' }],
+        with: [{ relation: 'tags', nested: [] }],
+      },
+      { table: users, related: { tags } },
+    )
+
+    // Ordered by `slug`, the key the join table copies — `ml` before `sql`, and both
+    // found through it rather than through the `id` column the rows also carry.
+    expect(names(ada?.tags)).toEqual(['ML', 'SQL'])
+  })
+
+  it('ignores a link to a row that is gone', async () => {
+    adapter.seed('roles_users', [
+      { userId: 'u1', roleId: 'r1' },
+      { userId: 'u1', roleId: 'deleted' },
+    ])
+
+    const [ada] = await withRoles()
+
+    expect(names(ada?.roles)).toEqual(['admin'])
+  })
+
+  it('loads the same role once however often it was attached', async () => {
+    adapter.seed('roles_users', [
+      { userId: 'u1', roleId: 'r1' },
+      { userId: 'u1', roleId: 'r1' },
+    ])
+
+    const [ada] = await withRoles()
+
+    expect(names(ada?.roles)).toEqual(['admin'])
+  })
+
+  it('scans a fixed number of tables however many rows it loads for', async () => {
+    adapter.seed(
+      'users',
+      Array.from({ length: 50 }, (_, index) => ({ id: `u${index}`, name: `User ${index}` })),
+    )
+    adapter.seed(
+      'roles_users',
+      Array.from({ length: 50 }, (_, index) => ({ userId: `u${index}`, roleId: 'r1' })),
+    )
+
+    adapter.diagnostics.reset()
+    await withRoles()
+
+    // The users, the join table, the roles. One pass each — a load per row would be
+    // fifty-one (SPEC.md §89).
+    expect(adapter.diagnostics.scanCount()).toBe(3)
+
+    adapter.diagnostics.reset()
+    await withRoles([{ relation: 'permissions', nested: [] }])
+
+    // The second hop adds its own join table and its own target, and nothing else.
+    expect(adapter.diagnostics.scanCount()).toBe(5)
+  })
+
+  it('refuses a belongsToMany it has no descriptor for the target of', async () => {
+    await expect(
+      adapter.execute(
+        { ...emptyQuery('users'), with: [{ relation: 'roles', nested: [] }] },
+        { table: users },
+      ),
+    ).rejects.toThrowError('The descriptor for "roles" was not provided')
   })
 
   it('refuses a relation the table does not declare', async () => {

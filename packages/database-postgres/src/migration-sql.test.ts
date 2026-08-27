@@ -810,6 +810,110 @@ describe('nothing to do', () => {
 })
 
 /**
+ * A `belongsToMany` arrives as a table, because that is what it is: the pairs live in a
+ * table no model declares, and `diffSchema` expands both sides of the comparison before
+ * it compares them. So nothing here had to learn a new kind of change — a join table
+ * appears and disappears the way any other table does, and the only thing that had to be
+ * taught was the constraint that makes the pair unique (SPEC.md §23, §24).
+ */
+describe('a relation whose rows live in a table of their own', () => {
+  const id = column('id', 'uuid', { isPrimary: true, isNullable: false, hasDefault: true })
+
+  const students: TableDescriptor = {
+    name: 'students',
+    primaryKey: 'id',
+    columns: [id],
+    relations: [],
+  }
+
+  const courses: TableDescriptor = {
+    name: 'courses',
+    primaryKey: 'id',
+    columns: [id],
+    relations: [],
+  }
+
+  const enrolled: TableDescriptor = {
+    ...students,
+    relations: [
+      {
+        name: 'courses',
+        kind: 'belongsToMany',
+        target: 'courses',
+        foreignKey: 'studentId',
+        ownerKey: 'id',
+      },
+    ],
+  }
+
+  const { up, down, destructive } = migrationSql(
+    diffSchema([students, courses], [enrolled, courses]).changes,
+  )
+
+  it('creates the join table, its indexes and its keys, in that order', () => {
+    expect(up).toEqual([
+      [
+        'create table "courses_students" (',
+        '  "course_id" uuid not null,',
+        '  "student_id" uuid not null,',
+        '  unique ("course_id", "student_id")',
+        ')',
+      ].join('\n'),
+      'create index "courses_students_course_id_fkey_idx" on "courses_students" ("course_id")',
+      'create index "courses_students_student_id_fkey_idx" on "courses_students" ("student_id")',
+      'alter table "courses_students" add constraint "courses_students_course_id_fkey" foreign key ("course_id") references "courses" ("id") on delete cascade',
+      'alter table "courses_students" add constraint "courses_students_student_id_fkey" foreign key ("student_id") references "students" ("id") on delete cascade',
+    ])
+  })
+
+  it('reverses into a database that has never heard of it', () => {
+    expect(down).toEqual([
+      'alter table "courses_students" drop constraint "courses_students_course_id_fkey"',
+      'alter table "courses_students" drop constraint "courses_students_student_id_fkey"',
+      'drop index "courses_students_course_id_fkey_idx"',
+      'drop index "courses_students_student_id_fkey_idx"',
+      'drop table "courses_students"',
+    ])
+  })
+
+  it('destroys nothing, because the table it adds is empty', () => {
+    expect(destructive).toEqual([])
+  })
+
+  it('says the same thing whichever side declares the relation', () => {
+    const taught: TableDescriptor = {
+      ...courses,
+      relations: [
+        {
+          name: 'students',
+          kind: 'belongsToMany',
+          target: 'students',
+          foreignKey: 'courseId',
+          ownerKey: 'id',
+        },
+      ],
+    }
+
+    expect(migrationSql(diffSchema([students, courses], [students, taught]).changes).up).toEqual(up)
+  })
+
+  it('drops the table when the relation goes, and puts it back on the way down', () => {
+    const removed = migrationSql(diffSchema([enrolled, courses], [students, courses]).changes)
+
+    expect(removed.up).toEqual([
+      'alter table "courses_students" drop constraint "courses_students_course_id_fkey"',
+      'alter table "courses_students" drop constraint "courses_students_student_id_fkey"',
+      // Dropping the table takes its indexes with it, so only the reversal names them.
+      'drop table "courses_students"',
+    ])
+    expect(removed.down).toEqual(up)
+    expect(removed.destructive).toEqual([
+      'Dropping table "courses_students" destroys every row in it; the down migration recreates the table, but empty.',
+    ])
+  })
+})
+
+/**
  * `tableIndexSql` indexes every `belongsTo` foreign key, so a fresh `createSchemaSql`
  * build has one. A migration that adds the relation used to emit only the constraint:
  * the migrated database silently ended up with one index fewer than a built one, every

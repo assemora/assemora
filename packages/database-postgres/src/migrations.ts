@@ -7,7 +7,12 @@
  * two schema versions into the same DDL, and reuses the pieces exported here rather
  * than forming a second opinion about how a column becomes SQL.
  */
-import type { ColumnDescriptor, RelationDescriptor, TableDescriptor } from '@assemora/database'
+import {
+  type ColumnDescriptor,
+  type RelationDescriptor,
+  type TableDescriptor,
+  withJoinTables,
+} from '@assemora/database'
 
 import { type PostgresAdapter, poolOf } from './adapter.js'
 import { toAssemoraError } from './errors.js'
@@ -247,31 +252,66 @@ export const dropTableIndexSql = (
   ),
 ]
 
+/**
+ * `unique (a, b)` — the one claim `ColumnDescriptor.isUnique` cannot make.
+ *
+ * A join table's two keys each repeat freely and only the pair may not: a user holds
+ * many roles and a role many users, and attaching the same role twice has to be
+ * refused by the table rather than by whoever remembered to check first (SPEC.md §24).
+ *
+ * Written inline and unnamed, like the constraints `columnSql` writes. Nothing drops
+ * one yet, because a composite unique cannot move on a table that stays — the diff
+ * carries `uniqueTogether` whole, inside `tableAdded` and `tableRemoved`. Should that
+ * change, PostgreSQL names this `<table>_<a>_<b>_key`, which is `uniqueConstraintName`
+ * with every column of the group in it.
+ */
+const uniqueTogetherSql = (columns: readonly string[]): string =>
+  `unique (${columns.map((column) => quote(toColumnName(column))).join(', ')})`
+
 /** `create table` for one model, without foreign keys. */
 export const createTableSql = (
   table: TableDescriptor,
   mode: SchemaSqlMode = 'bootstrap',
 ): string => {
-  const columns = table.columns.map((column) => columnSql(column)).join(',\n  ')
+  const definitions = [
+    ...table.columns.map((column) => columnSql(column)),
+    ...(table.uniqueTogether ?? [])
+      .filter((columns) => columns.length > 0)
+      .map((columns) => uniqueTogetherSql(columns)),
+  ].join(',\n  ')
 
-  return `create table${ifNotExists(mode)} ${quote(table.name)} (\n  ${columns}\n)`
+  return `create table${ifNotExists(mode)} ${quote(table.name)} (\n  ${definitions}\n)`
 }
 
 const foreignKeySql = (table: TableDescriptor): string[] =>
   belongsToRelations(table).map((relation) => addForeignKeySql(table.name, relation))
 
-/** Every statement needed to build a fresh schema, in the order they must run. */
-export const createSchemaSql = (tables: readonly TableDescriptor[]): string[] => [
-  ...tables.map((table) => createTableSql(table)),
-  ...tables.flatMap(foreignKeySql),
-  ...tables.flatMap((table) => tableIndexSql(table)),
-]
+/**
+ * Every statement needed to build a fresh schema, in the order they must run.
+ *
+ * The tables are expanded first: a `belongsToMany` stores its pairs in a table no
+ * model declares, so a schema built from the registry alone would leave `.with('roles')`
+ * reading a table that does not exist. `withJoinTables` is the same expansion
+ * `diffSchema` performs, so a database built here and one migrated into existence hold
+ * the same tables — and it is idempotent, so a caller that already expanded loses
+ * nothing by passing the result (SPEC.md §23, §34).
+ */
+export const createSchemaSql = (tables: readonly TableDescriptor[]): string[] => {
+  const all = withJoinTables(tables)
+
+  return [
+    ...all.map((table) => createTableSql(table)),
+    ...all.flatMap(foreignKeySql),
+    ...all.flatMap((table) => tableIndexSql(table)),
+  ]
+}
 
 export const dropTableSql = (table: TableDescriptor, mode: SchemaSqlMode = 'bootstrap'): string =>
   `drop table${ifExists(mode)} ${quote(table.name)}${mode === 'bootstrap' ? ' cascade' : ''}`
 
+/** The reversal, join tables included — whatever `createSchemaSql` made, this removes. */
 export const dropSchemaSql = (tables: readonly TableDescriptor[]): string[] =>
-  tables.map((table) => dropTableSql(table))
+  withJoinTables(tables).map((table) => dropTableSql(table))
 
 export type Migration = {
   readonly name: string
@@ -279,7 +319,10 @@ export type Migration = {
   readonly down?: readonly string[]
 }
 
-/** Creates every table, foreign key and index the models describe (SPEC.md §34). */
+/**
+ * Creates every table, foreign key and index the models describe, plus the join table
+ * behind every `belongsToMany` they declare (SPEC.md §34).
+ */
 export const applySchema = async (
   adapter: PostgresAdapter,
   tables: readonly TableDescriptor[],

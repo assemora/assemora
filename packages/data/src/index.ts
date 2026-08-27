@@ -14,6 +14,14 @@
  *
  * const users = await User.where('active', true).with('posts').latest().take(10)
  * ```
+ *
+ * A many-to-many is edited through the relation itself (SPEC.md §24):
+ *
+ * ```ts
+ * await user.roles.attach(roleId)
+ * await user.roles.detach(roleId)
+ * await user.roles.sync([adminId, editorId])
+ * ```
  */
 
 export {
@@ -60,6 +68,9 @@ export {
   type ScopeMap,
 } from './model.js'
 export { defineModelFacet, type ModelDescriptor } from './module.js'
+// `definePivot` is not exported: `model()` puts the verbs on an instance, and calling
+// it by hand would put a second set on a row nothing owns.
+export type { PivotFields, PivotRelation, RelatedKey } from './pivot.js'
 export type {
   Cursor,
   FieldName,

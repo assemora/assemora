@@ -88,4 +88,13 @@ describe('table building', () => {
       'Two different descriptors both describe the table "posts"',
     )
   })
+
+  it('shares one table between two descriptors that describe it identically', () => {
+    // Which is every join table: it is derived rather than declared, so a load, an
+    // `attach` and the other side of the same `belongsToMany` each hold their own equal
+    // copy. Refusing those would make the second pivot write of a process fail.
+    expect(drizzleTable(descriptor('roles_users', ['roleId', 'userId']))).toBe(
+      drizzleTable(descriptor('roles_users', ['roleId', 'userId'])),
+    )
+  })
 })

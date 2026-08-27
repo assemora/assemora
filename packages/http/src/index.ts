@@ -27,10 +27,13 @@ export {
 export { type BytesResponse, bytes, isBytesResponse } from './bytes.js'
 export { type CommandEndpoint, commandEndpoints, commandRoutes } from './commands.js'
 export {
+  CRUD_OPERATIONS,
   type CrudBuses,
+  type CrudOperation,
   type CrudResource,
   crudResources,
   crudRoutes,
+  publishedOperations,
 } from './crud.js'
 export {
   clearRouteRegistry,
@@ -63,3 +66,12 @@ export {
   type HttpServerOptions,
   type InjectedResponse,
 } from './server.js'
+export {
+  type ApiVersion,
+  type ApiVersionOptions,
+  type NamedResource,
+  type VersionDeclaration,
+  type VersionedResourceOptions,
+  versionedRoute,
+  versionRoutes,
+} from './version.js'

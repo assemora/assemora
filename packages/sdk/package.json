@@ -28,5 +28,9 @@
   },
   "dependencies": {
     "@assemora/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@assemora/core": "workspace:*",
+    "@assemora/http": "workspace:*"
   }
 }

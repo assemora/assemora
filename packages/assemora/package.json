@@ -43,6 +43,7 @@
   "devDependencies": {
     "@assemora/pages": "workspace:*",
     "@assemora/resources": "workspace:*",
+    "@assemora/sdk": "workspace:*",
     "@types/node": "24.13.3"
   }
 }

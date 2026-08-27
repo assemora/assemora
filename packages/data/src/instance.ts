@@ -11,6 +11,7 @@ import type { DatabaseAdapter, TableDescriptor } from '@assemora/database'
 import { comparison, emptyQuery } from '@assemora/database'
 
 import type { AnyColumn } from './columns.js'
+import { definePivot, type PivotFields } from './pivot.js'
 import type { Fields, InferRecord } from './query.js'
 
 const ORIGINAL: unique symbol = Symbol('assemora.original')
@@ -40,6 +41,7 @@ export type InstanceMethods<F extends Fields> = {
 
 export type Instance<F extends Fields, C extends ComputedValues = NoComputed> = InferRecord<F> &
   Computed<C> &
+  PivotFields<F> &
   InstanceMethods<F>
 
 export type InstanceContext<F extends Fields> = {
@@ -47,6 +49,12 @@ export type InstanceContext<F extends Fields> = {
   readonly columns: Readonly<Record<string, AnyColumn>>
   readonly computed: ComputedFunctions<F>
   readonly adapter: () => DatabaseAdapter
+  /**
+   * Every declared model, for the far side of a `belongsToMany`: the join table takes
+   * the type of the key it holds from the target's descriptor, and only the registry
+   * has it. Resolved lazily, because two models may reference each other (ADR-0010).
+   */
+  readonly related: () => Readonly<Record<string, TableDescriptor>>
 }
 
 type Mutable = Record<string, unknown> & { [ORIGINAL]?: Record<string, unknown> }
@@ -234,6 +242,20 @@ export const createInstance = <F extends Fields, C extends ComputedValues>(
     Object.defineProperty(instance, name, {
       enumerable: true,
       get: () => compute(instance as InferRecord<F>),
+    })
+  }
+
+  // `user.roles` exists whether or not anybody loaded roles: the verbs of SPEC.md §24
+  // act on the join table, and the row alone is enough to address it.
+  for (const relation of context.table.relations) {
+    if (relation.kind !== 'belongsToMany') continue
+
+    definePivot(instance, {
+      owner: context.table,
+      relation,
+      row: instance,
+      related: context.related,
+      adapter: context.adapter,
     })
   }
 

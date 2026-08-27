@@ -7,19 +7,20 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { AssemoraError } from '@assemora/core'
-import type {
-  ColumnDescriptor,
-  DatabaseAdapter,
-  DatabaseContext,
-  DatabaseSchema,
-  QueryAst,
-  RelationDescriptor,
-  RelationLoad,
-  TableDescriptor,
+import {
+  type ColumnDescriptor,
+  type DatabaseAdapter,
+  type DatabaseContext,
+  type DatabaseSchema,
+  pivotAddress,
+  type QueryAst,
+  type RelationDescriptor,
+  type RelationLoad,
+  type TableDescriptor,
 } from '@assemora/database'
-import { count, inArray } from 'drizzle-orm'
+import { asc, count, eq, inArray } from 'drizzle-orm'
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
-import type { PgTable } from 'drizzle-orm/pg-core'
+import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'
 import { Pool, type PoolConfig } from 'pg'
 
 import { isDriverError, toAssemoraError } from './errors.js'
@@ -144,6 +145,136 @@ export const postgres = (options: PostgresAdapterOptions = {}): PostgresAdapter 
     return relation
   }
 
+  const present = (value: unknown): boolean => value !== null && value !== undefined
+
+  const columnFor = (
+    columns: Readonly<Record<string, PgColumn>>,
+    field: string,
+    table: string,
+  ): PgColumn => {
+    const column = columns[field]
+
+    if (column === undefined) {
+      throw new AssemoraError('UNKNOWN_FIELD', `No column is mapped for "${field}" on "${table}"`, {
+        status: 500,
+      })
+    }
+
+    return column
+  }
+
+  /**
+   * The column a join table's key points at, read off the derivation rather than
+   * decided again here. `joinTableDescriptor` describes each of the two sides as a
+   * `belongsTo`, so the link whose foreign key is a given join column names the column
+   * on the other table that column holds — which is what the load has to join on.
+   */
+  const keyBehind = (join: TableDescriptor, column: string): string => {
+    const link = join.relations.find((relation) => relation.foreignKey === column)
+
+    if (link === undefined) {
+      throw new AssemoraError(
+        'UNKNOWN_RELATION',
+        `The join table "${join.name}" describes no link through "${column}"`,
+        { status: 500 },
+      )
+    }
+
+    return link.ownerKey
+  }
+
+  /**
+   * A `belongsToMany` load: the target table joined to the join table, filtered by
+   * every owner key in the batch at once (SPEC.md §23). One statement, like the other
+   * three kinds — the pairs living in a third table is the only difference.
+   *
+   * Where that table is, and which of its columns holds which side, is
+   * `@assemora/database`'s answer rather than one this package works out a second
+   * time. `createSchemaSql` builds the table from the same derivation, and a load that
+   * derived its own would be free to disagree with the table it reads.
+   */
+  const loadJoined = async (
+    rows: Row[],
+    owner: TableDescriptor,
+    relation: RelationDescriptor,
+    target: TableDescriptor,
+    nested: readonly RelationLoad[],
+    related: Readonly<Record<string, TableDescriptor>>,
+  ): Promise<void> => {
+    const localKey = relation.ownerKey
+
+    // Every row in the batch addresses the same two join columns — only the value
+    // differs, and the values are collected below — so the first row that has a key
+    // stands for all of them. A row that has none is linked to nothing.
+    const anchor = rows.find((row) => present(row[localKey]))
+
+    if (anchor === undefined) {
+      for (const row of rows) row[relation.name] = []
+      return
+    }
+
+    const keys = [...new Set(rows.map((row) => row[localKey]).filter(present))]
+
+    const pivot = pivotAddress(owner, relation, anchor, target)
+    const joinTable = drizzleTable(pivot.table)
+    const joinColumns = columnsOf(joinTable)
+    const ownerColumn = columnFor(joinColumns, pivot.ownerColumn, pivot.table.name)
+    const relatedColumn = columnFor(joinColumns, pivot.relatedColumn, pivot.table.name)
+
+    const targetTable = drizzleTable(target)
+    const targetKey = columnFor(
+      columnsOf(targetTable),
+      keyBehind(pivot.table, pivot.relatedColumn),
+      target.name,
+    )
+
+    const joined = (await executor()
+      .select()
+      .from(targetTable)
+      .innerJoin(joinTable, eq(relatedColumn, targetKey))
+      .where(inArray(ownerColumn, keys))
+      // A join has no order of its own, so without this the same call answers with the
+      // same rows in a different order as soon as the planner changes its mind — and
+      // in a different order from the memory adapter, which is worse (ADR-0013). The
+      // target's key is the order `RelationLoad` states, and it is the column the join
+      // is already made on rather than one this side chose.
+      .orderBy(asc(targetKey))) as Record<string, Row>[]
+
+    const children: Row[] = []
+    const owners: unknown[] = []
+
+    for (const entry of joined) {
+      const child = entry[target.name]
+      const link = entry[pivot.table.name]
+
+      // Both halves of an inner join are always present; one missing would mean the
+      // driver named a table something other than its descriptor does.
+      if (child === undefined || link === undefined) {
+        throw new AssemoraError(
+          'UNKNOWN_FIELD',
+          `The join of "${target.name}" and "${pivot.table.name}" answered without one of them`,
+          { status: 500 },
+        )
+      }
+
+      children.push(child)
+      owners.push(link[pivot.ownerColumn])
+    }
+
+    if (nested.length > 0) await loadRelations(children, target, nested, related)
+
+    const grouped = new Map<unknown, Row[]>()
+
+    for (const [index, child] of children.entries()) {
+      const key = owners[index]
+      const bucket = grouped.get(key)
+      if (bucket === undefined) grouped.set(key, [child])
+      else bucket.push(child)
+    }
+
+    for (const row of rows) row[relation.name] = grouped.get(row[localKey]) ?? []
+  }
+
   /**
    * Loads relations in batches: one statement per relation, never one per row.
    * SPEC.md §89 asks for N+1 to be caught by tests rather than by review, and
@@ -157,15 +288,6 @@ export const postgres = (options: PostgresAdapterOptions = {}): PostgresAdapter 
   ): Promise<Row[]> => {
     for (const load of loads) {
       const relation = relationOf(table, load.relation)
-
-      if (relation.kind === 'belongsToMany') {
-        throw new AssemoraError(
-          'UNSUPPORTED_RELATION',
-          'belongsToMany is declared but not loaded yet',
-          { status: 501 },
-        )
-      }
-
       const target = related[relation.target]
 
       if (target === undefined) {
@@ -176,15 +298,16 @@ export const postgres = (options: PostgresAdapterOptions = {}): PostgresAdapter 
         )
       }
 
+      if (relation.kind === 'belongsToMany') {
+        await loadJoined(rows, table, relation, target, load.nested, related)
+        continue
+      }
+
       const owned = relation.kind === 'belongsTo'
       const localKey = owned ? relation.foreignKey : relation.ownerKey
       const remoteKey = owned ? relation.ownerKey : relation.foreignKey
 
-      const keys = [
-        ...new Set(
-          rows.map((row) => row[localKey]).filter((key) => key !== null && key !== undefined),
-        ),
-      ]
+      const keys = [...new Set(rows.map((row) => row[localKey]).filter(present))]
 
       if (keys.length === 0) {
         for (const row of rows) row[relation.name] = relation.kind === 'hasMany' ? [] : null
@@ -192,16 +315,7 @@ export const postgres = (options: PostgresAdapterOptions = {}): PostgresAdapter 
       }
 
       const targetTable = drizzleTable(target)
-      const targetColumns = columnsOf(targetTable)
-      const remoteColumn = targetColumns[remoteKey]
-
-      if (remoteColumn === undefined) {
-        throw new AssemoraError(
-          'UNKNOWN_FIELD',
-          `No column is mapped for "${remoteKey}" on "${target.name}"`,
-          { status: 500 },
-        )
-      }
+      const remoteColumn = columnFor(columnsOf(targetTable), remoteKey, target.name)
 
       const children = (await executor()
         .select()

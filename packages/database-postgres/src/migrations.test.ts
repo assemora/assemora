@@ -227,6 +227,92 @@ describe('who the statement is for', () => {
   })
 })
 
+describe('the join table behind a belongsToMany (SPEC.md §23, §24)', () => {
+  const key: ColumnDescriptor = {
+    name: 'id',
+    type: 'uuid',
+    isPrimary: true,
+    isNullable: false,
+    isUnique: false,
+    isIndexed: false,
+    hasDefault: true,
+  }
+
+  const students: TableDescriptor = {
+    name: 'students',
+    primaryKey: 'id',
+    columns: [key],
+    relations: [
+      {
+        name: 'courses',
+        kind: 'belongsToMany',
+        target: 'courses',
+        foreignKey: 'studentId',
+        ownerKey: 'id',
+      },
+    ],
+  }
+
+  const courses: TableDescriptor = {
+    name: 'courses',
+    primaryKey: 'id',
+    columns: [key],
+    relations: [
+      {
+        name: 'students',
+        kind: 'belongsToMany',
+        target: 'students',
+        foreignKey: 'courseId',
+        ownerKey: 'id',
+      },
+    ],
+  }
+
+  const statements = createSchemaSql([students, courses])
+
+  it('creates a table no model declares, with the pair unique', () => {
+    expect(statements).toContain(
+      [
+        'create table if not exists "courses_students" (',
+        '  "course_id" uuid not null,',
+        '  "student_id" uuid not null,',
+        '  unique ("course_id", "student_id")',
+        ')',
+      ].join('\n'),
+    )
+  })
+
+  it('creates one table for a relation both sides declare', () => {
+    expect(statements.filter((statement) => statement.startsWith('create table'))).toHaveLength(3)
+  })
+
+  it('points both of its keys at the tables they link, and indexes them', () => {
+    expect(statements).toContain(
+      'alter table "courses_students" add constraint "courses_students_course_id_fkey" foreign key ("course_id") references "courses" ("id") on delete cascade',
+    )
+    expect(statements).toContain(
+      'alter table "courses_students" add constraint "courses_students_student_id_fkey" foreign key ("student_id") references "students" ("id") on delete cascade',
+    )
+    // Without these, every load of `student.courses` and every cascading delete scans
+    // the whole join table: PostgreSQL indexes the referenced side of a key, never the
+    // referencing one.
+    expect(statements).toContain(
+      'create index if not exists "courses_students_course_id_fkey_idx" on "courses_students" ("course_id")',
+    )
+    expect(statements).toContain(
+      'create index if not exists "courses_students_student_id_fkey_idx" on "courses_students" ("student_id")',
+    )
+  })
+
+  it('drops what it created', () => {
+    expect(dropSchemaSql([students, courses])).toEqual([
+      'drop table if exists "students" cascade',
+      'drop table if exists "courses" cascade',
+      'drop table if exists "courses_students" cascade',
+    ])
+  })
+})
+
 describe('identifier safety', () => {
   it('quotes identifiers and escapes literals', () => {
     const odd: TableDescriptor = {

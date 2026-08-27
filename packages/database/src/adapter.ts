@@ -42,18 +42,43 @@ export type RelationDescriptor = {
   readonly kind: RelationKind
   /** The table on the other side. */
   readonly target: string
+  /**
+   * The column holding the reference: on this table for `belongsTo`, on the target's
+   * for `hasOne` and `hasMany`. A `belongsToMany` stores no reference on either table
+   * — its two columns live in the join table and are named below.
+   */
   readonly foreignKey: string
+  /** The column the reference points at: the owner's key, except for `belongsTo`. */
   readonly ownerKey: string
-  /** Join table, for `belongsToMany` only. */
+  /** Join table, for `belongsToMany` only. Derived from the two table names when omitted. */
   readonly through?: string
+  /**
+   * The join table column holding this side's key, for `belongsToMany` only.
+   * Derived from this table's name when omitted (`joinTableDescriptor`).
+   */
+  readonly foreignPivotKey?: string
+  /** The join table column holding the target's key, for `belongsToMany` only. */
+  readonly relatedPivotKey?: string
 }
 
 export type TableDescriptor = {
   readonly name: string
   readonly columns: readonly ColumnDescriptor[]
+  /**
+   * The single column that identifies a row, or empty where nothing does. A join
+   * table is identified by its pair of keys, and `uniqueTogether` is what says so.
+   */
   readonly primaryKey: string
   readonly relations: readonly RelationDescriptor[]
   readonly softDeleteColumn?: string
+  /**
+   * Groups of columns unique together, one constraint each.
+   *
+   * A different claim from `ColumnDescriptor.isUnique`, which says a column is unique
+   * on its own: a join table's two keys each repeat freely and only the pair may not
+   * (SPEC.md §24).
+   */
+  readonly uniqueTogether?: readonly (readonly string[])[]
 }
 
 export type DatabaseSchema = {

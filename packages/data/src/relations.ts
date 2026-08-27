@@ -17,13 +17,27 @@ export type RelationOptions = {
   readonly foreignKey?: string
   /** The column it points at. The target's primary key when omitted. */
   readonly ownerKey?: string
-  /** The join table, for `belongsToMany` only. */
+  /** The join table, for `belongsToMany` only. Named after both tables when omitted. */
   readonly through?: string
+  /**
+   * The join table column holding this model's key, for `belongsToMany` only.
+   * Derived from this model's table name when omitted — `users` gives `userId`.
+   *
+   * A model linked to itself has to name both: `userId` twice is not a link.
+   */
+  readonly foreignPivotKey?: string
+  /** The join table column holding the target's key, for `belongsToMany` only. */
+  readonly relatedPivotKey?: string
 }
 
-export type Relation = RelationOptions & {
+/**
+ * The kind is carried as a literal so a declaration can be told apart by it: only a
+ * `belongsToMany` has pivot verbs, and `PivotFields` decides that from the type alone
+ * (SPEC.md §24). Defaulted, so `Relation` still names any of them.
+ */
+export type Relation<K extends RelationKind = RelationKind> = RelationOptions & {
   readonly node: 'relation'
-  readonly kind: RelationKind
+  readonly kind: K
   readonly target: () => RelatedModel
 }
 
@@ -58,27 +72,34 @@ const asRelatedModel = (target: RelationTarget): RelatedModel => {
   return resolved as RelatedModel
 }
 
-const relation = (
-  kind: RelationKind,
+const relation = <K extends RelationKind>(
+  kind: K,
   target: RelationTarget,
   options: RelationOptions = {},
-): Relation => ({ node: 'relation', kind, target: () => asRelatedModel(target), ...options })
+): Relation<K> => ({ node: 'relation', kind, target: () => asRelatedModel(target), ...options })
 
 /** This model holds the foreign key. */
-export const belongsTo = (target: RelationTarget, options?: RelationOptions): Relation =>
-  relation('belongsTo', target, options)
+export const belongsTo = (
+  target: RelationTarget,
+  options?: RelationOptions,
+): Relation<'belongsTo'> => relation('belongsTo', target, options)
 
 /** The other model holds the foreign key, and there is at most one row. */
-export const hasOne = (target: RelationTarget, options?: RelationOptions): Relation =>
+export const hasOne = (target: RelationTarget, options?: RelationOptions): Relation<'hasOne'> =>
   relation('hasOne', target, options)
 
 /** The other model holds the foreign key, and there may be many rows. */
-export const hasMany = (target: RelationTarget, options?: RelationOptions): Relation =>
+export const hasMany = (target: RelationTarget, options?: RelationOptions): Relation<'hasMany'> =>
   relation('hasMany', target, options)
 
-/** Both sides are linked through a join table. */
-export const belongsToMany = (target: RelationTarget, options?: RelationOptions): Relation =>
-  relation('belongsToMany', target, options)
+/**
+ * Both sides are linked through a join table, and the instance carries the verbs that
+ * write to it: `user.roles.attach(id)` (SPEC.md §24).
+ */
+export const belongsToMany = (
+  target: RelationTarget,
+  options?: RelationOptions,
+): Relation<'belongsToMany'> => relation('belongsToMany', target, options)
 
 export const isRelation = (value: unknown): value is Relation =>
   typeof value === 'object' && value !== null && (value as { node?: string }).node === 'relation'

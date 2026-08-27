@@ -103,6 +103,9 @@ export const queryRoutes = (endpoints: readonly QueryEndpoint[], queries: QueryB
     response: undefined,
     auth: false,
     source: undefined,
+    // Like a command's endpoint: a query is the application's, not a version's
+    // (SPEC.md §47).
+    version: undefined,
     status: 200,
     description: endpoint.description,
     tags: [endpoint.module ?? 'queries'],

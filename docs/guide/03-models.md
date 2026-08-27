@@ -90,9 +90,7 @@ because `categorieId` is not a column anybody wrote:
 articles: hasMany(() => Article, { foreignKey: 'categoryId' })
 ```
 
-Every irregular plural has to say the column itself. `hasOne` and `belongsToMany` are
-declared the same way; `belongsToMany` is described and registered but not yet loaded
-by any adapter.
+Every irregular plural has to say the column itself. `hasOne` is declared the same way.
 
 **The type of a relation's target is deliberately erased** (ADR-0010). Accepting it as
 `unknown` is what makes a mutual reference declarable at all — TypeScript's
@@ -100,6 +98,78 @@ circular-reference error is the alternative. Relation *names* stay compile-time
 checked, so `Article.with('author')` is verified and `Article.with('auther')` is an
 error; what `.with()` loaded is not added to the record type. `examples/blog/src/routes.ts`
 shows the one narrowing that costs, written once at the top of the file.
+
+## Many-to-many
+
+`belongsToMany` is the one relation that stores nothing on either table it links: the
+pairs live in a third table nobody declares.
+
+```ts
+export const User = model('users', {
+  id: uuid().primary().defaultRandom(),
+  email: string(),
+  roles: belongsToMany(() => Role),
+})
+
+export const Role = model('roles', {
+  id: uuid().primary().defaultRandom(),
+  name: string(),
+  users: belongsToMany(() => User),
+})
+```
+
+That is the whole declaration. The join table is derived from it — `roles_users`, the
+two table names sorted, holding `roleId` and `userId`, both required, unique only as a
+pair, each a real foreign key. It is created by `assemora db:generate` like any other
+table, and both sides of the relation above derive the *same* one rather than two that
+disagree. `through`, `foreignPivotKey` and `relatedPivotKey` name the table and its two
+columns where the derivation does not fit — a model linked to itself has to name both
+columns, because `userId` twice is not a link:
+
+```ts
+friends: belongsToMany(() => User, {
+  through: 'friendships',
+  foreignPivotKey: 'userId',
+  relatedPivotKey: 'friendId',
+}),
+```
+
+A pivot that carries columns of its own — who granted the role, and when — is not this.
+It is an ordinary model with two `belongsTo` relations, and declaring one *and* pointing
+`through` at it is refused: the verbs below write the two key columns and nothing else,
+so a column they cannot fill would arrive empty or refuse the insert.
+
+Links are loaded like any other relation, in one pass over the join table and one over
+the target however many rows are being loaded for:
+
+```ts
+const user = await User.where('id', id).with('roles').firstOrFail()
+
+user.roles // the roles themselves, ordered by their key
+```
+
+And they are written through three verbs on the same value:
+
+```ts
+await user.roles.attach(roleId)              // one id or an array of them
+await user.roles.detach(roleId)              // unlinking something unlinked is not an error
+await user.roles.sync([adminId, editorId])   // the links become exactly these, in one transaction
+```
+
+`user.roles` is an array *and* carries the verbs: the rows are what a read returned,
+and the verbs work whether or not anybody read. `user.roles.isLoaded` tells "linked to
+nothing" from "nobody asked". A write invalidates the view — `user.roles` answers with
+a fresh, empty, unloaded array afterwards, because what was read is no longer what is
+stored — but it never empties an array you are already holding, so the obvious loop
+does what it looks like:
+
+```ts
+for (const role of user.roles) await user.roles.detach(String(role.id))
+```
+
+The verbs sit where `save()` sits: below the Command Bus, for framework code and seeds.
+A many-to-many a person or an agent edits belongs behind a command of its own, so that
+it passes policies, revisions and the audit log like every other content mutation.
 
 ## Scopes
 

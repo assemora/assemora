@@ -406,6 +406,11 @@ const serve = (
 
   if (api.crud) server.mountResources()
 
+  // After the bare addresses, so a version that collides with one is refused naming
+  // both. A version adds an address; it cannot take the module's own away, because
+  // `.routes()` described that one when the application was created (SPEC.md §47).
+  for (const [name, define] of Object.entries(api.versions)) server.version(name, define)
+
   // Every command that did not say a route written for it is the only way in.
   // Mounting the rest is safe by construction — the bus validates and authorizes
   // first, and authorization denies by default — and the exceptions exclude

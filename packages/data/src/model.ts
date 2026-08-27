@@ -107,7 +107,16 @@ const describeRelation = (
       (relation.kind === 'belongsTo' ? `${name}Id` : foreignKeyFor(owner.table)),
     ownerKey:
       relation.ownerKey ?? (relation.kind === 'belongsTo' ? target.primaryKey : owner.primaryKey),
+    // Carried rather than resolved: what a join table is called and which of its
+    // columns points where is derived once, in `@assemora/database`, so the DDL, the
+    // diff and the pivot verbs cannot form three opinions about the same table.
     ...(relation.through === undefined ? {} : { through: relation.through }),
+    ...(relation.foreignPivotKey === undefined
+      ? {}
+      : { foreignPivotKey: relation.foreignPivotKey }),
+    ...(relation.relatedPivotKey === undefined
+      ? {}
+      : { relatedPivotKey: relation.relatedPivotKey }),
   }
 }
 
@@ -162,6 +171,7 @@ export const model = <
     columns,
     computed: (options.computed ?? {}) as ComputedFunctions<F>,
     adapter: currentAdapter,
+    related: registeredModels,
   }
 
   /** A row that came out of storage already exists there. */

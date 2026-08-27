@@ -18,6 +18,12 @@ export type {
   RelationKind,
   TableDescriptor,
 } from './adapter.js'
+export {
+  joinTableDescriptor,
+  type PivotAddress,
+  pivotAddress,
+  withJoinTables,
+} from './join-table.js'
 export { createMemoryAdapter, type MemoryAdapter, type Row } from './memory.js'
 export {
   type Combinator,

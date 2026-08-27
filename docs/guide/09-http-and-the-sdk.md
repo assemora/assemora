@@ -74,6 +74,62 @@ That is safe because the bus validates and authorizes first and authorization de
 default — not because the list is curated. Query-string values are decoded against the
 query's own declared input schema.
 
+## Versions
+
+```ts
+server
+  .version('v1', (api) => {
+    api.resource(Articles)
+  })
+  .version('v2', (api) => {
+    api.resource(Articles, { except: ['list'] }).mount(listArticlesV2)
+  })
+```
+
+answers at `/api/v1/articles` and `/api/v2/articles`. Under `assemora()` the same thing
+is an option, so it lives beside everything else about the shape of the API:
+
+```ts
+assemora({
+  api: {
+    crud: false,
+    versions: {
+      v1: (api) => api.resource(Articles),
+      v2: (api) => api.resource(Articles, { except: ['list'] }).mount(listArticlesV2),
+    },
+  },
+})
+```
+
+A version is a **path segment and nothing more**. Mounting inside one rewrites the
+route's path *before* it is described, so the Schema Registry, OpenAPI, the API Explorer
+and the SDK need no notion of a version at all — they already compose `prefix + path`,
+and the path now says which version it belongs to. To a caller a version is a base URL:
+`createClient({ url: 'https://host/api/v1' })`.
+
+`except` and `only` name the generated endpoints — `list`, `get`, `create`, `update`,
+`delete` — which is what lets a v2 change one of them and keep the other four. Two
+declarations wanting one address is refused where it was written, naming both sides.
+
+**A version adds an address; it never takes one away.** `module('blog').routes(search)`
+describes `/search` the moment the application is created, and a description cannot be
+withdrawn afterwards. So:
+
+- a route that should answer *only* under a version is declared in the version with
+  `api.mount()`, not on the module;
+- `api: { crud: false }` is how resources answer only under a version;
+- `api.mountRegistered()` publishes everything the modules declared under the version as
+  well, beside the addresses their declarations already gave them.
+
+`server.ready()` refuses to start when the registry describes a route the server does
+not serve, because a documented address that answers 404 is exactly the failure the
+generated document exists to prevent. The message names the routes and what to do.
+
+The callback is synchronous. An `async` one is a **compile error** and a start-up error:
+everything after its first `await` would run once the version had already been mounted,
+so it would publish nothing at all. Keeping the `api` and using it later is refused for
+the same reason.
+
 ## OpenAPI and the API Explorer
 
 ```ts

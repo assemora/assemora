@@ -16,6 +16,7 @@ import { resolve as resolvePath } from 'node:path'
 
 import type { Logger, ModuleBuilder } from '@assemora/core'
 import type { DatabaseAdapter } from '@assemora/database'
+import type { ApiVersion, VersionDeclaration } from '@assemora/http'
 import type { MutationMode } from '@assemora/mcp'
 import type { StorageDriver } from '@assemora/media'
 
@@ -61,6 +62,26 @@ export type ApiOptions = {
    * to be open — a sandbox, a documentation site.
    */
   readonly introspection?: 'authenticated' | 'public'
+  /**
+   * The API versions this application publishes (SPEC.md §47).
+   *
+   * ```ts
+   * api: {
+   *   crud: false,
+   *   versions: {
+   *     v1: (api) => api.resource(Articles),
+   *     v2: (api) => api.resource(Articles, { except: ['list'] }).mount(listArticlesV2),
+   *   },
+   * }
+   * ```
+   *
+   * Declared here rather than reached for through the returned server, because it is
+   * part of the shape of the API and everything else about that is here. Pair it with
+   * `crud: false` for resources that should answer only under a version — otherwise
+   * every resource keeps its bare address as well, which is the honest outcome: that
+   * address is described whether or not a version exists.
+   */
+  readonly versions?: Readonly<Record<string, (api: ApiVersion) => VersionDeclaration>>
 }
 
 export type StudioOptions = {
@@ -234,6 +255,7 @@ export type ResolvedApi = {
   readonly crud: boolean
   readonly documentation: boolean
   readonly introspection: 'authenticated' | 'public'
+  readonly versions: Readonly<Record<string, (api: ApiVersion) => VersionDeclaration>>
 }
 
 export type ResolvedStudio = {
@@ -289,6 +311,7 @@ const apiOf = (value: AssemoraOptions['api']): ResolvedApi | undefined => {
     crud: given.crud ?? true,
     documentation: given.documentation ?? true,
     introspection: given.introspection ?? 'authenticated',
+    versions: given.versions ?? {},
   }
 }
 

@@ -23,6 +23,31 @@ export type CrudResource = {
   }
 }
 
+/**
+ * One generated endpoint, named the way a caller thinks of it (SPEC.md §43).
+ *
+ * Finer than the four `api` flags a resource declares: `read` publishes both the
+ * listing and the single read, and a version that replaces one of them with a route
+ * of its own has to be able to say which (SPEC.md §47).
+ */
+export type CrudOperation = 'list' | 'get' | 'create' | 'update' | 'delete'
+
+export const CRUD_OPERATIONS: readonly CrudOperation[] = [
+  'list',
+  'get',
+  'create',
+  'update',
+  'delete',
+]
+
+/** What a resource's own `api` flags publish, in the order `crudRoutes` generates them. */
+export const publishedOperations = (resource: CrudResource): readonly CrudOperation[] => [
+  ...(resource.api.read ? (['list', 'get'] as const) : []),
+  ...(resource.api.create ? (['create'] as const) : []),
+  ...(resource.api.update ? (['update'] as const) : []),
+  ...(resource.api.delete ? (['delete'] as const) : []),
+]
+
 const RESERVED = new Set(['search', 'sort', 'page', 'perPage'])
 
 /**
@@ -70,14 +95,24 @@ const isCrudResource = (entry: unknown): entry is CrudResource => {
 export const crudResources = (registry: SchemaRegistry): CrudResource[] =>
   (registry.describe().resources ?? []).filter(isCrudResource)
 
-export const crudRoutes = (resources: readonly CrudResource[], buses: CrudBuses): Route[] => {
+/**
+ * @param operations Which of the five to generate. Every one the resource's own `api`
+ *   flags allow, unless a caller narrows it — which is what lets a version publish four
+ *   generated endpoints and a fifth of its own (SPEC.md §47).
+ */
+export const crudRoutes = (
+  resources: readonly CrudResource[],
+  buses: CrudBuses,
+  operations: readonly CrudOperation[] = CRUD_OPERATIONS,
+): Route[] => {
   const routes: Route[] = []
+  const wanted = new Set(operations)
 
   for (const resource of resources) {
     const base = `/${resource.name}`
     const tags = [resource.name]
 
-    if (resource.api.read) {
+    if (resource.api.read && wanted.has('list')) {
       routes.push(
         route.get(base, {
           description: `Lists ${resource.label}`,
@@ -96,6 +131,11 @@ export const crudRoutes = (resources: readonly CrudResource[], buses: CrudBuses)
               ...listQuery((request as { query?: Record<string, unknown> }).query ?? {}),
             }),
         }),
+      )
+    }
+
+    if (resource.api.read && wanted.has('get')) {
+      routes.push(
         route.get(`${base}/:id`, {
           description: `Reads one of ${resource.label}`,
           tags,
@@ -123,7 +163,7 @@ export const crudRoutes = (resources: readonly CrudResource[], buses: CrudBuses)
       )
     }
 
-    if (resource.api.create) {
+    if (resource.api.create && wanted.has('create')) {
       routes.push(
         route.post(base, {
           description: `Creates ${resource.label}`,
@@ -140,7 +180,7 @@ export const crudRoutes = (resources: readonly CrudResource[], buses: CrudBuses)
       )
     }
 
-    if (resource.api.update) {
+    if (resource.api.update && wanted.has('update')) {
       routes.push(
         route.patch(`${base}/:id`, {
           description: `Updates ${resource.label}`,
@@ -158,7 +198,7 @@ export const crudRoutes = (resources: readonly CrudResource[], buses: CrudBuses)
       )
     }
 
-    if (resource.api.delete) {
+    if (resource.api.delete && wanted.has('delete')) {
       routes.push(
         route.delete(`${base}/:id`, {
           description: `Deletes ${resource.label}`,

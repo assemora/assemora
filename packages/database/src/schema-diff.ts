@@ -16,7 +16,11 @@
  *
  * What a descriptor cannot express, this cannot see: an index is a flag on a single
  * column, so composite and partial indexes are invisible, and a foreign key exists
- * only where a `belongsTo` relation puts one.
+ * only where a `belongsTo` relation puts one. `uniqueTogether` is expressible and
+ * still travels whole, inside `tableAdded` and `tableRemoved` — a composite unique
+ * moving on a table that stays needs a `SchemaChange` of its own, and no declaration
+ * can produce that yet: the only writer of one is the join table below, whose
+ * constraint is fixed by the two columns it is made of.
  *
  * Both sides have to be descriptors the framework produced — the snapshot in
  * `.assemora/generated/` against the model registry (ADR-0021). What a database
@@ -34,6 +38,7 @@ import type {
   RelationDescriptor,
   TableDescriptor,
 } from './adapter.js'
+import { withJoinTables } from './join-table.js'
 
 /**
  * The two ways a change can go wrong, carried by every change so that a caller never
@@ -542,12 +547,21 @@ export const diffSchema = (
   before: readonly TableDescriptor[],
   after: readonly TableDescriptor[],
 ): SchemaDiff => {
-  const was = byName(before, (table) => table.name, 'tables')
-  const is = byName(after, (table) => table.name, 'tables')
+  // A join table has no model, so neither side names it: it is derived from the
+  // `belongsToMany` relations on the tables that do (SPEC.md §23). Deriving it here
+  // rather than asking every caller to means a many-to-many arriving in the registry
+  // arrives in the migration, and `db:generate` needs to know nothing about it. The
+  // expansion is idempotent, so a snapshot that already holds the join table still
+  // compares clean against a registry that derives it.
+  const previous = withJoinTables(before)
+  const current = withJoinTables(after)
+
+  const was = byName(previous, (table) => table.name, 'tables')
+  const is = byName(current, (table) => table.name, 'tables')
   const changes: SchemaChange[] = []
 
   // Every table on both sides, not only the ones that end up being compared.
-  for (const table of [...before, ...after]) assertColumnNamesAreDistinct(table)
+  for (const table of [...previous, ...current]) assertColumnNamesAreDistinct(table)
 
   for (const name of namesOf(was, is)) {
     const previous = was.get(name)

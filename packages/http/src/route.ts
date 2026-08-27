@@ -64,6 +64,14 @@ export type Route = {
   readonly response: Schema<unknown> | undefined
   readonly auth: boolean
   readonly source: AssemoraContext['source'] | undefined
+  /**
+   * The API version this route was published under, if any (SPEC.md §47).
+   *
+   * Set by `server.version()`, never by a route declaration: a route says what it does
+   * and a server says where it lives. The path already carries the version — this is
+   * so a reader can group by it without parsing one.
+   */
+  readonly version: string | undefined
   readonly status: number
   readonly description: string | undefined
   readonly tags: readonly string[]
@@ -86,6 +94,8 @@ export type RouteDescriptor = {
   readonly response?: JsonSchema
   readonly errors: readonly ErrorDescriptor[]
   readonly module?: string
+  /** Which API version published it, for a reader that groups without parsing paths. */
+  readonly version?: string
 }
 
 declare module '@assemora/core' {
@@ -114,6 +124,9 @@ const define = <P extends Shape, Q extends Shape, B extends Shape, R>(
   response: asSchema(definition.response),
   auth: definition.auth ?? false,
   source: definition.source,
+  // A declaration is unversioned; `server.version()` is what publishes a copy of it
+  // under one (SPEC.md §47).
+  version: undefined,
   status: definition.status ?? (method === 'post' ? 201 : 200),
   description: definition.description,
   tags: definition.tags ?? [],
@@ -174,4 +187,5 @@ export const describeRoute = (definition: Route, module?: string): RouteDescript
   ...(definition.response === undefined ? {} : { response: definition.response.toJsonSchema() }),
   errors: definition.errors,
   ...(module === undefined ? {} : { module }),
+  ...(definition.version === undefined ? {} : { version: definition.version }),
 })

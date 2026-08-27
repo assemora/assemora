@@ -144,6 +144,21 @@ const buildColumn = (column: ColumnDescriptor): ColumnBuilderLike => {
 const tables = new WeakMap<TableDescriptor, PgTable>()
 const builtNames = new Map<string, TableDescriptor>()
 
+/**
+ * Everything the Drizzle table is built from, and nothing else.
+ *
+ * Two descriptor objects that agree on this build the identical table, so they may
+ * share one; two that disagree are the clash the name check exists to catch. Relations
+ * are absent because no column is built from one.
+ */
+const signatureOf = (descriptor: TableDescriptor): string =>
+  descriptor.columns
+    .map(
+      (column) =>
+        `${column.name}:${column.type}:${column.isPrimary}:${column.isNullable}:${column.isUnique}`,
+    )
+    .join('|')
+
 /** Builds — and remembers — the Drizzle table for a descriptor. */
 export const drizzleTable = (descriptor: TableDescriptor): PgTable => {
   const existing = tables.get(descriptor)
@@ -152,11 +167,26 @@ export const drizzleTable = (descriptor: TableDescriptor): PgTable => {
   const clashing = builtNames.get(descriptor.name)
 
   if (clashing !== undefined && clashing !== descriptor) {
-    throw new AssemoraError(
-      'DUPLICATE_TABLE',
-      `Two different descriptors both describe the table "${descriptor.name}"`,
-      { status: 500 },
-    )
+    if (signatureOf(clashing) !== signatureOf(descriptor)) {
+      throw new AssemoraError(
+        'DUPLICATE_TABLE',
+        `Two different descriptors both describe the table "${descriptor.name}"`,
+        { status: 500 },
+      )
+    }
+
+    // The same table described twice, which is ordinary for a join table: it is
+    // derived rather than declared, so every caller that touches one — a load here, an
+    // `attach` in the data layer, both sides of a mutual `belongsToMany` — holds its
+    // own equal copy. Identity is what makes the check above cheap, not what makes it
+    // right; two descriptors that build the identical table share it.
+    const alreadyBuilt = tables.get(clashing)
+
+    if (alreadyBuilt !== undefined) {
+      tables.set(descriptor, alreadyBuilt)
+
+      return alreadyBuilt
+    }
   }
 
   const columns: Record<string, ColumnBuilderLike> = {}
