@@ -22,6 +22,7 @@ export type PackageName =
   | 'revisions'
   | 'audit'
   | 'change-sets'
+  | 'theme'
   | 'mcp'
   | 'sdk'
   | 'react'
@@ -47,6 +48,7 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
   revisions: ['schema', 'core', 'data'],
   audit: ['schema', 'core', 'data'],
   'change-sets': ['schema', 'core', 'data'],
+  theme: ['schema', 'core', 'data'],
   mcp: ['schema', 'core'],
   sdk: ['schema'],
   react: ['schema'],
@@ -84,6 +86,7 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
     'revisions',
     'audit',
     'change-sets',
+    'theme',
     'mcp',
     'queue-bullmq',
   ],
