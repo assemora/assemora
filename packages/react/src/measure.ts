@@ -56,3 +56,38 @@ export const blockAt = (target: EventTarget | null): string | null => {
 
   return target.closest(`[${BLOCK_ATTRIBUTE}]`)?.getAttribute(BLOCK_ATTRIBUTE) ?? null
 }
+
+/**
+ * Scrolls a block into view inside the frame, and says whether it found one.
+ *
+ * `scrollIntoView` on the marker itself does nothing when the marker is a
+ * `display: contents` wrapper, because it has no box to scroll to — so what is
+ * scrolled to is the first thing the block actually drew. `nearest` is what keeps
+ * selecting a block that is already on screen from moving the page under the editor.
+ *
+ * No `behavior` is asked for. Whether this glides or jumps is `scroll-behavior` in
+ * the page's own stylesheet, where a site can make it follow `prefers-reduced-motion`
+ * — and where, unlike a smooth scroll requested from script, it cannot be quietly
+ * dropped by a browser that is not animating.
+ *
+ * The markers are walked rather than selected by attribute value: an id is data, and
+ * a selector built from data is a selector somebody else writes.
+ */
+export const revealBlock = (blockId: string, root: ParentNode = document): boolean => {
+  for (const wrapper of root.querySelectorAll(`[${BLOCK_ATTRIBUTE}]`)) {
+    if (wrapper.getAttribute(BLOCK_ATTRIBUTE) !== blockId) continue
+
+    const drawn = [...wrapper.children].find((child) => {
+      const rect = child.getBoundingClientRect()
+
+      return rect.width > 0 || rect.height > 0
+    })
+    const target = drawn ?? wrapper
+
+    target.scrollIntoView({ block: 'nearest' })
+
+    return true
+  }
+
+  return false
+}

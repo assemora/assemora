@@ -221,10 +221,21 @@ const reidentify = (node: BlockNode): BlockNode => ({
 export const duplicateBlock = (tree: BlockTree, id: string): { tree: BlockTree; id: string } => {
   const node = findBlock(tree, id) ?? invalid(`There is no block "${id}"`)
   const copy = reidentify(node)
-  const parentId = parentOf(tree, id)
+  const { parentId, index } = positionOf(tree, id)
 
-  // A copy lands beside its original, under the same parent.
-  const placement: Placement = parentId === null ? {} : { parentId }
+  // A copy lands beside its original, under the same parent — which needs the index
+  // as much as the parent. Appended, it arrived at the bottom of a page the editor
+  // was halfway down, and walking it back took one `blocks.move` per slot.
+  const placement: Placement = {
+    ...(parentId === null ? {} : { parentId }),
+    index: index + 1,
+  }
+
+  // A copy is an addition, not a move, so the parent counts one more child than it
+  // did. Nothing checked that before, and duplicating the second child of a
+  // `maxChildren: 2` block quietly produced a tree the same block could not be
+  // added to (SPEC.md §56).
+  checkPlacement(tree, node.type, placement)
 
   return { tree: withPlacement(tree, copy, placement), id: copy.id }
 }
@@ -281,4 +292,21 @@ export const parentOf = (tree: BlockTree, id: string): string | null => {
   }
 
   return search(tree.blocks, null) ?? null
+}
+
+/**
+ * Where a block sits: whose child it is, and where among that parent's children.
+ *
+ * The two travel together. A placement that carries the parent and forgets the index
+ * is not "beside" anything — it is the bottom of the list, which is the one place an
+ * editor never means.
+ */
+export const positionOf = (
+  tree: BlockTree,
+  id: string,
+): { readonly parentId: string | null; readonly index: number } => {
+  const parentId = parentOf(tree, id)
+  const siblings = parentId === null ? tree.blocks : (findBlock(tree, parentId)?.children ?? [])
+
+  return { parentId, index: siblings.findIndex((node: BlockNode) => node.id === id) }
 }

@@ -9,6 +9,7 @@ import {
   duplicateBlock,
   moveBlock,
   parentOf,
+  positionOf,
   removeBlock,
   setBlockHidden,
   unfinishedBlocks,
@@ -196,6 +197,40 @@ describe('moving', () => {
     expect(parentOf(moved, inner.id)).toBe(sectionId)
   })
 
+  it('reads the index as where the block ends up, wherever it came from', () => {
+    // The block is detached before it is inserted, so a caller that says "index 1"
+    // gets index 1 — whether it is moving forwards, backwards or in from elsewhere.
+    const { tree, heroId, sectionId } = seed()
+    const third = addBlock(tree, {
+      type: 'hero',
+      props: { title: 'Three', variant: 'split' },
+      index: 2,
+    })
+
+    for (const [id, index] of [
+      [heroId, 2],
+      [sectionId, 0],
+      [third.id, 1],
+    ] as const) {
+      const moved = moveBlock(third.tree, id, { index })
+
+      expect(moved.blocks.map((node) => node.id).indexOf(id)).toBe(index)
+    }
+  })
+
+  it('lifts a block out to the place it was told, not to the bottom', () => {
+    const { tree, heroId, sectionId } = seed()
+    const inner = addBlock(tree, {
+      type: 'hero',
+      props: { title: 'Inside', variant: 'split' },
+      parentId: sectionId,
+    })
+
+    const lifted = moveBlock(inner.tree, inner.id, { index: 1 })
+
+    expect(lifted.blocks.map((node) => node.id)).toEqual([heroId, inner.id, sectionId])
+  })
+
   it('refuses to move a block inside itself', () => {
     const { tree, sectionId } = seed()
 
@@ -228,6 +263,46 @@ describe('duplicating and removing', () => {
     expect(ids).toHaveLength(5)
     expect(new Set(ids).size).toBe(5)
     expect(parentOf(copied.tree, copied.id)).toBeNull()
+  })
+
+  it('puts the copy immediately after the original, not at the bottom', () => {
+    const { tree, heroId, sectionId } = seed()
+    const copied = duplicateBlock(tree, heroId)
+
+    expect(copied.tree.blocks.map((node) => node.id)).toEqual([heroId, copied.id, sectionId])
+  })
+
+  it('keeps a nested copy beside its original, under the same parent', () => {
+    const { tree, sectionId } = seed()
+    const first = addBlock(tree, {
+      type: 'hero',
+      props: { title: 'First', variant: 'split' },
+      parentId: sectionId,
+    })
+
+    const copied = duplicateBlock(first.tree, first.id)
+
+    expect(parentOf(copied.tree, copied.id)).toBe(sectionId)
+    expect(positionOf(copied.tree, copied.id)).toEqual({ parentId: sectionId, index: 1 })
+  })
+
+  it('refuses a copy the parent has no room for (SPEC.md §56)', () => {
+    // The copy is an addition, so the parent ends up holding one more child than it
+    // did — a section that already holds its maximum has nowhere to put it.
+    const { tree, sectionId } = seed()
+    let filled: BlockTree = tree
+
+    for (const title of ['a', 'b']) {
+      filled = addBlock(filled, {
+        type: 'hero',
+        props: { title, variant: 'split' },
+        parentId: sectionId,
+      }).tree
+    }
+
+    const inside = findBlock(filled, sectionId)?.children[0]
+
+    expect(() => duplicateBlock(filled, inside?.id ?? '')).toThrowError('at most 2 children')
   })
 
   it('removes a block and everything inside it', () => {

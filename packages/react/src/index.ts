@@ -19,13 +19,22 @@ export {
   type CanvasInstruction,
   isCanvasEvent,
   isCanvasInstruction,
+  type KeyPress,
+  sendToCanvas,
 } from './canvas.js'
 export { DESIGN_CLASS, DesignWrapper, type DesignWrapperProps } from './design.js'
-export { blockAt, measureBlocks } from './measure.js'
+export {
+  type CanvasFrame,
+  type CanvasFrameOptions,
+  connectCanvas,
+  type UseCanvasFrameOptions,
+} from './frame.js'
+export { blockAt, measureBlocks, revealBlock } from './measure.js'
 export {
   AssemoraPage,
   type AssemoraPageProps,
   BLOCK_ATTRIBUTE,
+  EMPTY_ATTRIBUTE,
   HIDDEN_ATTRIBUTE,
   type RenderablePage,
   TYPE_ATTRIBUTE,
@@ -38,3 +47,4 @@ export {
   type BlockViews,
   createBlockRegistry,
 } from './registry.js'
+export { useCanvasFrame } from './use-canvas-frame.js'

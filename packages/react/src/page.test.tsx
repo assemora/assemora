@@ -53,10 +53,42 @@ describe('rendering a page', () => {
     expect(markup).toContain('Gone')
   })
 
+  it('gives a hidden block a box the fade can land on', () => {
+    // `display: contents` generates no box, so the stylesheet's `opacity: 0.4` had
+    // nothing to apply to and Hide changed nothing a person could see.
+    const hidden: BlockTree = { blocks: [node('a', 'hero', { title: 'Gone' }, [], true)] }
+    const markup = renderToStaticMarkup(<AssemoraPage page={hidden} blocks={registry} editing />)
+
+    expect(markup).toContain('style="position:relative"')
+    expect(markup).not.toContain('display:contents')
+  })
+
   it('draws nothing for a type it does not know', () => {
     const unknown: BlockTree = { blocks: [node('a', 'nowhere')] }
 
     expect(renderToStaticMarkup(<AssemoraPage page={unknown} blocks={registry} />)).toBe('')
+  })
+
+  it('leaves a type it does not know something to be clicked on in the canvas', () => {
+    const unknown: BlockTree = { blocks: [node('a', 'nowhere')] }
+    const markup = renderToStaticMarkup(<AssemoraPage page={unknown} blocks={registry} editing />)
+
+    expect(markup).toContain('data-assemora-block="a"')
+    expect(markup).toContain('nowhere — no view')
+  })
+
+  it('says nothing of its own where a fallback has already said it', () => {
+    const unknown: BlockTree = { blocks: [node('a', 'nowhere')] }
+    const withFallback = createBlockRegistry(
+      { hero: Hero as BlockView<never> },
+      { fallback: Missing },
+    )
+    const markup = renderToStaticMarkup(
+      <AssemoraPage page={unknown} blocks={withFallback} editing />,
+    )
+
+    expect(markup).toContain('No view for nowhere')
+    expect(markup).not.toContain('data-assemora-empty')
   })
 
   it('draws the fallback instead when one was given', () => {
@@ -83,6 +115,49 @@ describe('rendering a page', () => {
     expect(renderToStaticMarkup(<AssemoraPage page={{ tree }} blocks={registry} />)).not.toContain(
       'data-assemora-block',
     )
+  })
+})
+
+describe('a block nobody has filled in', () => {
+  const fresh: BlockTree = { blocks: [node('a', 'hero')] }
+
+  it('says what it is, so the canvas is not blank vertical space', () => {
+    const markup = renderToStaticMarkup(<AssemoraPage page={fresh} blocks={registry} editing />)
+
+    expect(markup).toContain('data-assemora-empty="true"')
+    expect(markup).toContain('hero — empty')
+  })
+
+  it('keeps its caption out of the corner the editor hangs its own chip in', () => {
+    // Studio anchors the selection and hover chips to a block's top-left, on the
+    // layer it draws over the frame — so a selected empty Hero read `Hero` and
+    // `hero — empty` on top of each other. A chip on an outline belongs where the
+    // outline starts; this one is a caption on the block and has a corner free.
+    const markup = renderToStaticMarkup(<AssemoraPage page={fresh} blocks={registry} editing />)
+
+    expect(markup).toContain('position:absolute;top:0;right:0')
+  })
+
+  it('never says it to a visitor', () => {
+    const markup = renderToStaticMarkup(<AssemoraPage page={fresh} blocks={registry} />)
+
+    expect(markup).toBe('<h1></h1>')
+  })
+
+  it('counts a block that holds others as written, whatever its own props say', () => {
+    const holding: BlockTree = {
+      blocks: [node('b', 'section', {}, [node('c', 'hero', { title: 'In' })])],
+    }
+    const markup = renderToStaticMarkup(<AssemoraPage page={holding} blocks={registry} editing />)
+
+    expect(markup).not.toContain('data-assemora-empty')
+  })
+
+  it('reads a blanked value as unwritten, not just a missing one', () => {
+    const blanked: BlockTree = { blocks: [node('a', 'hero', { title: '', tags: [] })] }
+    const markup = renderToStaticMarkup(<AssemoraPage page={blanked} blocks={registry} editing />)
+
+    expect(markup).toContain('data-assemora-empty="true"')
   })
 })
 

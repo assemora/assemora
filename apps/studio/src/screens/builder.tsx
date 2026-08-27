@@ -5,15 +5,25 @@
  * one of the twelve operations §60 requires is a command, and the canvas redraws from
  * what that command answered — there is no second copy of a page in this browser.
  */
+import type { BlockNode } from '@assemora/schema'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { accepts, blockByName, useIntrospection } from '../api/introspection.ts'
 import { usePage } from '../api/pages.ts'
-import { Canvas, VIEWPORTS, type ViewportName } from '../builder/canvas.tsx'
+import { Canvas, type Insertable, VIEWPORTS, type ViewportName } from '../builder/canvas.tsx'
+import { isTyping, type KeyPress, shortcutFor } from '../builder/keys.ts'
 import { Palette } from '../builder/palette.tsx'
 import { Properties } from '../builder/properties.tsx'
-import { blockAbove, parentOf, stepFrom, useBuilder } from '../builder/state.ts'
+import {
+  allowedMoves,
+  blockAbove,
+  liftOut,
+  nodeIn,
+  placeBeside,
+  stepFrom,
+  useBuilder,
+} from '../builder/state.ts'
 import { Badge, Button, Failure, Spinner } from '../ui/index.tsx'
 
 export const Builder = () => {
@@ -23,6 +33,117 @@ export const Builder = () => {
   const page = usePage(id, 'draft')
   const { state, node, select, run, rewind, dismiss } = useBuilder(page.data)
   const [viewport, setViewport] = useState<ViewportName>('desktop')
+
+  const registry = introspection.data
+
+  /** What the application calls a block of this type, never its machine name. */
+  const nameOf = (type: string): string => blockByName(registry, type)?.label ?? type
+
+  /**
+   * Whether a container will take one more block of this type, right now.
+   *
+   * Both halves of the application's own rule: what a block accepts, and how many it
+   * accepts. The top level takes anything. Studio only reads this (SPEC.md §56) — and
+   * it reads it in one place, so the badge on a palette button, where a new block
+   * lands and what the `+` on the canvas offers cannot disagree with each other.
+   */
+  const roomIn = (container: BlockNode | null, type: string): boolean => {
+    if (container === null) return true
+
+    const descriptor = blockByName(registry, container.type)
+
+    return (
+      descriptor !== undefined &&
+      accepts(descriptor, type) &&
+      (descriptor.maxChildren === undefined || container.children.length < descriptor.maxChildren)
+    )
+  }
+
+  const insertable = (parentId: string | null): readonly Insertable[] =>
+    (registry?.blocks ?? []).filter((block) =>
+      roomIn(nodeIn(state.tree, parentId) ?? null, block.name),
+    )
+
+  const add = (type: string, placement: { parentId?: string; index?: number }) => {
+    void run('blocks.add', { type, ...placement }).then((result) => {
+      if (result?.blockId !== undefined) select(result.blockId)
+    })
+  }
+
+  /**
+   * The keyboard (SPEC.md §123).
+   *
+   * One handler, whichever document the press landed in, and it answers whether it
+   * claimed the press — only the listener that has an event to cancel cancels one.
+   *
+   * Declared above the screen's early returns, because a hook cannot be conditional;
+   * it reads nothing that is missing while the page is still loading.
+   */
+  const runShortcut = useCallback(
+    (press: KeyPress): boolean => {
+      const shortcut = shortcutFor(press)
+
+      if (shortcut === undefined) return false
+
+      if (shortcut === 'undo' || shortcut === 'redo') {
+        if (!state.busy) void rewind(shortcut)
+
+        return true
+      }
+
+      if (shortcut === 'deselect') {
+        select(null)
+
+        return true
+      }
+
+      if (state.selected === null || state.busy) return false
+
+      if (shortcut === 'remove') {
+        void run('blocks.remove', { blockId: state.selected }).then(() => select(null))
+
+        return true
+      }
+
+      const placement = stepFrom(state.tree, state.selected, shortcut === 'move-up' ? -1 : 1)
+
+      if (placement === undefined) return false
+
+      void run('blocks.move', { blockId: state.selected, ...placement })
+
+      return true
+    },
+    [state.tree, state.selected, state.busy, run, rewind, select],
+  )
+
+  /**
+   * A press the frame forwarded, because it landed in the canvas (SPEC.md §59).
+   *
+   * A frame ships with the application and may be any version of the protocol, so
+   * what it forwards is checked here as well: a press arriving while somebody is
+   * typing in Studio's own form must not remove their block. Focus inside the canvas
+   * makes the iframe element itself the active one, so this refuses nothing real.
+   */
+  const onCanvasKey = useCallback(
+    (press: KeyPress) => {
+      if (isTyping(document.activeElement)) return
+
+      runShortcut(press)
+    },
+    [runShortcut],
+  )
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTyping(event.target)) return
+
+      if (runShortcut(event)) event.preventDefault()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [runShortcut])
 
   if (page.isPending || introspection.isPending) {
     return (
@@ -40,27 +161,16 @@ export const Builder = () => {
     )
   }
 
-  const block = blockByName(introspection.data, node?.type ?? '')
-  const selectedType = node?.type
+  const block = blockByName(registry, node?.type ?? '')
 
   /**
-   * Whether the selection can move into the block above it, or out of its parent.
+   * Which of the panel's moves are open to the selection.
    *
-   * The application's nesting rules decide, and they arrive in the registry — Studio
-   * only reads them (SPEC.md §56).
+   * The application's nesting rules decide all three, and they arrive in the registry
+   * — Studio only reads them (SPEC.md §56).
    */
   const above = node === undefined ? undefined : blockAbove(state.tree, node.id)
-  const container = above === undefined ? undefined : blockByName(introspection.data, above.type)
-
-  const nesting = {
-    canIndent:
-      node !== undefined &&
-      above !== undefined &&
-      container !== undefined &&
-      accepts(container, node.type) &&
-      (container.maxChildren === undefined || above.children.length < container.maxChildren),
-    canOutdent: node !== undefined && parentOf(state.tree, node.id) !== null,
-  }
+  const can = allowedMoves(state.tree, node, roomIn)
 
   return (
     <div className="flex h-dvh flex-col">
@@ -82,6 +192,7 @@ export const Builder = () => {
           <Button
             variant="ghost"
             size="sm"
+            title="Undo (⌘Z)"
             disabled={state.busy}
             onClick={() => void rewind('undo')}
           >
@@ -90,6 +201,7 @@ export const Builder = () => {
           <Button
             variant="ghost"
             size="sm"
+            title="Redo (⌘⇧Z)"
             disabled={state.busy}
             onClick={() => void rewind('redo')}
           >
@@ -134,6 +246,16 @@ export const Builder = () => {
         </div>
       </header>
 
+      {/* An answer, not a refusal: it says what it says at the weight it deserves. */}
+      {state.notice !== undefined && (
+        <div className="flex items-center gap-3 border-b border-line bg-surface-sunken px-4 py-1.5 text-sm text-ink-soft">
+          <p className="flex-1">{state.notice}</p>
+          <Button size="sm" variant="ghost" onClick={dismiss}>
+            Dismiss
+          </Button>
+        </div>
+      )}
+
       {state.failure !== undefined && (
         <div className="flex items-center gap-3 border-b border-danger/20 bg-danger-soft px-4 py-2 text-sm text-danger">
           <div className="flex-1 space-y-0.5">
@@ -164,24 +286,34 @@ export const Builder = () => {
 
       <div className="flex min-h-0 flex-1">
         <Palette
-          introspection={introspection.data}
+          introspection={registry}
           tree={state.tree}
           selected={state.selected}
-          selectedType={selectedType}
           busy={state.busy}
+          nameOf={nameOf}
+          fitsInSelection={(type) => roomIn(node ?? null, type)}
           onSelect={select}
           onMove={(blockId, direction) => {
             const placement = stepFrom(state.tree, blockId, direction)
 
-            if (placement !== undefined) void run('blocks.move', { blockId, ...placement })
+            if (placement === undefined) return
+
+            // The row is about to move; selecting it first is what keeps its controls
+            // on screen once it has.
+            select(blockId)
+            void run('blocks.move', { blockId, ...placement })
           }}
           onAdd={(declared, into) => {
-            void run('blocks.add', {
-              type: declared.name,
-              ...(into === null ? {} : { parentId: into }),
-            }).then((result) => {
-              if (result?.blockId !== undefined) select(result.blockId)
-            })
+            // Inside the selection when it will hold one, and beside the selection
+            // when it will not — never silently at the bottom of the page.
+            add(
+              declared.name,
+              into === null
+                ? placeBeside(state.tree, state.selected, (container) =>
+                    roomIn(container, declared.name),
+                  )
+                : { parentId: into },
+            )
           }}
         />
 
@@ -190,14 +322,19 @@ export const Builder = () => {
           tree={state.tree}
           selected={state.selected}
           viewport={viewport}
+          busy={state.busy}
+          nameOf={nameOf}
+          insertable={insertable}
           onSelect={select}
+          onKeyPress={onCanvasKey}
+          onInsert={add}
         />
 
         <Properties
           node={node}
           block={block}
           busy={state.busy}
-          nesting={nesting}
+          can={can}
           onIndent={() => {
             if (node !== undefined && above !== undefined) {
               void run('blocks.move', { blockId: node.id, parentId: above.id })
@@ -206,16 +343,11 @@ export const Builder = () => {
           onOutdent={() => {
             if (node === undefined) return
 
-            const parent = parentOf(state.tree, node.id)
+            const placement = liftOut(state.tree, node.id)
 
-            if (parent === null) return
+            if (placement === undefined) return
 
-            const grandparent = parentOf(state.tree, parent)
-
-            void run('blocks.move', {
-              blockId: node.id,
-              ...(grandparent === null ? {} : { parentId: grandparent }),
-            })
+            void run('blocks.move', { blockId: node.id, ...placement })
           }}
           onProps={(props) => {
             if (node !== undefined) void run('blocks.update', { blockId: node.id, props })
@@ -229,6 +361,8 @@ export const Builder = () => {
           onDuplicate={() => {
             if (node === undefined) return
 
+            // No index: a copy lands beside its original by definition, and
+            // `blocks.duplicate` is the one that knows where the original is.
             void run('blocks.duplicate', { blockId: node.id }).then((result) => {
               if (result?.blockId !== undefined) select(result.blockId)
             })

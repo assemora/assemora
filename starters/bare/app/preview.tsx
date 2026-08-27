@@ -9,14 +9,18 @@
  * builder canvas, which names a page by id and reads the *draft* as the signed-in
  * editor. That is the whole reason the canvas is an iframe pointed here — one
  * renderer, one set of block views, so what an editor sees is the site rather than an
- * imitation of it. While editing, three messages go back — "I am ready", "this block
- * was clicked", "here is where every block is" — and one comes in: the tree to draw.
- * Studio never reaches inside the frame; it draws its selection outline on top of the
- * geometry this file reports.
+ * imitation of it.
+ *
+ * The conversation with the editor is `useCanvasFrame`, from `@assemora/react`.
+ * Every frame in every Assemora application holds up the same end of it — ready,
+ * selections, crossings, key presses, geometry, and the render, measure and reveal
+ * that come back — so it is written once, there, rather than copied into each new
+ * project to fall a version behind the next time it grows a message. Studio never
+ * reaches inside the frame; it draws its chrome over the geometry reported from here.
  */
-import { blockAt, type CanvasEvent, isCanvasInstruction, measureBlocks } from '@assemora/react'
+import { useCanvasFrame } from '@assemora/react'
 import type { BlockTree } from '@assemora/schema'
-import { StrictMode, useCallback, useEffect, useState } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { readPublished, readTree, Site } from './main.tsx'
@@ -37,17 +41,11 @@ const editing = parameters.get('editing') === '1'
  */
 const editor = parameters.get('editor') ?? ''
 
-const post = (event: CanvasEvent): void => {
-  if (editing && editor !== '') parent.postMessage(event, editor)
-}
-
 const Preview = () => {
   const [tree, setTree] = useState<BlockTree>({ blocks: [] })
   const [failure, setFailure] = useState<string>()
 
-  const measure = useCallback(() => {
-    post({ type: 'assemora:geometry', blocks: measureBlocks(document) })
-  }, [])
+  useCanvasFrame({ editing, editor, tree, render: setTree })
 
   // The canvas names a page by id and wants the draft; everybody else asks for a slug
   // and gets what is published. Two readers, because they are two different rights.
@@ -58,47 +56,6 @@ const Preview = () => {
       .then(setTree)
       .catch((error: unknown) => setFailure(error instanceof Error ? error.message : String(error)))
   }, [])
-
-  useEffect(() => {
-    if (!editing) return
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== editor || event.source !== parent) return
-      if (isCanvasInstruction(event.data) && event.data.type === 'assemora:render') {
-        setTree(event.data.tree)
-      }
-    }
-
-    // The editor selects a block; a link inside the canvas must not navigate away.
-    const onClick = (event: MouseEvent) => {
-      event.preventDefault()
-      post({ type: 'assemora:selected', blockId: blockAt(event.target) })
-    }
-
-    window.addEventListener('message', onMessage)
-    document.addEventListener('click', onClick, true)
-    window.addEventListener('resize', measure)
-    // The outline is drawn over the frame, so a scroll inside it moves every box.
-    window.addEventListener('scroll', measure, { passive: true })
-
-    post({ type: 'assemora:ready' })
-
-    return () => {
-      window.removeEventListener('message', onMessage)
-      document.removeEventListener('click', onClick, true)
-      window.removeEventListener('resize', measure)
-      window.removeEventListener('scroll', measure)
-    }
-  }, [measure])
-
-  // Every render moves the boxes the editor outlines, so the tree is the dependency
-  // even though the measuring does not read it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: measuring follows the render
-  useEffect(() => {
-    const timer = setTimeout(measure, 0)
-
-    return () => clearTimeout(timer)
-  }, [tree, measure])
 
   if (failure !== undefined) return <p className="missing">{failure}</p>
 

@@ -6,18 +6,17 @@
  *
  * `?editing=1` marks the blocks in the DOM and starts listening to the editor.
  * Without it this is an ordinary page that knows nothing about a builder.
+ *
+ * The frame's half of the canvas protocol is `useCanvasFrame` in `@assemora/react`,
+ * which every frame shares: reporting ready, selections, crossings, key presses and
+ * geometry, and carrying out a render, a measure and a reveal, is the same work in
+ * every application, and five hand-written copies of it drifted the moment the
+ * protocol grew a message. What is left here is what really is this application's:
+ * which page to read, and which views draw it.
  */
-import {
-  AssemoraPage,
-  blockAt,
-  type CanvasEvent,
-  type CanvasInstruction,
-  createBlockRegistry,
-  isCanvasInstruction,
-  measureBlocks,
-} from '@assemora/react'
+import { AssemoraPage, createBlockRegistry, useCanvasFrame } from '@assemora/react'
 import type { BlockTree } from '@assemora/schema'
-import { StrictMode, useCallback, useEffect, useRef, useState } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { FaqView, HeroView, MissingView, SectionView } from './views.tsx'
@@ -42,18 +41,11 @@ const editing = parameters.get('editing') === '1'
  */
 const editor = parameters.get('editor') ?? ''
 
-const post = (event: CanvasEvent): void => {
-  if (editing && editor !== '') parent.postMessage(event, editor)
-}
-
 const Preview = () => {
   const [tree, setTree] = useState<BlockTree>({ blocks: [] })
   const [failure, setFailure] = useState<string>()
-  const frame = useRef<HTMLDivElement>(null)
 
-  const measure = useCallback(() => {
-    post({ type: 'assemora:geometry', blocks: measureBlocks(document) })
-  }, [])
+  useCanvasFrame({ editing, editor, tree, render: setTree })
 
   useEffect(() => {
     const load = async () => {
@@ -73,62 +65,15 @@ const Preview = () => {
     if (pageId !== '') void load()
   }, [])
 
-  useEffect(() => {
-    if (!editing) return
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== editor || event.source !== parent) return
-      if (!isCanvasInstruction(event.data)) return
-
-      const instruction = event.data as CanvasInstruction
-
-      if (instruction.type === 'assemora:render') setTree(instruction.tree)
-      if (instruction.type === 'assemora:measure') measure()
-    }
-
-    const onClick = (event: MouseEvent) => {
-      // The editor selects; a link inside the canvas must not navigate the frame.
-      event.preventDefault()
-      post({ type: 'assemora:selected', blockId: blockAt(event.target) })
-    }
-
-    window.addEventListener('message', onMessage)
-    document.addEventListener('click', onClick, true)
-    window.addEventListener('resize', measure)
-    // The editor draws its outline over the frame, so a scroll inside the frame moves
-    // every box it is drawing.
-    window.addEventListener('scroll', measure, { passive: true })
-
-    post({ type: 'assemora:ready' })
-
-    return () => {
-      window.removeEventListener('message', onMessage)
-      document.removeEventListener('click', onClick, true)
-      window.removeEventListener('resize', measure)
-      window.removeEventListener('scroll', measure)
-    }
-  }, [measure])
-
-  // Every render moves the boxes the editor draws its outlines from, so the tree is
-  // the dependency even though the measuring does not read it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: measuring follows the render
-  useEffect(() => {
-    const timer = setTimeout(measure, 0)
-
-    return () => clearTimeout(timer)
-  }, [tree, measure])
-
   if (failure !== undefined) return <div className="missing">{failure}</div>
 
   return (
-    <div ref={frame}>
-      <AssemoraPage
-        page={{ tree }}
-        blocks={registry}
-        editing={editing}
-        mediaUrl={(id) => `/api/media/by-id/${id}`}
-      />
-    </div>
+    <AssemoraPage
+      page={{ tree }}
+      blocks={registry}
+      editing={editing}
+      mediaUrl={(id) => `/api/media/by-id/${id}`}
+    />
   )
 }
 

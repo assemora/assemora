@@ -6,19 +6,20 @@
  * controls, which every block has and no block declares.
  */
 import type { BlockNode } from '@assemora/schema'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import type { BlockDescriptor } from '../api/introspection.ts'
 import { useThemeColors } from '../api/theme.ts'
 import { FieldInput } from '../screens/fields.tsx'
 import { Badge, Button, Empty } from '../ui/index.tsx'
 import { DesignControls } from './design.tsx'
+import { draftReducer, emptyDraft, sameContent } from './draft.ts'
 
 export const Properties = ({
   node,
   block,
   busy,
-  nesting,
+  can,
   onProps,
   onDesign,
   onHide,
@@ -30,8 +31,13 @@ export const Properties = ({
   node: BlockNode | undefined
   block: BlockDescriptor | undefined
   busy: boolean
-  /** Whether this block could move into the one above it, or out of its parent. */
-  nesting: { canIndent: boolean; canOutdent: boolean }
+  /**
+   * Which moves the application's own rules leave open (SPEC.md §56).
+   *
+   * A control that offers what the application refuses is a red banner waiting to
+   * happen, and Duplicate was the one still doing it.
+   */
+  can: { indent: boolean; outdent: boolean; duplicate: boolean }
   onProps(props: Record<string, unknown>): void
   onDesign(patch: Record<string, unknown>): void
   onHide(hidden: boolean): void
@@ -41,8 +47,12 @@ export const Properties = ({
   onOutdent(): void
 }) => {
   const [tab, setTab] = useState<'content' | 'design'>('content')
-  const [draft, setDraft] = useState<Record<string, unknown>>({})
-  const pending = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [draft, dispatch] = useReducer(draftReducer, emptyDraft)
+  /** The edit waiting out the typing pause, and what it will send. */
+  const pending = useRef<{
+    timer: ReturnType<typeof setTimeout>
+    values: Readonly<Record<string, unknown>>
+  }>(undefined)
   // The theme is the list of colours there are, so it is also the list of backgrounds
   // a block may be given (SPEC.md §62) — read from the served stylesheet, which needs
   // no permission of its own and exists even where the theme is not editable. A
@@ -50,31 +60,32 @@ export const Properties = ({
   const colors = useThemeColors()
 
   const blockId = node?.id
+  const props = node?.props
 
-  // Only a change of selection refills the form. Refilling it from every command
-  // response would overwrite what is being typed while the last keystroke is in
-  // flight — the props are read here deliberately without depending on them.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the selection is the trigger, not the props
+  const cancel = useCallback(() => {
+    if (pending.current !== undefined) clearTimeout(pending.current.timer)
+
+    pending.current = undefined
+  }, [])
+
+  // What the application now holds, offered to the draft on every command's answer.
+  // The reducer decides whether it means anything: a new selection or a change this
+  // panel did not make refills the form, and this panel's own edit coming home
+  // leaves what is being typed alone.
   useEffect(() => {
-    setDraft({ ...(node?.props ?? {}) })
-  }, [blockId])
+    dispatch({ type: 'block', blockId, props: props ?? {} })
+  }, [blockId, props])
 
-  useEffect(() => () => clearTimeout(pending.current), [])
+  // A refill the panel did not ask for has to take the queued edit with it. Undo
+  // would otherwise be followed 400 ms later by a command putting back exactly what
+  // it removed — the queued values no longer match the form, which is what says so.
+  useEffect(() => {
+    if (pending.current !== undefined && !sameContent(pending.current.values, draft.values)) {
+      cancel()
+    }
+  }, [draft.values, cancel])
 
-  /**
-   * Typing is one command, not one per keystroke.
-   *
-   * Every edit is a command that writes a revision, so sending one per character
-   * would fill the history with noise and put a dozen writes in flight at once
-   * (SPEC.md §60, §64).
-   */
-  const commitLater = useCallback(
-    (values: Record<string, unknown>) => {
-      clearTimeout(pending.current)
-      pending.current = setTimeout(() => onProps(values), 400)
-    },
-    [onProps],
-  )
+  useEffect(() => cancel, [cancel])
 
   if (node === undefined || block === undefined) {
     return (
@@ -84,20 +95,37 @@ export const Properties = ({
     )
   }
 
+  /**
+   * Typing is one command, not one per keystroke.
+   *
+   * Every edit is a command that writes a revision, so sending one per character
+   * would fill the history with noise and put a dozen writes in flight at once
+   * (SPEC.md §60, §64).
+   */
   const commit = (name: string, value: unknown) => {
-    const next = { ...draft, [name]: value }
+    const values = { ...draft.values, [name]: value }
 
-    setDraft(next)
-    commitLater(next)
+    dispatch({ type: 'edit', values })
+    cancel()
+    pending.current = {
+      values,
+      timer: setTimeout(() => {
+        pending.current = undefined
+        dispatch({ type: 'sent', values })
+        onProps(values)
+      }, 400),
+    }
   }
 
   /** Leaving a field sends what is in it, rather than waiting out the pause. */
   const commitNow = () => {
-    if (pending.current === undefined) return
+    const queued = pending.current
 
-    clearTimeout(pending.current)
-    pending.current = undefined
-    onProps(draft)
+    if (queued === undefined) return
+
+    cancel()
+    dispatch({ type: 'sent', values: queued.values })
+    onProps(queued.values)
   }
 
   return (
@@ -137,7 +165,7 @@ export const Properties = ({
               <FieldInput
                 key={field.name}
                 field={field}
-                value={draft[field.name]}
+                value={draft.values[field.name]}
                 onChange={(value) => commit(field.name, value)}
               />
             ))
@@ -155,7 +183,7 @@ export const Properties = ({
         <Button
           variant="secondary"
           size="sm"
-          disabled={busy || !nesting.canIndent}
+          disabled={busy || !can.indent}
           title="Move inside the block above"
           onClick={onIndent}
         >
@@ -164,7 +192,7 @@ export const Properties = ({
         <Button
           variant="secondary"
           size="sm"
-          disabled={busy || !nesting.canOutdent}
+          disabled={busy || !can.outdent}
           title="Move out of its container"
           onClick={onOutdent}
         >
@@ -178,7 +206,17 @@ export const Properties = ({
         >
           {node.hidden === true ? 'Show' : 'Hide'}
         </Button>
-        <Button variant="secondary" size="sm" disabled={busy} onClick={onDuplicate}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy || !can.duplicate}
+          title={
+            can.duplicate
+              ? 'Add a copy beside this block'
+              : 'What holds this block will not take another'
+          }
+          onClick={onDuplicate}
+        >
           Duplicate
         </Button>
         <Button

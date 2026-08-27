@@ -3,15 +3,17 @@
  *
  * `/preview` on its own is the site: it reads `?slug=` (or `home`) from the public
  * route and renders it. `/preview?page=<id>&editing=1&editor=<origin>` is the builder
- * canvas: it reads the draft through the authorized query and starts the conversation
- * Studio's editor is on the other end of.
+ * canvas: it reads the draft through the authorized query and holds up one end of the
+ * canvas protocol — `useCanvasFrame`, from `@assemora/react`, which every Assemora
+ * frame shares rather than writing out again: ready, selections, crossings, key
+ * presses and geometry go out, and a render, a measure and a reveal come in.
  *
  * One bundle, one renderer, one set of block views. That is what makes the preview
  * accurate rather than approximate.
  */
-import { blockAt, type CanvasEvent, isCanvasInstruction, measureBlocks } from '@assemora/react'
+import { useCanvasFrame } from '@assemora/react'
 import type { BlockTree } from '@assemora/schema'
-import { StrictMode, useCallback, useEffect, useState } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { readForEditor, readPublished, Site } from './site.tsx'
@@ -29,17 +31,11 @@ const editing = parameters.get('editing') === '1'
  */
 const editor = parameters.get('editor') ?? ''
 
-const post = (event: CanvasEvent): void => {
-  if (editing && editor !== '') parent.postMessage(event, editor)
-}
-
 const Page = () => {
   const [tree, setTree] = useState<BlockTree>({ blocks: [] })
   const [failure, setFailure] = useState<string>()
 
-  const measure = useCallback(() => {
-    post({ type: 'assemora:geometry', blocks: measureBlocks(document) })
-  }, [])
+  useCanvasFrame({ editing, editor, tree, render: setTree })
 
   useEffect(() => {
     const first = pageId === '' ? readPublished(slug) : readForEditor(pageId, mode)
@@ -48,46 +44,6 @@ const Page = () => {
       .then(setTree)
       .catch((error: unknown) => setFailure(error instanceof Error ? error.message : String(error)))
   }, [])
-
-  useEffect(() => {
-    if (!editing) return
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== editor || event.source !== parent) return
-      if (isCanvasInstruction(event.data) && event.data.type === 'assemora:render') {
-        setTree(event.data.tree)
-      }
-    }
-
-    // The editor selects a block; a link inside the canvas must not navigate away.
-    const onClick = (event: MouseEvent) => {
-      event.preventDefault()
-      post({ type: 'assemora:selected', blockId: blockAt(event.target) })
-    }
-
-    window.addEventListener('message', onMessage)
-    document.addEventListener('click', onClick, true)
-    window.addEventListener('resize', measure)
-    window.addEventListener('scroll', measure, { passive: true })
-
-    post({ type: 'assemora:ready' })
-
-    return () => {
-      window.removeEventListener('message', onMessage)
-      document.removeEventListener('click', onClick, true)
-      window.removeEventListener('resize', measure)
-      window.removeEventListener('scroll', measure)
-    }
-  }, [measure])
-
-  // Every render moves the boxes the editor outlines, so the tree is the dependency
-  // even though the measuring does not read it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: measuring follows the render
-  useEffect(() => {
-    const timer = setTimeout(measure, 0)
-
-    return () => clearTimeout(timer)
-  }, [tree, measure])
 
   if (failure !== undefined) return <p className="missing">{failure}</p>
 

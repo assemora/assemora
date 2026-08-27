@@ -7,7 +7,7 @@
  */
 import type { BlockNode, BlockTree } from '@assemora/schema'
 
-import { accepts, type BlockDescriptor, type Introspection } from '../api/introspection.ts'
+import type { BlockDescriptor, Introspection } from '../api/introspection.ts'
 import { Badge, Button, Empty } from '../ui/index.tsx'
 
 const Outline = ({
@@ -15,6 +15,7 @@ const Outline = ({
   depth,
   selected,
   busy,
+  nameOf,
   onSelect,
   onMove,
 }: {
@@ -22,6 +23,7 @@ const Outline = ({
   depth: number
   selected: string | null
   busy: boolean
+  nameOf(type: string): string
   onSelect(id: string): void
   onMove(id: string, direction: -1 | 1): void
 }) => (
@@ -43,15 +45,30 @@ const Outline = ({
             style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
             onClick={() => onSelect(node.id)}
           >
-            <span className="truncate">{node.type}</span>
+            {/* The name the application gave the block, not its machine name — the
+                palette three inches above says "Hero", so this cannot say "hero". */}
+            <span className="truncate">{nameOf(node.type)}</span>
             {node.hidden === true && <span className="text-xs text-ink-faint">hidden</span>}
           </button>
 
-          {/* Reordering is one command, so it is one click (SPEC.md §60, §123). */}
-          <span className="flex opacity-0 transition group-hover:opacity-100">
+          {/* Reordering is one command, so it is one click (SPEC.md §60, §123).
+              These used to be `opacity-0` until the row was hovered, which meant the
+              control slid out from under the pointer that had just used it, keyboard
+              focus landed on something invisible, and nothing on screen said the
+              outline could be reordered at all. They are always here now: full
+              strength on the row being worked on, faint elsewhere. Faint rather than
+              hidden is also what makes this robust — the hover and focus variants
+              below are an improvement on a control that can already be seen and
+              pressed, not the only thing that reveals it. */}
+          <span
+            className={[
+              'flex transition group-hover:opacity-100 group-focus-within:opacity-100',
+              node.id === selected ? 'opacity-100' : 'opacity-50',
+            ].join(' ')}
+          >
             <button
               type="button"
-              aria-label="Move up"
+              aria-label={`Move ${nameOf(node.type)} up`}
               title="Move up"
               className="px-1 text-xs text-ink-faint hover:text-ink disabled:opacity-30"
               disabled={busy || index === 0}
@@ -61,7 +78,7 @@ const Outline = ({
             </button>
             <button
               type="button"
-              aria-label="Move down"
+              aria-label={`Move ${nameOf(node.type)} down`}
               title="Move down"
               className="px-1 text-xs text-ink-faint hover:text-ink disabled:opacity-30"
               disabled={busy || index === nodes.length - 1}
@@ -78,6 +95,7 @@ const Outline = ({
             depth={depth + 1}
             selected={selected}
             busy={busy}
+            nameOf={nameOf}
             onSelect={onSelect}
             onMove={onMove}
           />
@@ -91,8 +109,9 @@ export const Palette = ({
   introspection,
   tree,
   selected,
-  selectedType,
   busy,
+  nameOf,
+  fitsInSelection,
   onAdd,
   onSelect,
   onMove,
@@ -100,14 +119,15 @@ export const Palette = ({
   introspection: Introspection | undefined
   tree: BlockTree
   selected: string | null
-  selectedType: string | undefined
   busy: boolean
+  nameOf(type: string): string
+  /** Whether the selected block could hold one of these right now (SPEC.md §56). */
+  fitsInSelection(type: string): boolean
   onAdd(block: BlockDescriptor, into: string | null): void
   onSelect(id: string): void
   onMove(id: string, direction: -1 | 1): void
 }) => {
   const blocks = introspection?.blocks ?? []
-  const parent = introspection?.blocks?.find((entry) => entry.name === selectedType)
 
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-5 overflow-y-auto border-r border-line bg-surface px-3 py-4">
@@ -117,10 +137,10 @@ export const Palette = ({
         {blocks.length === 0 && <Empty title="No blocks declared" />}
 
         {blocks.map((block) => {
-          // A block goes inside the selection when the selection can hold it, and at
-          // the top level otherwise — the nesting rules are the application's
-          // (SPEC.md §56).
-          const into = parent !== undefined && accepts(parent, block.name) ? selected : null
+          // A block goes inside the selection when the selection can still hold it,
+          // and beside it otherwise — the nesting rules are the application's, and
+          // that includes how many children a container will take (SPEC.md §56).
+          const into = selected !== null && fitsInSelection(block.name) ? selected : null
 
           return (
             <Button
@@ -145,13 +165,16 @@ export const Palette = ({
         </p>
 
         {tree.blocks.length === 0 ? (
-          <p className="px-1 text-sm text-ink-faint">Nothing yet.</p>
+          <p className="px-1 text-sm text-ink-faint">
+            No blocks yet. Choose one above, or use a + on the page.
+          </p>
         ) : (
           <Outline
             nodes={tree.blocks}
             depth={0}
             selected={selected}
             busy={busy}
+            nameOf={nameOf}
             onSelect={onSelect}
             onMove={onMove}
           />
