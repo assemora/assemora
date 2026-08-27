@@ -62,6 +62,23 @@ export type SectionName = keyof RegistrySections & string
 
 export type SchemaRegistry = {
   register<K extends SectionName>(section: K, entry: RegistrySections[K]): void
+  /**
+   * Takes a description back out, and says whether one was there.
+   *
+   * Everything a source file declares is registered once and stays: a second entry
+   * under one name is a defect, and `register` refuses it. Two things, though, arrive
+   * and leave while the process runs. A collection created through Studio or by an
+   * agent is registered after boot and deleted long before shutdown (SPEC.md §37), and
+   * the §47 review wanted the same seam for a withdrawn version. Without it the
+   * registry could learn about a description and never unlearn it, so `/api/openapi.json`,
+   * the API Explorer and the generated MCP tools would go on publishing a collection
+   * that no longer exists.
+   *
+   * Replacing a description is `withdraw` then `register`, deliberately. The refusal of
+   * a duplicate is what keeps two declarations from quietly sharing a name, and a
+   * caller that means to take a name over should have to say so.
+   */
+  withdraw<K extends SectionName>(section: K, name: string): boolean
   section<K extends SectionName>(section: K): readonly RegistrySections[K][]
   find<K extends SectionName>(section: K, name: string): RegistrySections[K] | undefined
   sections(): readonly SectionName[]
@@ -93,6 +110,10 @@ export const createSchemaRegistry = (): SchemaRegistry => {
       }
 
       entries.set(entry.name, entry)
+    },
+
+    withdraw(section, name) {
+      return bucket(section).delete(name)
     },
 
     section<K extends SectionName>(section: K): readonly RegistrySections[K][] {

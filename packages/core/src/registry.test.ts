@@ -34,6 +34,43 @@ describe('schema registry', () => {
     expect(createSchemaRegistry().section('commands')).toEqual([])
   })
 
+  it('withdraws a description, so a late arrival can also leave', () => {
+    const registry = createSchemaRegistry()
+    registry.register('commands', descriptor('testimonials.create'))
+
+    expect(registry.withdraw('commands', 'testimonials.create')).toBe(true)
+    expect(registry.find('commands', 'testimonials.create')).toBeUndefined()
+    expect(registry.section('commands')).toEqual([])
+  })
+
+  it('says so when there was nothing to withdraw', () => {
+    const registry = createSchemaRegistry()
+    registry.register('commands', descriptor('pages.publish'))
+
+    expect(registry.withdraw('commands', 'never.registered')).toBe(false)
+    expect(registry.section('commands')).toHaveLength(1)
+  })
+
+  it('frees the name, so the same section can describe it again', () => {
+    const registry = createSchemaRegistry()
+    registry.register('commands', descriptor('testimonials.create'))
+    registry.withdraw('commands', 'testimonials.create')
+
+    expect(() =>
+      registry.register('commands', descriptor('testimonials.create')),
+    ).not.toThrowError()
+    expect(registry.section('commands')).toHaveLength(1)
+  })
+
+  it('still refuses a duplicate: withdrawing is how a name is taken over', () => {
+    const registry = createSchemaRegistry()
+    registry.register('commands', descriptor('pages.publish'))
+
+    expect(() => registry.register('commands', descriptor('pages.publish'))).toThrowError(
+      ConfigurationError,
+    )
+  })
+
   it('describes itself as plain data', () => {
     const registry = createSchemaRegistry()
     registry.register('commands', descriptor('pages.publish'))

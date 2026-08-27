@@ -18,9 +18,11 @@
  * hide — a command, a model or a policy would belong to the feature it describes.
  *
  * Nothing here is asynchronous. `assemora()` returns with the Schema Registry already
- * complete, which is what lets `export default assemora({…})` be a top-level
- * statement and what lets `assemora routes` describe an application without starting
- * a server.
+ * complete for everything a source file declares, which is what lets `export default
+ * assemora({…})` be a top-level statement and what lets `assemora routes` describe an
+ * application without starting a server. The one thing that arrives later is a
+ * resource the application *grew* — a collection, read out of the database while the
+ * modules boot — and `boot()` mounts what it finds (SPEC.md §37).
  */
 import { audit, auditModule } from '@assemora/audit'
 import { policies, resolveActor } from '@assemora/auth'
@@ -36,7 +38,14 @@ import {
   type ModuleBuilder,
 } from '@assemora/core'
 import { clearSlowQueryLog, dataTransactions, useAdapter, useSlowQueryLog } from '@assemora/data'
-import { commandEndpoints, commandRoutes, createHttpServer, type HttpServer } from '@assemora/http'
+import {
+  commandEndpoints,
+  commandRoutes,
+  createHttpServer,
+  crudResources,
+  crudRoutes,
+  type HttpServer,
+} from '@assemora/http'
 import { mcp } from '@assemora/mcp'
 import { currentStorage, localStorage, type StorageDriver, useStorage } from '@assemora/media'
 import { introspectionRoute, openApiRoute } from '@assemora/openapi'
@@ -370,6 +379,23 @@ const infrastructureFor = (settings: Settings, declared: ReadonlySet<string>): M
 type Served = {
   readonly server: HttpServer
   readonly mcp: MountedMcp | undefined
+  /**
+   * REST CRUD for the resources that were not there when this server was built.
+   *
+   * `mountResources()` takes one snapshot of the registry's `resources` section at the
+   * moment it is called, and a module's boot hook may add to that section *afterwards*:
+   * a collection is a row in `assemora_resource_definitions`, read and registered while
+   * the resources module boots (SPEC.md §37). So the snapshot taken during construction
+   * held every resource declared in TypeScript and no collection at all, and
+   * `/api/testimonials` answered 404 after the restart that was supposed to bring it
+   * back — and after every restart after that.
+   *
+   * Called by `boot()`, once the hooks have run. A second pass rather than moving the
+   * first one, because everything else about the server is settled before `assemora()`
+   * returns: a version that collides with an address already served is a configuration
+   * mistake, and it is worth refusing where it was written rather than one boot later.
+   */
+  mountArrivals(): void
 }
 
 /**
@@ -485,7 +511,29 @@ const serve = (
       : []),
   )
 
-  return { server, mcp: endpoint }
+  // Read after everything above has mounted, so it is exactly "what this server was
+  // built knowing about". Anything the registry gains later is an arrival.
+  const served = new Set(crudResources(app.registry).map((resource) => resource.name))
+
+  return {
+    server,
+    mcp: endpoint,
+
+    mountArrivals() {
+      if (!api.crud) return
+
+      const arrived = crudResources(app.registry).filter((resource) => !served.has(resource.name))
+
+      if (arrived.length === 0) return
+
+      // Not published under a version: `api.resource(name)` names what a version
+      // carries, and a collection nobody wrote into that callback is not in it
+      // (SPEC.md §47).
+      server.mount(...crudRoutes(arrived, { commands: app.commands, queries: app.queries }))
+
+      for (const resource of arrived) served.add(resource.name)
+    },
+  }
 }
 
 export const assemora = (options: AssemoraOptions): AssemoraApplication => {
@@ -610,6 +658,12 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   const boot = (): Promise<Application> => {
     booting ??= (async () => {
       await app.boot()
+
+      // A resource can *arrive* during boot: a collection is a row, read and registered
+      // by the resources module's boot hook, and the snapshot this server was built
+      // from has none of them (SPEC.md §37, §43). Fastify refuses a route added after
+      // the instance is ready, and nothing has readied this one yet.
+      served?.mountArrivals()
 
       // Assets wait for boot because they need a filesystem, and Studio because it is
       // an import this package deliberately does not declare. Fastify refuses a route

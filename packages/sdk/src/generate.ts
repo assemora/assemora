@@ -5,6 +5,14 @@
  * depends on nothing but `@assemora/schema` — and emits TypeScript. A resource or a
  * route that exists is therefore a resource or a route the SDK can call, without
  * anyone writing a client by hand (SPEC.md §3.7).
+ *
+ * "A resource that exists" means one this application *serves*, and the snapshot says
+ * which: the `routes` section is written when a route is mounted, and a server refuses
+ * to start when the two disagree (SPEC.md §98). The `resources` section is a different
+ * question — what content this application has — and answering the first with the
+ * second is how the client came to publish addresses that answer 404: a resource whose
+ * four `api` flags are off, one a version publishes and the bare paths do not, and a
+ * collection that was registered after the routes were mounted (SPEC.md §37, §43).
  */
 import type { JsonSchema } from '@assemora/schema'
 
@@ -167,6 +175,93 @@ const isResource = (entry: Readonly<Record<string, unknown>>): entry is Resource
 const isRoute = (entry: Readonly<Record<string, unknown>>): entry is RouteEntry =>
   typeof entry.method === 'string' && typeof entry.path === 'string'
 
+type CrudOperation = 'list' | 'get' | 'create' | 'update' | 'delete'
+
+/** In the order `ResourceClient` declares them, so a `Pick` reads like the type does. */
+const CRUD_OPERATIONS: readonly CrudOperation[] = ['list', 'get', 'create', 'update', 'delete']
+
+const segmentsOf = (path: string): readonly string[] =>
+  path.split('/').filter((part) => part !== '')
+
+/**
+ * Which of a resource's five endpoints a described route is, if it is one (SPEC.md §43).
+ *
+ * `ResourceClient` calls `<base>/<name>` and `<base>/<name>/:id`, so those are the two
+ * shapes to recognise — under an optional leading segment, because a version is exactly
+ * one path segment (SPEC.md §47) and is a *base URL* to a caller: `/v1/articles` is the
+ * same accessor reached by pointing the client at `/api/v1`. A resource published only
+ * under a version therefore keeps its accessor, and one published nowhere does not.
+ */
+const operationOf = (entry: RouteEntry, name: string): CrudOperation | undefined => {
+  const segments = segmentsOf(entry.path)
+  const byId = segments[segments.length - 1] === ':id'
+  const head = byId ? segments.slice(0, -1) : segments
+
+  // Nothing deeper than `<version>/<name>`: `/articles/:id/revisions` is a route of
+  // somebody's own, not one of the five this client calls.
+  if (head.length === 0 || head.length > 2) return undefined
+  if (head[head.length - 1] !== name) return undefined
+
+  switch (entry.method.toLowerCase()) {
+    case 'get':
+      return byId ? 'get' : 'list'
+    case 'post':
+      return byId ? undefined : 'create'
+    case 'patch':
+      return byId ? 'update' : undefined
+    case 'delete':
+      return byId ? 'delete' : undefined
+    default:
+      return undefined
+  }
+}
+
+/**
+ * How this resource is reached, or nothing at all when it is not.
+ *
+ * `ResourceClient` when the application serves all five, which is what a resource that
+ * said nothing about `api` publishes; a `Pick` of what it does serve otherwise. Naming
+ * the five and serving four is the same lie in a smaller size — `api.notes.delete(id)`
+ * compiles and answers 404 — and the emitted type is the only place a caller finds out.
+ */
+const accessorFor = (
+  resource: ResourceEntry,
+  routes: readonly RouteEntry[],
+): string | undefined => {
+  const found = new Set<CrudOperation>()
+
+  for (const entry of routes) {
+    const operation = operationOf(entry, resource.name)
+
+    if (operation !== undefined) found.add(operation)
+  }
+
+  if (found.size === 0) return undefined
+
+  const record = typeName(resource.name)
+  const reachable = CRUD_OPERATIONS.filter((operation) => found.has(operation))
+
+  return reachable.length === CRUD_OPERATIONS.length
+    ? `ResourceClient<${record}>`
+    : `Pick<ResourceClient<${record}>, ${reachable.map(stringLiteral).join(' | ')}>`
+}
+
+/**
+ * What stands in the emitted file for a resource with no REST address of its own.
+ *
+ * The record type stays — the entries are real, and a caller reaching them another way
+ * still wants their shape — and the accessor does not, because every call it offered
+ * would be a 404. Saying so beside the type is the difference between a client that
+ * left something out and one that is missing it.
+ */
+const UNSERVED = [
+  '/**',
+  ' * This application serves no REST endpoint for this resource, so the client has no',
+  ' * accessor for it: every call would have answered 404. Its entries are reachable',
+  ' * through the entries.* commands and queries.',
+  ' */',
+].join('\n')
+
 const recordType = (resource: ResourceEntry): string => {
   const visible = (resource.fields ?? []).filter((field) => field.hidden !== true)
 
@@ -206,19 +301,40 @@ export const generateSdk = (snapshot: RegistrySnapshot, options: GenerateOptions
   const resources = (snapshot.resources ?? []).filter(isResource)
   const routes = (snapshot.routes ?? []).filter(isRoute)
 
+  const accessors = new Map(
+    resources.map((resource) => [resource.name, accessorFor(resource, routes)] as const),
+  )
+
+  // `ResourceClient` only when something names it. A project compiling the generated
+  // file with `noUnusedLocals` would otherwise be handed an error by its own SDK, and
+  // an application whose every resource is served somewhere else is a real application.
+  const imported = [
+    'type Client',
+    'type ClientOptions',
+    'createClient',
+    ...([...accessors.values()].some((accessor) => accessor !== undefined)
+      ? ['type ResourceClient']
+      : []),
+  ]
+
   const header = [
     '// Generated by Assemora. Do not edit: run `assemora sdk:generate` instead.',
     '',
-    `import { type Client, type ClientOptions, createClient, type ResourceClient } from '${clientModule}'`,
+    `import { ${imported.join(', ')} } from '${clientModule}'`,
     '',
   ]
 
-  const records = resources.map(recordType)
-
-  const resourceMembers = resources.map(
-    (resource) =>
-      `  readonly ${quoteKey(resource.name)}: ResourceClient<${typeName(resource.name)}>`,
+  const records = resources.map((resource) =>
+    accessors.get(resource.name) === undefined
+      ? `${UNSERVED}\n${recordType(resource)}`
+      : recordType(resource),
   )
+
+  const resourceMembers = resources.flatMap((resource) => {
+    const accessor = accessors.get(resource.name)
+
+    return accessor === undefined ? [] : [`  readonly ${quoteKey(resource.name)}: ${accessor}`]
+  })
 
   const endpoints =
     routes.length === 0 ? [] : ['export type Endpoints = {', ...routes.map(endpointMethod), '}', '']

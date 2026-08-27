@@ -14,6 +14,7 @@ import {
   columnFields,
   type FieldDescriptor,
   type ResourceDescriptor,
+  sortableFields,
   useIntrospection,
 } from '../api/introspection.ts'
 import { Page } from '../app/shell.tsx'
@@ -115,16 +116,19 @@ export const Collection = () => {
   const [sort, setSort] = useState('')
   const [page, setPage] = useState(1)
 
+  /**
+   * `entries.list`, not `GET /api/<resource>`.
+   *
+   * The two run the same handler — the generated REST route dispatches this very query
+   * — but only one of them exists for a resource that arrived after the server started.
+   * Routes are mounted before it listens, so a collection made in Studio has no REST
+   * path of its own until the next restart, while the bus addresses it by name the
+   * moment it is registered (ADR-0012, ADR-0014, SPEC.md §37).
+   */
   const listing = useQuery({
     queryKey: ['collection', name, { search, sort, page }],
-    queryFn: ({ signal }) => {
-      const query = new URLSearchParams({ page: String(page) })
-
-      if (search !== '') query.set('search', search)
-      if (sort !== '') query.set('sort', sort)
-
-      return api.get<Listing>(`/${name}?${query.toString()}`, signal)
-    },
+    queryFn: ({ signal }) =>
+      api.query<Listing>('entries.list', { resource: name, page, search, sort }, signal),
     enabled: resource !== undefined,
     placeholderData: keepPreviousData,
   })
@@ -149,7 +153,10 @@ export const Collection = () => {
   }
 
   const searchable = resource.fields.some((field) => field.searchable)
-  const sortable = resource.fields.filter((field) => field.sortable)
+  // Never a collection's own fields: a dynamic resource is ordered by the entry's
+  // columns and by nothing else, so an option built from `sortable` could only have
+  // replaced this list with a refusal (ADR-0012).
+  const sortable = sortableFields(resource)
 
   return (
     <Page

@@ -12,7 +12,7 @@ import {
 import { createMemoryAdapter, type MemoryAdapter } from '@assemora/database'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { number, richText, select, slug, text, toggle } from './fields.js'
+import { type AnyField, number, richText, select, slug, text, toggle } from './fields.js'
 import { resource } from './resource.js'
 
 const Article = model('articles', {
@@ -328,5 +328,63 @@ describe('a list query is untrusted input', () => {
     const Bare = resource(Article, { title: text() })
 
     await expect(Bare.list({ search: 'anything' })).rejects.toThrowError(ValidationError)
+  })
+})
+
+/**
+ * `Object.hasOwn` and not `in`, on the static side too (SPEC.md §86).
+ *
+ * A resource field is a column name, so this is rarer than on a collection — but it is
+ * the same two sites, `validate` and `project`, and `'constructor' in row` is true of
+ * every row that ever existed.
+ */
+describe('a field named after something on Object.prototype', () => {
+  const Note = model('prototypal_notes', {
+    id: uuid().primary().defaultRandom(),
+    title: string(),
+    constructor: string().nullable(),
+  })
+
+  const Notes = resource(Note, { title: text().required(), constructor: text() })
+
+  it('is not read as provided by a caller who did not send it', () => {
+    // With `in`, `source.constructor` is a function, and the field's schema refuses it
+    // — so an ordinary create of a resource that happens to have such a column failed.
+    expect(Notes.validate({ title: 'One' }, 'create')).toEqual({ title: 'One' })
+  })
+
+  it('is still required when it is required', () => {
+    const Strict = resource(Note, { title: text(), constructor: text().required() })
+
+    expect(() => Strict.validate({ title: 'One' }, 'create')).toThrowError(ValidationError)
+  })
+
+  it('is projected when the row really carries it', async () => {
+    useAdapter(
+      createMemoryAdapter({ prototypal_notes: [{ id: 'n1', title: 'One', constructor: 'hello' }] }),
+    )
+
+    expect(await Notes.find('n1')).toMatchObject({ constructor: 'hello' })
+  })
+
+  it('is not projected off the prototype when the row does not carry the key', async () => {
+    const Bare = model('bare_notes', {
+      id: uuid().primary().defaultRandom(),
+      title: string(),
+    })
+
+    // A resource field is a model column, which is what the cast is for: it is the only
+    // way to reach the case this guard exists for — a declared field the row snapshot
+    // has no key for. `'constructor' in row` is true of every row ever loaded, so with
+    // `in` the projection hands back `Object.prototype.constructor`, a function, under
+    // a field name.
+    const Loose = resource(Bare, { title: text(), constructor: text() } as { title: AnyField })
+
+    useAdapter(createMemoryAdapter({ bare_notes: [{ id: 'n1', title: 'One' }] }))
+
+    const found = await Loose.find('n1')
+
+    expect(found).toMatchObject({ id: 'n1', title: 'One' })
+    expect(Object.hasOwn(found ?? {}, 'constructor')).toBe(false)
   })
 })

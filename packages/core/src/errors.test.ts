@@ -86,3 +86,31 @@ describe('the rest of the error model', () => {
     expect(new NotFoundError('article').message).toBe('article was not found')
   })
 })
+
+describe('a field path that is also a name on Object.prototype (SPEC.md §84)', () => {
+  it('groups two issues under it instead of throwing while reporting them', () => {
+    // A field name is caller-chosen — a form input, a collection made in Studio, an
+    // agent. Accumulated in an object literal, `fields['constructor']` reads back a
+    // function rather than `undefined`, so the second issue called `.push` on it and
+    // the 422 being built became an unhandled TypeError.
+    const error = new ValidationError([
+      { path: ['constructor'], code: 'required', message: 'This field is required' },
+      { path: ['constructor'], code: 'type', message: 'Expected a string' },
+    ])
+
+    expect(error.fields).toMatchObject({
+      constructor: ['This field is required', 'Expected a string'],
+    })
+    expect(error.status).toBe(422)
+  })
+
+  it('reports one under it too, rather than merging it with the prototype', () => {
+    const error = new ValidationError([
+      { path: ['toString'], code: 'required', message: 'This field is required' },
+    ])
+
+    expect(error.toPayload().error.fields).toMatchObject({
+      toString: ['This field is required'],
+    })
+  })
+})

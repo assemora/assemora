@@ -8,10 +8,10 @@
 
 import { string } from '@assemora/schema'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createApplication } from './application.js'
-import { command } from './commands.js'
+import { type Application, createApplication } from './application.js'
+import { command, type Preview } from './commands.js'
 import { ForbiddenError } from './errors.js'
-import { createLogger, silentWriter } from './logger.js'
+import { createLogger, type LogRecord, silentWriter } from './logger.js'
 import { module } from './module.js'
 import { collectAudit, permitAll, type TransactionPort } from './ports.js'
 
@@ -224,5 +224,170 @@ describe('a batch is previewed as a sequence (SPEC.md §74)', () => {
     ).rejects.toThrow()
 
     expect(rows[0]?.title).toBe('Before')
+  })
+})
+
+/**
+ * A transaction port that models nesting, which the fake above deliberately does not
+ * (ADR-0023).
+ *
+ * The nesting is where the hole was. `TransactionPort.afterCommit` registers against
+ * the OUTERMOST commit — right for a command that is committing, and the exact
+ * opposite of right for one being previewed, because a preview is a savepoint inside
+ * somebody else's transaction. A handler reaching for the port itself therefore
+ * handed its work to the command doing the previewing, which then committed it.
+ *
+ * So this fake reproduces that faithfully: a *nested* rollback drops rows and nothing
+ * else, and only the outermost transaction decides whether the pending work runs.
+ */
+const nestedTransactions = (): TransactionPort => {
+  let depth = 0
+  let pending: (() => Promise<void>)[] = []
+
+  return {
+    run: async (operation, options) => {
+      const outermost = depth === 0
+
+      depth += 1
+
+      try {
+        const value = await operation()
+
+        depth -= 1
+
+        if (outermost) {
+          const work = options?.rollback === true ? [] : pending
+
+          pending = []
+
+          for (const item of work) await item()
+        }
+
+        return value
+      } catch (error) {
+        depth -= 1
+        if (outermost) pending = []
+        throw error
+      }
+    },
+
+    afterCommit: async (work) => {
+      if (depth === 0) return work()
+
+      pending.push(work)
+    },
+  }
+}
+
+describe('after-commit work is withheld from a preview (SPEC.md §73, §75, ADR-0023)', () => {
+  /** Process state a transaction cannot undo: a registry, a cache, a mounted thing. */
+  let live: string[]
+  let failures: LogRecord[]
+
+  const Register = command('registry.add', {
+    description: 'Writes a row and registers what it describes once that row is durable',
+    input: { name: string() },
+    handle: async ({ name }, context) => {
+      context.afterCommit(() => {
+        live.push(name)
+      })
+
+      context.revise({ entityType: 'registry', entityId: name, before: null, after: { name } })
+
+      return { name }
+    },
+  })
+
+  const Explodes = command('registry.explodes', {
+    description: 'Registers after-commit work that throws',
+    input: {},
+    handle: async (_input, context) => {
+      context.afterCommit(() => {
+        throw new Error('the registry refused')
+      })
+
+      return { ok: true }
+    },
+  })
+
+  /** What `changesets.propose` is: a command that previews other commands. */
+  const Propose = command('proposals.make', {
+    description: 'Previews a command from inside a command',
+    input: { name: string() },
+    handle: async ({ name }, context) =>
+      context.preview([{ command: 'registry.add', input: { name } }]),
+  })
+
+  const Applies = command('proposals.apply', {
+    description: 'Runs a command from inside a command, and then fails',
+    input: { name: string() },
+    handle: async ({ name }, context) => {
+      await context.execute('registry.add', { name })
+
+      throw new Error('the applier changed its mind')
+    },
+  })
+
+  let previewing: Application
+
+  beforeEach(async () => {
+    live = []
+    failures = []
+
+    previewing = createApplication({
+      modules: [module('registry').commands(Register, Explodes, Propose, Applies)],
+      authorization: permitAll(),
+      transactions: nestedTransactions(),
+      logger: createLogger((record) => {
+        if (record.level === 'error') failures.push(record)
+      }),
+    })
+
+    await previewing.boot()
+  })
+
+  it('runs the work when the command really commits', async () => {
+    await previewing.commands.execute('registry.add', { name: 'testimonials' })
+
+    expect(live).toEqual(['testimonials'])
+  })
+
+  it('runs nothing for a top-level dry run', async () => {
+    await previewing.commands.dryRun('registry.add', { name: 'testimonials' })
+
+    expect(live).toEqual([])
+  })
+
+  /**
+   * The one the authors did not write, and the one that matters.
+   *
+   * `changesets.propose` is a command whose handler previews other commands, and it is
+   * how an agent's mutation arrives by default (SPEC.md §75). A handler that registered
+   * its after-commit work with the transaction port would have it committed here — the
+   * preview's rollback is a savepoint, and the registration is on the proposer's list.
+   */
+  it('runs nothing when a command previews another command', async () => {
+    const previews = (await previewing.commands.execute('proposals.make', {
+      name: 'testimonials',
+    })) as readonly Preview[]
+
+    expect(previews[0]?.changes).toHaveLength(1)
+    expect(live).toEqual([])
+  })
+
+  it('runs nothing when the command that ran it is itself undone', async () => {
+    await expect(
+      previewing.commands.execute('proposals.apply', { name: 'testimonials' }),
+    ).rejects.toThrow('the applier changed its mind')
+
+    expect(live).toEqual([])
+  })
+
+  it('logs a failure rather than failing a command that has already committed', async () => {
+    await expect(previewing.commands.execute('registry.explodes', {})).resolves.toEqual({
+      ok: true,
+    })
+
+    expect(failures.map((record) => record.message)).toContain('After-commit work failed')
   })
 })

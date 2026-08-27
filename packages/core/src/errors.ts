@@ -43,21 +43,29 @@ export class AssemoraError extends Error {
   }
 }
 
-/** Groups issues by the field they belong to, as SPEC.md §84 requires. */
+/**
+ * Groups issues by the field they belong to, as SPEC.md §84 requires.
+ *
+ * Accumulated in a `Map` rather than an object literal, because the key is a *field
+ * path* and field names are chosen by whoever sends the data — a form input, a
+ * collection made in Studio, an agent. `fields['constructor']` on a plain object is a
+ * function rather than `undefined`, so the "have I seen this key" test read yes, and
+ * grouping two issues under `constructor`, `toString` or `valueOf` threw a `TypeError`
+ * out of the constructor of the error being built. A 422 turned into an unhandled 500,
+ * on the path whose entire job is to report a caller's mistake.
+ */
 const toFields = (issues: readonly Issue[]): Record<string, string[]> => {
-  const fields: Record<string, string[]> = {}
+  const fields = new Map<string, string[]>()
 
   for (const issue of issues) {
     const key = issue.path.length > 0 ? issue.path.join('.') : '_'
-    const bucket = fields[key]
-    if (bucket === undefined) {
-      fields[key] = [issue.message]
-    } else {
-      bucket.push(issue.message)
-    }
+    const bucket = fields.get(key)
+
+    if (bucket === undefined) fields.set(key, [issue.message])
+    else bucket.push(issue.message)
   }
 
-  return fields
+  return Object.fromEntries(fields)
 }
 
 export class ValidationError extends AssemoraError {

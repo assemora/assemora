@@ -34,6 +34,56 @@ export class ApiError extends Error {
 }
 
 /**
+ * The key `@assemora/core` groups an issue about the record itself under.
+ *
+ * A `ValidationError` buckets its issues by the path they name, and an issue with no
+ * path — "Expected an object", a rule about the whole input — has to go somewhere.
+ */
+const WHOLE_RECORD = '_'
+
+/**
+ * The messages the application sent that nothing else on the screen is showing.
+ *
+ * A `VALIDATION_ERROR` carries its meaning in `fields`, keyed by the path each issue is
+ * about; its `message` is the headline "Validation failed" and nothing more (SPEC.md
+ * §84). So a box that renders `error.message` alone shows a person a red rectangle
+ * with no information in it, and throws away the sentence the application wrote — which
+ * is exactly what the sort dropdown produced: a bare "Validation failed", with "Dynamic
+ * entries sort by createdAt, updatedAt, publishedAt, status only" dropped one line
+ * earlier.
+ *
+ * `shown` names the fields some other control is already displaying against its own
+ * input, so a form does not say the same thing twice. Everything else is here —
+ * including a key no form has an input for, which is the case that used to disappear
+ * completely: a read-only field, a field name the resource does not declare, a query
+ * parameter, or an issue about the record as a whole.
+ */
+export const unshownMessages = (
+  error: unknown,
+  shown: readonly string[] = [],
+): readonly string[] =>
+  error instanceof ApiError
+    ? Object.entries(error.fields)
+        .filter(([field]) => !shown.includes(field))
+        .flatMap(([field, messages]) =>
+          messages.map((message) => (field === WHOLE_RECORD ? message : `${field}: ${message}`)),
+        )
+    : []
+
+/**
+ * Whether a failure still needs a box of its own beside a form's marked inputs.
+ *
+ * A form that shows each named field's message against its own input has said the whole
+ * answer only when every key had an input to land on. Anything else — a refusal that
+ * named no field at all, a key the form does not render — is still unsaid, and hiding
+ * the box on the strength of `fields` being non-empty is how it came to be said nowhere.
+ */
+export const hasMoreToSay = (error: unknown, shown: readonly string[] = []): boolean =>
+  !(error instanceof ApiError) ||
+  Object.keys(error.fields).length === 0 ||
+  unshownMessages(error, shown).length > 0
+
+/**
  * Whether a failed request is worth sending again (SPEC.md §84).
  *
  * A refusal is an *answer*. The application understood the request and said no — no

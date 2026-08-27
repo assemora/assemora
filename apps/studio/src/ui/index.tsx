@@ -15,6 +15,8 @@ import {
   useId,
 } from 'react'
 
+import { unshownMessages } from '../api/client.ts'
+
 const join = (...classes: (string | false | undefined)[]): string =>
   classes.filter(Boolean).join(' ')
 
@@ -144,10 +146,34 @@ export const Empty = ({ title, children }: { title: string; children?: ReactNode
   </div>
 )
 
-export const Failure = ({ error }: { error: unknown }) => (
-  <Card className="border-danger/30 bg-danger-soft p-4">
-    <p className="text-sm font-medium text-danger">
-      {error instanceof Error ? error.message : 'Something went wrong'}
-    </p>
-  </Card>
-)
+/**
+ * A refusal, said the way the application said it (SPEC.md §84).
+ *
+ * The message *and* the field messages, because a `VALIDATION_ERROR` keeps its meaning
+ * in the second: `error.message` is the headline "Validation failed" and `error.fields`
+ * is what actually went wrong. Rendering only the headline is how choosing an option in
+ * a sort dropdown replaced a list with an empty red box, while the server's "Dynamic
+ * entries sort by createdAt, updatedAt, publishedAt, status only" was thrown away by
+ * the component that was given it.
+ *
+ * `except` names the fields a form is already showing against their own inputs, so the
+ * box says what is left rather than everything twice.
+ */
+export const Failure = ({ error, except = [] }: { error: unknown; except?: readonly string[] }) => {
+  const details = unshownMessages(error, except)
+
+  return (
+    <Card className="border-danger/30 bg-danger-soft p-4">
+      <p className="text-sm font-medium text-danger">
+        {error instanceof Error ? error.message : 'Something went wrong'}
+      </p>
+      {details.length > 0 && (
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-danger">
+          {details.map((message) => (
+            <li key={message}>{message}</li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}

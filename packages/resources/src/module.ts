@@ -5,12 +5,13 @@
  * package contributes the method: the type through interface augmentation, the
  * behaviour through `defineModuleFacet`.
  */
-import { defineModuleFacet, type ModuleBuilder, registerRestorer } from '@assemora/core'
+import { defineModuleFacet, type ModuleBuilder } from '@assemora/core'
 
 import { entryCommands } from './commands.js'
 import { entryQueries } from './queries.js'
 import { registerResource } from './registry.js'
-import { type AnyResource, PERSISTENCE } from './resource.js'
+import type { AnyResource } from './resource.js'
+import { registerEntryRestorer } from './restorer.js'
 
 declare module '@assemora/core' {
   interface ModuleBuilder {
@@ -46,49 +47,7 @@ export const defineResourceFacet = (): void => {
 
         registerResource(registered)
         context.registry.register('resources', registered.descriptor)
-
-        // How an entry goes back to an earlier state (SPEC.md §65). Without this a
-        // revision history could be read and never acted on: `revisions.restore`
-        // refuses an entity type nobody has taught it about.
-        //
-        // The write goes through the same persistence seam the CRUD commands use, so
-        // it is subject to the resource's own projection — and the caller has already
-        // been authorized for `restore` on this subject.
-        registerRestorer(registered.name, async (entityId, state) => {
-          const existing = await registered[PERSISTENCE].load(entityId).catch(() => undefined)
-
-          // `null` means the entry did not exist then, so putting it back means
-          // taking it away again (SPEC.md §65).
-          if (state === null || state === undefined) {
-            if (existing === undefined) return { replaced: null }
-
-            const removed = await registered[PERSISTENCE].remove(entityId)
-
-            return { replaced: removed.before }
-          }
-
-          const snapshot = state as Record<string, unknown>
-          const writable = Object.fromEntries(
-            registered.descriptor.fields
-              .filter((field) => !field.readOnly && field.name in snapshot)
-              .map((field) => [field.name, snapshot[field.name]]),
-          )
-
-          if (existing === undefined) {
-            const created = await registered[PERSISTENCE].create(
-              registered.validate(writable, 'create'),
-            )
-
-            return { replaced: null, id: created.id }
-          }
-
-          const written = await registered[PERSISTENCE].update(
-            entityId,
-            registered.validate(writable, 'update'),
-          )
-
-          return { replaced: written.before }
-        })
+        registerEntryRestorer(registered.name)
       }
     })
   })

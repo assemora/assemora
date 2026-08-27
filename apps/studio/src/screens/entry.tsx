@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { type FormEvent, useEffect, useState } from 'react'
 
-import { ApiError, api } from '../api/client.ts'
+import { ApiError, api, hasMoreToSay } from '../api/client.ts'
 import { editableFields, useIntrospection } from '../api/introspection.ts'
 import { Page } from '../app/shell.tsx'
 import { Button, Card, Failure, Spinner } from '../ui/index.tsx'
@@ -25,9 +25,19 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
   const introspection = useIntrospection()
   const resource = introspection.data?.resources?.find((entry) => entry.name === params.resource)
 
+  /**
+   * The bus by name, not the generated REST path.
+   *
+   * `GET /api/<resource>/:id` dispatches this very query, so the two are one handler —
+   * but the routes are mounted before the server listens, and a collection made in
+   * Studio is registered after that. Addressing the resource by name is what makes this
+   * form work for a resource the application grew as well as one it declared
+   * (ADR-0012, ADR-0014, SPEC.md §37).
+   */
   const existing = useQuery({
     queryKey: ['entry', params.resource, params.id],
-    queryFn: ({ signal }) => api.get<Entry>(`/${params.resource}/${params.id}`, signal),
+    queryFn: ({ signal }) =>
+      api.query<Entry | null>('entries.get', { resource: params.resource, id: params.id }, signal),
     enabled: mode === 'edit' && params.id !== undefined,
   })
 
@@ -35,14 +45,20 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
   const [failure, setFailure] = useState<ApiError>()
 
   useEffect(() => {
-    if (existing.data !== undefined) setDraft(existing.data)
+    // `entries.get` answers `null` for an id nothing matches, where the REST route
+    // answered 404: an absent entry is not an empty one to put in the form.
+    if (existing.data !== undefined && existing.data !== null) setDraft(existing.data)
   }, [existing.data])
 
   const save = useMutation({
     mutationFn: (values: Entry) =>
       mode === 'create'
-        ? api.post<Entry>(`/${params.resource}`, values)
-        : api.patch<Entry>(`/${params.resource}/${params.id}`, values),
+        ? api.command('entries.create', { resource: params.resource, data: values })
+        : api.command('entries.update', {
+            resource: params.resource,
+            id: params.id,
+            data: values,
+          }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ['collection', params.resource] })
       await navigate({ to: '/content/$resource', params: { resource: params.resource } })
@@ -51,7 +67,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
   })
 
   const remove = useMutation({
-    mutationFn: () => api.delete(`/${params.resource}/${params.id}`),
+    mutationFn: () => api.command('entries.delete', { resource: params.resource, id: params.id }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ['collection', params.resource] })
       await navigate({ to: '/content/$resource', params: { resource: params.resource } })
@@ -70,7 +86,20 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
     return <Page title="Not found">No resource called “{params.resource}”.</Page>
   }
 
+  if (mode === 'edit' && existing.data === null) {
+    return <Page title="Not found">Nothing in {resource.label} has that id.</Page>
+  }
+
   const fields = editableFields(resource)
+  /**
+   * The inputs this form draws, which is where a field's own message is shown.
+   *
+   * Everything the answer named that is not one of these — an issue about the record as
+   * a whole, one naming a read-only or hidden field, one naming a key the resource does
+   * not declare — has no input to land on. The box used to be hidden the moment
+   * `fields` held anything at all, so those were shown nowhere (SPEC.md §84).
+   */
+  const rendered = fields.map((field) => field.name)
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -109,8 +138,8 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
       }
     >
       <form className="space-y-6" onSubmit={submit}>
-        {failure !== undefined && Object.keys(failure.fields).length === 0 && (
-          <Failure error={failure} />
+        {failure !== undefined && hasMoreToSay(failure, rendered) && (
+          <Failure error={failure} except={rendered} />
         )}
 
         <Card className="space-y-5 p-6">

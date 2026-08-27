@@ -53,6 +53,20 @@ describe('command input inference', () => {
     expectTypeOf(result).toEqualTypeOf<unknown>()
   })
 
+  it('takes after-commit work that answers nothing, or a promise of nothing', () => {
+    command('probe.afterCommit', {
+      input: { title: string() },
+      handle: async (_input, context) => {
+        context.afterCommit(() => undefined)
+        context.afterCommit(async () => undefined)
+
+        expectTypeOf(context.afterCommit).returns.toEqualTypeOf<void>()
+
+        return null
+      },
+    })
+  })
+
   it('resolves where a command may be called from, declared or not', () => {
     expectTypeOf(PublishPage.reachableFrom).toEqualTypeOf<CommandReach>()
 
@@ -125,6 +139,18 @@ describe('invalid usage does not compile', () => {
   it('rejects a lifecycle hook that is not callable', () => {
     // @ts-expect-error a hook is a function
     module('blog').boot('later')
+  })
+
+  it('rejects after-commit work that answers something, which nothing would read', () => {
+    command('probe.afterCommitResult', {
+      input: { title: string() },
+      handle: async (_input, context) => {
+        // @ts-expect-error the batch runs after the caller has gone; there is no answer
+        // to give it, and a value returned here would be silently dropped.
+        context.afterCommit(() => 'registered')
+        return null
+      },
+    })
   })
 
   it('rejects a reach nobody defined, so a typo cannot quietly publish a command', () => {

@@ -13,6 +13,11 @@ export type HelpArticles = {
   readonly id: string
   readonly body: string
 }
+/**
+ * This application serves no REST endpoint for this resource, so the client has no
+ * accessor for it: every call would have answered 404. Its entries are reachable
+ * through the entries.* commands and queries.
+ */
 export type _2faTokens = {
   readonly id: string
   readonly code: string
@@ -28,12 +33,18 @@ export type Endpoints = {
     readonly 'content-type': string
     readonly rows?: readonly number[]
   }>
+  getBlogPosts(): Promise<unknown>
+  getBlogPostsById(): Promise<unknown>
+  postBlogPosts(): Promise<unknown>
+  patchBlogPostsById(): Promise<unknown>
+  deleteBlogPostsById(): Promise<unknown>
+  getHelpArticles(): Promise<unknown>
+  getHelpArticlesById(): Promise<unknown>
 }
 
 export type AssemoraApi = Client & {
   readonly 'blog-posts': ResourceClient<BlogPosts>
-  readonly 'help-articles': ResourceClient<HelpArticles>
-  readonly '2fa-tokens': ResourceClient<_2faTokens>
+  readonly 'help-articles': Pick<ResourceClient<HelpArticles>, 'list' | 'get'>
   readonly endpoints: Endpoints
 }
 

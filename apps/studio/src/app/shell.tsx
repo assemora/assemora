@@ -29,11 +29,17 @@ const NavLink = ({ children, ...link }: LinkProps & { children: React.ReactNode 
 )
 
 export const Shell = () => {
-  const { viewer, signOut } = useSession()
+  const { viewer, signOut, can } = useSession()
   const introspection = useIntrospection()
   const resources = introspection.data?.resources ?? []
   const hasTheme =
     introspection.data?.commands?.some((command) => command.name === 'theme.update') === true
+  // An application without `collections()` cannot make one, and somebody who may not
+  // read them has nothing to open — the registry and the permission decide, the way
+  // they decide the theme below.
+  const hasCollections =
+    introspection.data?.queries?.some((query) => query.name === 'collections.list') === true &&
+    can('collections.read')
 
   return (
     <div className="grid min-h-dvh grid-cols-[15rem_1fr] items-start">
@@ -63,6 +69,13 @@ export const Shell = () => {
                 {resource.label}
               </NavLink>
             ))}
+            {/* The collections above are whatever the registry holds, declared and
+                stored alike; this is where a stored one is made (SPEC.md §37). */}
+            {hasCollections && (
+              <NavLink to="/collections">
+                <span className="text-ink-faint">Manage collections</span>
+              </NavLink>
+            )}
           </Section>
 
           <Section title="Pages">

@@ -51,6 +51,30 @@ export type CommandContext = AssemoraContext & {
    * undo everything it wrote.
    */
   dispatch(...jobs: readonly JobRequest[]): void
+  /**
+   * Holds work until the change this command made is durable (ADR-0023, SPEC.md §73).
+   *
+   * For the effects a transaction cannot undo *and that live in this process*:
+   * registering a resource, warming a cache, swapping a compiled artefact. Rows are
+   * the transaction's business; this is everything else a handler leaves behind.
+   *
+   * It is on the context and not reached for directly, and that is the whole point.
+   * `TransactionPort.afterCommit` registers against the outermost commit, which is
+   * exactly right for a handler that is committing and exactly wrong for one that is
+   * being *previewed*: a preview is a savepoint inside somebody else's transaction,
+   * so a handler calling the port itself would push its registration onto the outer
+   * command's pending list and have it run when that command commits. A
+   * `changesets.propose` — how an agent's mutation arrives by default (SPEC.md §75) —
+   * would then apply for real what it promised only to describe. The bus withholds
+   * jobs and events from a preview for that reason and cannot see past a handler that
+   * goes around it, so this is the seam that cannot be gone around.
+   *
+   * It runs before the jobs and the events of the same command: those are told that
+   * the change happened, and a listener must not be told before the change is
+   * finished. Like them, it has no caller left to reject to, so a failure is logged
+   * rather than thrown, and nothing that could still be refused for good belongs here.
+   */
+  afterCommit(work: () => void | Promise<void>): void
   /** Records a reversible change. Written inside the transaction (SPEC.md §64). */
   revise(draft: RevisionDraft): void
   /**
@@ -393,6 +417,17 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
        */
       const dispatched: QueuedJob[] = []
 
+      /**
+       * Process state a handler changes once its rows are durable.
+       *
+       * Held here rather than registered with the transaction port as the handler
+       * asks, for the reason `dispatched` is: a preview never reaches step 6, so the
+       * list is simply dropped, whereas `transactions.afterCommit` would have bound
+       * it to the commit of whichever command the preview is running inside
+       * (ADR-0023).
+       */
+      const committed: (() => void | Promise<void>)[] = []
+
       const commandContext: CommandContext = {
         ...context,
         logger: options.logger.child({ command: definition.name }),
@@ -401,6 +436,9 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         },
         dispatch: (...jobs) => {
           for (const request of jobs) dispatched.push(queuedFrom(request, context))
+        },
+        afterCommit: (work) => {
+          committed.push(work)
         },
         authorize: async (subject, action, record) => {
           await options.authorization.authorizeRecord?.({ subject, action, record, context })
@@ -435,8 +473,9 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       )
 
       if (preview) {
-        // Neither events nor jobs: nothing became durable, and a job cannot be un-run
-        // any more than a listener can be un-notified (SPEC.md §73).
+        // No events, no jobs and no after-commit work: nothing became durable, and a
+        // job cannot be un-run any more than a listener can be un-notified or a
+        // registry un-changed (SPEC.md §73).
         await audit('previewed', { changes: revisions.length })
 
         return {
@@ -454,15 +493,35 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         } satisfies Preview
       }
 
-      // 6. Jobs and events, only once the change is durable — which is the outermost
-      // commit and not this command's own `run()`, because that one may be a
-      // savepoint somebody else is still free to undo (ADR-0023).
+      // 6. After-commit work, jobs and events, only once the change is durable —
+      // which is the outermost commit and not this command's own `run()`, because
+      // that one may be a savepoint somebody else is still free to undo (ADR-0023).
       //
-      // Both halves are one registration, so the queue keeps going first: it is the
-      // durable half, and a listener taking its time must not delay work that has to
-      // survive this process.
-      if (dispatched.length > 0 || queued.length > 0) {
+      // All three are one registration, and the order inside it is the order of
+      // dependence. The handler's own after-commit work finishes the change — a
+      // collection is not really created until it is registered — so it goes first;
+      // a job or a listener told about a half-applied change would be told a lie.
+      // Then the queue, because it is the durable half and a listener taking its
+      // time must not delay work that has to survive this process.
+      if (committed.length > 0 || dispatched.length > 0 || queued.length > 0) {
         await options.transactions.afterCommit(async () => {
+          for (const work of committed) {
+            try {
+              await work()
+            } catch (error) {
+              // The commit already happened and the caller has already returned, so
+              // this cannot fail the command — and one registration's failure must
+              // not cancel the next one's. Reported the way a job that could not be
+              // queued is reported, and for the same reason.
+              options.logger.error('After-commit work failed', {
+                command: definition.name,
+                requestId: context.requestId,
+                ...actedOn(),
+                reason: error instanceof Error ? error.message : String(error),
+              })
+            }
+          }
+
           if (dispatched.length > 0) await handOver(dispatched)
 
           for (const event of queued) {

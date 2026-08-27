@@ -10,6 +10,8 @@ import { useSession } from '../api/session.tsx'
 import { Builder } from '../screens/builder.tsx'
 import { ChangeSets } from '../screens/changesets.tsx'
 import { Collection } from '../screens/collection.tsx'
+import { CollectionEditor } from '../screens/collection-editor.tsx'
+import { Collections } from '../screens/collections.tsx'
 import { Dashboard } from '../screens/dashboard.tsx'
 import { Design } from '../screens/design.tsx'
 import { Developer } from '../screens/developer.tsx'
@@ -55,6 +57,19 @@ const routes = [
     getParentRoute: () => rootRoute,
     path: '/content/$resource/$id',
     component: () => <EntryForm mode="edit" />,
+  }),
+  // Where a collection is made. Deliberately not under `/content`: these screens edit
+  // what a resource *is*, and the ones above edit what it holds (SPEC.md §37).
+  createRoute({ getParentRoute: () => rootRoute, path: '/collections', component: Collections }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/collections/new',
+    component: () => <CollectionEditor mode="create" />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/collections/$name',
+    component: () => <CollectionEditor mode="edit" />,
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/pages', component: Pages }),
   createRoute({ getParentRoute: () => rootRoute, path: '/pages/$id', component: Builder }),

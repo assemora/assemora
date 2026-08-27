@@ -23,6 +23,22 @@
 
 export { readableByActor, refuseUnwritableFields } from './agent-fields.js'
 export {
+  type CollectionSummary,
+  CreateCollection,
+  collectionCommands,
+  collectionQueries,
+  DeleteCollection,
+  GetCollection,
+  ListCollections,
+  UpdateCollection,
+} from './collection-commands.js'
+export { collections } from './collection-module.js'
+export {
+  type Collection,
+  collectionByName,
+  registeredCollections,
+} from './collections.js'
+export {
   CreateEntry,
   DeleteEntry,
   entryCommands,
@@ -90,6 +106,7 @@ export {
   registeredResources,
   registerResource,
   resourceByName,
+  unregisterResource,
 } from './registry.js'
 // `PERSISTENCE` is deliberately not exported: it is how the write side of a resource
 // stays reachable only from the CRUD commands (SPEC.md §2, ADR-0012). Exporting it

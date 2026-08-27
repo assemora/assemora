@@ -16,6 +16,7 @@ import { definitionSchema, type FieldSpec, fieldFromSpec } from './field-registr
 import type { AnyField } from './fields.js'
 import { type AnyResource, type ListQuery, PERSISTENCE } from './resource.js'
 import { ResourceEntryModel } from './system-models.js'
+import { validateAgainstFields } from './validation.js'
 
 export type DynamicDefinition = {
   readonly name: string
@@ -30,6 +31,29 @@ export type DynamicEntry = {
   readonly createdAt: Date
   readonly updatedAt: Date
 } & Record<string, unknown>
+
+/**
+ * The names an entry already answers to, which a field therefore may not take
+ * (SPEC.md §38).
+ *
+ * An entry is its stored `data` plus the row's own identity, and the identity wins:
+ * `toEntry` spreads the JSONB and then writes `id`, `status`, `version`, `createdAt`
+ * and `updatedAt` over it. So a field of one of those names was accepted, stored,
+ * never readable — and destroyed by the next ordinary save, because the form loaded
+ * the row's value and wrote it back. A `required` field called `id` could not be
+ * satisfied at all.
+ *
+ * `publishedAt` is here for the other half of the same collision: `ENTRY_SORT_FIELDS`
+ * addresses it by name, so `sort=publishedAt` would order by a column that is not the
+ * field of that name.
+ *
+ * It also keeps the generated SDK compiling. The SDK emits the implicit primary key
+ * and then the declared fields, so one collection with a field called `id` produces
+ * `readonly id: string` twice and makes the whole client uncompilable (SPEC.md §124).
+ */
+const ENTRY_KEYS = ['id', 'status', 'version', 'createdAt', 'updatedAt', 'publishedAt'] as const
+
+const RESERVED_FIELD_NAMES: ReadonlySet<string> = new Set(ENTRY_KEYS)
 
 /**
  * Turns stored JSON into a definition, or refuses it.
@@ -52,6 +76,14 @@ export const parseDynamicDefinition = (input: unknown): DynamicDefinition => {
         path: ['fields', index, 'name'],
         code: 'duplicate',
         message: `"${spec.name}" is declared twice`,
+      })
+    }
+
+    if (RESERVED_FIELD_NAMES.has(spec.name)) {
+      issues.push({
+        path: ['fields', index, 'name'],
+        code: 'reserved',
+        message: `"${spec.name}" is part of every entry already, so a field cannot be called that. The reserved names are ${ENTRY_KEYS.join(', ')}.`,
       })
     }
 
@@ -109,7 +141,9 @@ const toEntry = (
   for (const [name, field] of fields) {
     if (field.isHidden) continue
     if (!readableByActor(field, actor)) continue
-    if (name in data) visible[name] = data[name]
+    // `hasOwn` rather than `in`: a field name is caller-chosen, and `'constructor' in
+    // data` is true of every object — the entry would come back holding a function.
+    if (Object.hasOwn(data, name)) visible[name] = data[name]
   }
 
   return {
@@ -153,50 +187,17 @@ export const dynamicResource = (
 
   const entriesOf = () => ResourceEntryModel.where('resourceId', options.id)
 
-  const validate = (values: unknown, mode: 'create' | 'update'): Record<string, unknown> => {
-    if (typeof values !== 'object' || values === null || Array.isArray(values)) {
-      throw new ValidationError([{ path: [], code: 'type', message: 'Expected an object' }])
-    }
-
-    const source = values as Record<string, unknown>
-    const issues: Issue[] = []
-    const checked: Record<string, unknown> = {}
-
-    for (const key of Object.keys(source)) {
-      if (!fields.has(key)) {
-        issues.push({
-          path: [key],
-          code: 'unknown_field',
-          message: `"${key}" is not a field of ${definition.name}`,
-        })
-      }
-    }
-
-    for (const [name, field] of fields) {
-      const provided = name in source
-
-      if (provided && field.isReadOnly) {
-        issues.push({ path: [name], code: 'read_only', message: `"${name}" cannot be written` })
-        continue
-      }
-
-      if (!provided) {
-        if (mode === 'create' && field.isRequired) {
-          issues.push({ path: [name], code: 'required', message: 'This field is required' })
-        }
-        continue
-      }
-
-      const result = field.schema.parse(source[name])
-
-      if (result.ok) checked[name] = result.value
-      else issues.push(...result.issues.map((issue) => ({ ...issue, path: [name, ...issue.path] })))
-    }
-
-    if (issues.length > 0) throw new ValidationError(issues)
-
-    return checked
-  }
+  // The same validator a static resource uses, so a collection accepts and refuses
+  // exactly what one does — a `null` that clears an optional field and a `slug` derived
+  // from its source included (see `validation.ts`).
+  const validate = (values: unknown, mode: 'create' | 'update'): Record<string, unknown> =>
+    validateAgainstFields(values, mode, {
+      resource: definition.name,
+      fields,
+      // Every field of a collection is clearable. There are no columns to ask: the
+      // values are one JSONB document, which holds a `null` under any key.
+      clearable: () => true,
+    })
 
   const load = async (id: unknown) => {
     const found = await entriesOf().where('id', String(id)).first()

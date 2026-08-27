@@ -17,14 +17,9 @@ import type {
 } from '@assemora/data'
 import type { Issue } from '@assemora/schema'
 import { readableByActor } from './agent-fields.js'
-import {
-  type ApiExposure,
-  describeField,
-  humanize,
-  type ResourceDescriptor,
-  slugify,
-} from './descriptor.js'
+import { type ApiExposure, describeField, humanize, type ResourceDescriptor } from './descriptor.js'
 import type { AnyField } from './fields.js'
+import { validateAgainstFields } from './validation.js'
 
 /** Only the CRUD commands may reach the persistence side of a resource. */
 export const PERSISTENCE: unique symbol = Symbol('assemora.resource.persistence')
@@ -256,91 +251,16 @@ export const resource = <
     return built
   }
 
-  const validate = (values: unknown, mode: 'create' | 'update'): Record<string, unknown> => {
-    if (typeof values !== 'object' || values === null || Array.isArray(values)) {
-      throw new ValidationError([{ path: [], code: 'type', message: 'Expected an object' }])
-    }
-
-    const source = values as Record<string, unknown>
-    const issues: Issue[] = []
-    const checked: Record<string, unknown> = {}
-
-    for (const key of Object.keys(source)) {
-      if (!fieldByName.has(key)) {
-        issues.push({
-          path: [key],
-          code: 'unknown_field',
-          message: `"${key}" is not a field of ${name}`,
-        })
-      }
-    }
-
-    for (const [fieldName, field] of entries) {
-      const provided = fieldName in source
-
-      if (provided && field.isReadOnly) {
-        issues.push({
-          path: [fieldName],
-          code: 'read_only',
-          message: `"${fieldName}" cannot be written`,
-        })
-        continue
-      }
-
-      if (!provided) {
-        if (mode === 'create' && field.isRequired) {
-          issues.push({ path: [fieldName], code: 'required', message: 'This field is required' })
-        }
-        continue
-      }
-
-      const value = source[fieldName]
-
-      // Clearing a field is a normal edit: Studio's empty input, an agent's explicit
-      // `null`. It is accepted exactly where the column can hold it, so a required
-      // field and a `not null` column both still refuse (SPEC.md §36).
-      if (value === null && !field.isRequired && nullable.has(fieldName)) {
-        checked[fieldName] = null
-        continue
-      }
-
-      const result = field.schema.parse(value)
-
-      if (result.ok) checked[fieldName] = result.value
-      else
-        issues.push(
-          ...result.issues.map((issue) => ({ ...issue, path: [fieldName, ...issue.path] })),
-        )
-    }
-
-    // `slug('title')` says where the slug comes from, so a caller that did not send
-    // one gets it derived. Only on create: a published URL does not change because
-    // someone corrected a headline (SPEC.md §39).
-    if (mode === 'create') {
-      for (const [fieldName, field] of entries) {
-        if (field.kind !== 'slug' || field.source === undefined) continue
-        if (fieldName in checked || fieldName in source) continue
-
-        const from = checked[field.source] ?? source[field.source]
-
-        if (typeof from !== 'string') continue
-
-        // The derived value goes through the field's own schema like any other. A
-        // title that leaves nothing behind fails here rather than reaching the row.
-        const result = field.schema.parse(slugify(from))
-
-        if (result.ok) checked[fieldName] = result.value
-        else
-          issues.push(
-            ...result.issues.map((issue) => ({ ...issue, path: [fieldName, ...issue.path] })),
-          )
-      }
-    }
-
-    if (issues.length > 0) throw new ValidationError(issues)
-
-    return checked
-  }
+  // The one validator both kinds of resource use, so a rule cannot exist for a static
+  // resource and be missing from a collection (see `validation.ts`).
+  const validate = (values: unknown, mode: 'create' | 'update'): Record<string, unknown> =>
+    validateAgainstFields(values, mode, {
+      resource: name,
+      fields: fieldByName,
+      // A column decides. `null` into a `not null` column is a database error, so the
+      // resource refuses first and names the field.
+      clearable: (fieldName) => nullable.has(fieldName),
+    })
 
   const snapshot = (instance: Instance<F, C>): Record<string, unknown> =>
     instance.toJSON() as Record<string, unknown>
@@ -363,7 +283,7 @@ export const resource = <
     for (const [fieldName, field] of entries) {
       if (field.isHidden) continue
       if (!readableByActor(field, actor)) continue
-      if (fieldName in row) projected[fieldName] = row[fieldName]
+      if (Object.hasOwn(row, fieldName)) projected[fieldName] = row[fieldName]
     }
 
     return projected as ResourceRecord<F, RF>

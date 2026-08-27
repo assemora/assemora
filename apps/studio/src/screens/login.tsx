@@ -7,9 +7,30 @@
  */
 import { type FormEvent, useState } from 'react'
 
-import { ApiError } from '../api/client.ts'
+import { ApiError, unshownMessages } from '../api/client.ts'
 import { useSession } from '../api/session.tsx'
 import { Button, Card, Field, Input } from '../ui/index.tsx'
+
+/**
+ * What to put on the screen when signing in did not work.
+ *
+ * One sentence is Studio's own and deliberately so: a 401 must read the same whether
+ * the address is unknown or the password is wrong, because a login screen that can tell
+ * the two apart is an account enumerator (SPEC.md §86, docs/rules/security.md).
+ *
+ * Everything else is the application's to say, and used to be replaced by "Please try
+ * again" — advice that is simply wrong for the two answers a login most often gets
+ * after a wrong password: a rate limit (SPEC.md §85), which needs waiting rather than
+ * retrying, and a validation failure, which needs a different address typed in.
+ */
+export const signInFailure = (error: unknown): string => {
+  if (!(error instanceof ApiError)) return 'Could not sign in. Please try again.'
+  if (error.status === 401) return 'That email and password do not match.'
+
+  const said = [error.message, ...unshownMessages(error)].filter((line) => line !== '')
+
+  return said.length === 0 ? 'Could not sign in. Please try again.' : said.join(' ')
+}
 
 export const Login = () => {
   const { signIn } = useSession()
@@ -26,11 +47,7 @@ export const Login = () => {
     try {
       await signIn({ email, password })
     } catch (error) {
-      setFailure(
-        error instanceof ApiError && error.status === 401
-          ? 'That email and password do not match.'
-          : 'Could not sign in. Please try again.',
-      )
+      setFailure(signInFailure(error))
     } finally {
       setBusy(false)
     }

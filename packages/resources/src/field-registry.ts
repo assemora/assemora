@@ -6,7 +6,7 @@
  * to executable code, which is the whole point of §86.
  */
 import { ValidationError } from '@assemora/core'
-import { array, boolean, enumOf, object, string } from '@assemora/schema'
+import { array, boolean, enumOf, object, type Schema, string } from '@assemora/schema'
 import type { AnyField, FieldKind } from './fields.js'
 import * as fields from './fields.js'
 
@@ -121,10 +121,56 @@ registerFieldKind('relation', (spec) => {
   return fields.relation(spec.target)
 })
 
+/**
+ * `kind` validates as a string and describes itself as the list of kinds this process
+ * actually has.
+ *
+ * The description is what an agent reads: `collections.create` is an MCP tool by
+ * generation (ADR-0020), and its schema is the only thing telling a caller what may go
+ * here. Published as a bare `string` it left the fifteen legal kinds of SPEC.md §39 to
+ * be guessed, which is a tool nobody can use without trying it.
+ *
+ * The enum is computed when the schema is asked to describe itself, not when this
+ * module loads, because a plugin may register a kind before the application is built —
+ * a frozen list would publish a kind short or a kind long. Validation stays with
+ * `fieldFromSpec`, which is the one place that knows what is registered *now* and which
+ * names the offending kind; an enum in the parser would answer the same question a
+ * sentence less clearly.
+ */
+const fieldKindSchema = (): Schema<string> => {
+  const inner = string().describe('One of the field kinds this application has registered')
+
+  return {
+    ...inner,
+    toJsonSchema: () => ({ ...inner.toJsonSchema(), enum: registeredFieldKinds() }),
+  }
+}
+
+/**
+ * How many fields one collection may declare.
+ *
+ * Not a storage limit — the definition is JSONB and would hold thousands. It is what
+ * `/api/_introspection` and `assemora.describe` carry on every load: six thousand
+ * fields, which is one accepted `collections.create`, took that document to 1.5 MB and
+ * survived every restart, and any holder of `collections.create` could leave it there.
+ * Two hundred is far past any editorial shape and far short of a payload that hurts.
+ */
+const MAX_FIELDS = 200
+
+/**
+ * `name` and `label` are `varchar(255)` columns (SPEC.md §38).
+ *
+ * Without the cap a long name was a `DATABASE_ERROR` — a 500, blaming the server for
+ * what the caller sent — and only in production: the memory adapter has no column
+ * width, so it stored the name happily and the defect appeared exactly where it was
+ * hardest to see (SPEC.md §83, §84).
+ */
+const COLUMN_LENGTH = 255
+
 /** The shape a stored definition is allowed to have. Declarative JSON, nothing else. */
 export const fieldSpecSchema = object({
   name: string().pattern(/^[a-zA-Z][a-zA-Z0-9_]*$/, 'Invalid field name'),
-  kind: string(),
+  kind: fieldKindSchema(),
   label: string().optional(),
   help: string().optional(),
   required: boolean().optional(),
@@ -140,9 +186,11 @@ export const fieldSpecSchema = object({
 })
 
 export const definitionSchema = object({
-  name: string().pattern(/^[a-z][a-z0-9_]*$/, 'Invalid resource name'),
-  label: string().optional(),
-  fields: array(fieldSpecSchema).min(1),
+  name: string()
+    .pattern(/^[a-z][a-z0-9_]*$/, 'Invalid resource name')
+    .max(COLUMN_LENGTH),
+  label: string().max(COLUMN_LENGTH).optional(),
+  fields: array(fieldSpecSchema).min(1).max(MAX_FIELDS),
 })
 
 /** Applies the declarative modifiers of a spec to the field its kind produced. */

@@ -16,6 +16,7 @@ import { auth } from '@assemora/auth'
 import { createMemoryAdapter } from '@assemora/database'
 import { media } from '@assemora/media'
 import { pages } from '@assemora/pages'
+import { collections } from '@assemora/resources'
 import { assemora } from 'assemora'
 
 import { blog, Faq, Hero, Section } from './blog.ts'
@@ -40,7 +41,10 @@ const app = assemora({
   database: createMemoryAdapter(),
   // `revisions`, `audit` and `changesets` are deliberately absent: they are not
   // features to opt into, and the umbrella registers them for every application.
-  modules: [auth(), blog(), pages({ blocks: [Hero, Section, Faq] }), media()],
+  // `collections()` is what makes SPEC.md §37 true: a person or an agent creates a
+  // collection here, in Studio, and it becomes a resource like any other — without a
+  // TypeScript file and without a deploy.
+  modules: [auth(), blog(), pages({ blocks: [Hero, Section, Faq] }), media(), collections()],
   // Written once because three subsystems ask: the OpenAPI title, the name the MCP
   // server announces over the protocol, and what `assemora.describe` tells an agent
   // this project is (SPEC.md §44, §71).

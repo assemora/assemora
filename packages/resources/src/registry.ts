@@ -34,6 +34,15 @@ export const resourceByName = (name: string): AnyResource => {
   return found
 }
 
+/**
+ * Forgets a resource, and says whether one was there.
+ *
+ * The mirror of the Schema Registry's `withdraw`, and there for the same reason: a
+ * collection is created and deleted while the process runs (SPEC.md §37). A static
+ * resource is a source declaration and never passes through here.
+ */
+export const unregisterResource = (name: string): boolean => resources.delete(name)
+
 export const registeredResources = (): readonly AnyResource[] => [...resources.values()]
 
 export const hasResource = (name: string): boolean => resources.has(name)

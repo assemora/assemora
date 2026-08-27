@@ -117,7 +117,14 @@ export const useIntrospection = (): UseQueryResult<Introspection> =>
   useQuery({
     queryKey: ['introspection'],
     queryFn: ({ signal }) => api.get<Introspection>('/_introspection', signal),
-    // The registry only changes when the application restarts.
+    /**
+     * The registry changes when the application restarts — and when a collection is
+     * made, which is the one thing that changes it while it runs (SPEC.md §37).
+     *
+     * So this is cached for a long time and invalidated by hand: the collection
+     * screens do it after every `collections.*` command, because the navigation, the
+     * content screens and the API Explorer are all drawn from this answer.
+     */
     staleTime: 5 * 60 * 1000,
   })
 
@@ -129,6 +136,22 @@ export const columnFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
 
 export const editableFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
   resource.fields.filter((field) => !field.hidden && !field.readOnly)
+
+/**
+ * The fields a listing of this resource can actually be ordered by (SPEC.md §38).
+ *
+ * None of a collection's, whatever its fields claim. `entries.list` orders a dynamic
+ * resource by the entry's own columns — `createdAt`, `updatedAt`, `publishedAt`,
+ * `status` — and refuses anything else with a 422, because the values live inside one
+ * JSONB document and the Query AST has no ordering term that reaches into it
+ * (ADR-0012). A stored definition can still say `sortable: true`: `collections.create`
+ * accepts the flag, so an agent or a Studio that offered the checkbox may have written
+ * one. Reading the descriptor at face value put an option in the sort dropdown whose
+ * only possible outcome was replacing the list with a refusal, and a control that
+ * always fails is worse than no control.
+ */
+export const sortableFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
+  resource.kind === 'dynamic' ? [] : resource.fields.filter((field) => field.sortable)
 
 export const blockByName = (
   introspection: Introspection | undefined,
