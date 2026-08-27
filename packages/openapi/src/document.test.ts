@@ -206,12 +206,47 @@ describe('the document is served by the API it describes', () => {
     expect(Object.keys(body.paths)).toContain('/api/auth/login')
   })
 
-  it('exposes what the API Explorer shows (SPEC.md §45)', async () => {
-    server.mount(login, introspectionRoute(app.registry))
+  it('exposes what the API Explorer shows, to somebody it recognises (SPEC.md §45)', async () => {
+    const identified = createHttpServer({
+      registry: app.registry,
+      commands: app.commands,
+      queries: app.queries,
+      logger: app.logger,
+      resolveActor: async (headers) =>
+        headers.authorization === 'Bearer good' ? { type: 'user', id: 'u-1' } : undefined,
+    })
 
-    const response = await server.inject({ method: 'GET', url: '/api/_introspection' })
+    identified.mount(login, introspectionRoute(app.registry))
+
+    const response = await identified.inject({
+      method: 'GET',
+      url: '/api/_introspection',
+      headers: { authorization: 'Bearer good' },
+    })
     const body = response.json<{ routes: { path: string }[] }>()
 
+    expect(response.statusCode).toBe(200)
     expect(body.routes.map((entry) => entry.path)).toContain('/auth/login')
+  })
+
+  it('does not hand the whole registry to somebody it does not (SPEC.md §85)', async () => {
+    server.mount(login, introspectionRoute(app.registry))
+
+    // Every table and column of the auth schema is in here, beside every command,
+    // query and route. Studio reads it *after* signing in, and every other read on
+    // this surface denies by default; this one used to be the exception.
+    const response = await server.inject({ method: 'GET', url: '/api/_introspection' })
+
+    expect(response.statusCode).toBe(401)
+    expect(response.body).not.toContain('passwordHash')
+  })
+
+  it('is anonymous only for an application that says so out loud', async () => {
+    server.mount(login, introspectionRoute(app.registry, { public: true }))
+
+    const response = await server.inject({ method: 'GET', url: '/api/_introspection' })
+
+    expect(response.statusCode).toBe(200)
+    expect(app.registry.find('routes', 'get /_introspection')).toMatchObject({ auth: false })
   })
 })

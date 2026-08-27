@@ -17,8 +17,11 @@ pnpm --filter @assemora/example-blog build   # the site bundle the canvas frames
 pnpm --filter @assemora/example-blog dev
 ```
 
-With no `DATABASE_URL` it runs in memory and says so. The first boot seeds two
-accounts and prints their shared password:
+With no `DATABASE_URL` it runs in memory and says so, and because that database is
+throwaway the first boot seeds it with two accounts. Their shared password is written
+into `.env` as `ASSEMORA_SEED_PASSWORD` — never printed, because `pnpm start` hands
+its output to whatever supervises it. Against a real database nothing is seeded until
+you type `pnpm seed`:
 
 | | |
 | --- | --- |

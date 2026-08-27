@@ -429,16 +429,24 @@ const looksLikeTable = (value: unknown): value is TableDescriptor =>
   Array.isArray(value.columns) &&
   Array.isArray(value.relations)
 
-/** The schema the last `db:generate` left behind, or nothing when there is none. */
-const readSnapshot = async (loaded: LoadedConfig): Promise<readonly TableDescriptor[]> => {
+/**
+ * The schema the last `db:generate` left behind, or `undefined` when there is no
+ * snapshot file at all.
+ *
+ * The two answers are not the same thing and the caller has to tell them apart: an
+ * empty snapshot means "the last migration left no tables", where a missing one means
+ * "nothing here knows what the last migration did".
+ */
+const readSnapshot = async (
+  loaded: LoadedConfig,
+): Promise<readonly TableDescriptor[] | undefined> => {
   const path = snapshotPath(loaded)
   let text: string
 
   try {
     text = await readFile(path, 'utf8')
   } catch (error) {
-    // No snapshot is the first migration: everything the models declare is new.
-    if (isRecord(error) && error.code === 'ENOENT') return []
+    if (isRecord(error) && error.code === 'ENOENT') return undefined
 
     throw error
   }
@@ -531,11 +539,42 @@ const NOT_DEVELOPMENT = 'NODE_ENV is not "development" or "test"'
  * The commands.
  */
 
+/**
+ * Why a missing snapshot is refused rather than warned about.
+ *
+ * Missing, the diff calls every table new. That is the truth for the very first
+ * migration and a lie the moment `database/migrations` already holds one: the file
+ * this would write re-creates every table, and `assemora db:migrate` fails on the
+ * first one that already exists — a failure that arrives later, on a different
+ * machine, naming neither the migration nor the statement.
+ *
+ * The snapshot cannot be reconstructed from the directory either: reading it back
+ * would mean executing the SQL those files hold, and this command exists precisely so
+ * that generation is deterministic and offline (ADR-0021). So the honest answer is to
+ * stop and say which two files disagree. A warning would be read after the migration
+ * was written, which is after the damage — and `--force` is there for the project
+ * whose migrations were written by hand and never had a snapshot at all.
+ */
+const refuseWithoutSnapshot = (loaded: LoadedConfig, existing: number): number => {
+  fail(
+    `${loaded.paths.migrations} already holds ${count(existing, 'migration')}, and there is no ` +
+      `schema snapshot at ${snapshotPath(loaded)} to compare the models against. Generating now ` +
+      'would write a migration that creates every table again, and `assemora db:migrate` would ' +
+      'fail on the first one that already exists.',
+  )
+  detail(
+    'The snapshot is written by `assemora db:generate` and belongs in version control: restore ' +
+      'it from there. Pass --force to diff against an empty schema anyway.',
+  )
+
+  return 1
+}
+
 export const dbGenerate = defineCommand({
   name: 'db:generate',
   group: 'database',
   summary: 'write a migration for everything the models changed',
-  usage: 'assemora db:generate [name] [--check]',
+  usage: 'assemora db:generate [name] [--check] [--force]',
   handler: async ({ args, cwd }) => {
     const loaded = await loadConfig(cwd)
 
@@ -553,7 +592,16 @@ export const dbGenerate = defineCommand({
       )
     }
 
-    const generated = await generateMigration(await readSnapshot(loaded), after)
+    const snapshot = await readSnapshot(loaded)
+    const existing = (await listing(loaded.paths.migrations)).filter((filename) =>
+      MIGRATION_FILE.test(filename),
+    )
+
+    if (snapshot === undefined && existing.length > 0 && !bool(args, 'force')) {
+      return refuseWithoutSnapshot(loaded, existing.length)
+    }
+
+    const generated = await generateMigration(snapshot ?? [], after)
 
     if (generated.up.length === 0) {
       line('The models and the last migration agree. Nothing to generate.')
@@ -596,6 +644,34 @@ export const dbGenerate = defineCommand({
   },
 })
 
+/**
+ * Runs the migrations, and says where the run stopped if it did.
+ *
+ * A statement that PostgreSQL rejects arrives as one redacted sentence naming neither
+ * the migration nor the statement (SPEC.md §83) — true of every database error, and
+ * useless here, where the file is the unit a person acts on. Each migration commits on
+ * its own, so asking again afterwards is what places the failure: what is still pending
+ * begins with the one that did not apply.
+ *
+ * The second question is best effort. A run that failed because the connection went is
+ * a run whose status cannot be read either, and the failure that matters is still the
+ * first one.
+ */
+const apply = async (
+  run: () => Promise<string[]>,
+  status: () => Promise<readonly { readonly name: string; readonly applied: boolean }[]>,
+): Promise<string[]> => {
+  try {
+    return await run()
+  } catch (error) {
+    const pending = (await status().catch(() => [])).find((entry) => !entry.applied)
+
+    if (pending !== undefined) detail(`The run stopped at ${pending.name}: nothing after it ran.`)
+
+    throw error
+  }
+}
+
 export const dbMigrate = defineCommand({
   name: 'db:migrate',
   group: 'database',
@@ -635,7 +711,10 @@ export const dbMigrate = defineCommand({
       return 1
     }
 
-    const ran = await applyMigrations(adapter, migrations)
+    const ran = await apply(
+      () => applyMigrations(adapter, migrations),
+      () => migrationStatus(adapter, migrations),
+    )
 
     if (ran.length === 0) {
       line('Every migration is already applied.')

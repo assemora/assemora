@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -15,6 +15,7 @@ import { email, json, number, string, uuid } from '@assemora/schema'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { bytes } from './bytes.js'
+import { commandEndpoints } from './commands.js'
 import { clearRouteRegistry } from './module.js'
 import { respond } from './respond.js'
 import { route } from './route.js'
@@ -422,6 +423,81 @@ describe('commands are reachable over HTTP (SPEC.md §14)', () => {
   })
 })
 
+describe('a command reachable only from its own route (SPEC.md §85)', () => {
+  const SignIn = command('auth.login', {
+    description: 'Exchanges an email and a password for a session',
+    reachableFrom: 'its own route',
+    input: { email: email() },
+    handle: async () => ({ token: 'ses_secret' }),
+  })
+
+  const Publish = command('pages.publish', {
+    input: { id: uuid() },
+    handle: async ({ id }) => ({ id, published: true }),
+  })
+
+  const start = () => {
+    const application = createApplication({
+      modules: [module('auth').commands(SignIn), module('pages').commands(Publish)],
+      authorization: permitAll(),
+      logger: createLogger(silentWriter),
+    })
+
+    return {
+      application,
+      server: createHttpServer({
+        registry: application.registry,
+        commands: application.commands,
+        queries: application.queries,
+        logger: application.logger,
+      }),
+    }
+  }
+
+  it('is left out of the generated endpoints, and the others are not', () => {
+    const { application } = start()
+    const names = commandEndpoints(application.registry).map((endpoint) => endpoint.name)
+
+    expect(names).not.toContain('auth.login')
+    expect(names).toContain('pages.publish')
+  })
+
+  it('has no generic alias once the commands are mounted', async () => {
+    const { server: running } = start()
+
+    running.mountCommands()
+    await running.ready()
+
+    // `auth.login` is publicly authorized — it has to be, since the caller is nobody
+    // yet — so an alias here would hand a session back as readable JSON, exempt from
+    // CSRF, with no cookie and no route hardening in front of it.
+    const aliased = await running.inject({
+      method: 'POST',
+      url: '/api/commands/auth.login',
+      payload: { email: 'ada@assemora.dev' },
+    })
+
+    expect(aliased.statusCode).toBe(404)
+
+    const ordinary = await running.inject({
+      method: 'POST',
+      url: '/api/commands/pages.publish',
+      payload: { id: ID },
+    })
+
+    expect(ordinary.statusCode).toBe(200)
+  })
+
+  it('is not documented either, because the endpoint is what OpenAPI describes', () => {
+    const { application, server: running } = start()
+
+    running.mountCommands()
+
+    expect(application.registry.find('routes', 'post /commands/auth.login')).toBeUndefined()
+    expect(application.registry.find('routes', 'post /commands/pages.publish')).toBeDefined()
+  })
+})
+
 describe('a handler may set cookies and a status of its own (SPEC.md §85)', () => {
   it('serializes each cookie and still checks the body against the response schema', async () => {
     server.mount(signIn)
@@ -506,6 +582,59 @@ describe('CSRF protection for cookie-authenticated mutations (SPEC.md §85)', ()
     })
 
     expect(response.statusCode).toBe(201)
+  })
+
+  it('exempts a bearer credential, not the mere presence of the header', async () => {
+    await server.ready()
+
+    // The exemption is worth exactly as much as it agrees with how the actor was
+    // resolved. `resolveActor` reads a *bearer* token; anything else falls straight
+    // through to the session cookie — so a header carrying no bearer credential
+    // leaves the request authenticated by the ambient cookie, which is the one case
+    // CSRF exists for (SPEC.md §85).
+    const codes = await Promise.all(
+      [
+        'Basic Zm9vOmJhcg==',
+        'Bearer',
+        'Bearer ',
+        'Token ass_something',
+        'bearerish ass_something',
+      ].map(
+        async (authorization) =>
+          (
+            await server.inject({
+              method: 'POST',
+              url: '/api/auth/login',
+              payload: { email: 'ada@x.io', password: 'longenough' },
+              headers: { cookie: 'assemora_session=ses_abc; assemora_csrf=secret', authorization },
+            })
+          ).statusCode,
+      ),
+    )
+
+    expect(codes).toEqual([403, 403, 403, 403, 403])
+  })
+
+  it('reads the scheme the way every HTTP client writes it', async () => {
+    await server.ready()
+
+    // The scheme is case-insensitive on the wire, and a token may hold anything but a
+    // space. Refusing either of these would break a client that is holding it right.
+    const codes = await Promise.all(
+      ['bearer ass_something', 'BEARER ass_something'].map(
+        async (authorization) =>
+          (
+            await server.inject({
+              method: 'POST',
+              url: '/api/auth/login',
+              payload: { email: 'ada@x.io', password: 'longenough' },
+              headers: { cookie: 'assemora_csrf=secret', authorization },
+            })
+          ).statusCode,
+      ),
+    )
+
+    expect(codes).toEqual([201, 201])
   })
 })
 
@@ -641,6 +770,48 @@ describe('the headers every response carries (SPEC.md §85)', () => {
     )
   })
 
+  it('lets the bucket that holds the files be the source of the images (SPEC.md §63)', async () => {
+    clearRouteRegistry()
+
+    const running = build({ security: { mediaSources: ['https://cdn.example.com'] } })
+
+    running.mount(login)
+    await running.ready()
+
+    const response = await running.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'ada@x.io', password: 'longenough' },
+    })
+    const policy = String(response.headers['content-security-policy'])
+
+    // S3-compatible storage is mandatory in v1, and its URLs are not this origin. A
+    // policy that blocks every image the media library hands out is not a policy an
+    // application can deploy.
+    expect(policy).toContain("img-src 'self' data: blob: https://cdn.example.com")
+    expect(policy).toContain("media-src 'self' https://cdn.example.com")
+    // …and it widens nothing else. A media origin is not a script origin.
+    expect(policy).toContain("script-src 'self'")
+    expect(policy).toContain("connect-src 'self'")
+    expect(policy).toContain("default-src 'self'")
+    expect(policy).not.toContain("script-src 'self' https://cdn.example.com")
+  })
+
+  it('sends the narrow policy when no other origin serves the files', async () => {
+    server.mount(login)
+    await server.ready()
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'ada@x.io', password: 'longenough' },
+    })
+    const policy = String(response.headers['content-security-policy'])
+
+    expect(policy).toContain("img-src 'self' data: blob:;")
+    expect(policy).not.toContain('media-src')
+  })
+
   it('takes a policy an application wrote itself', async () => {
     clearRouteRegistry()
 
@@ -713,6 +884,39 @@ describe('a single-page application lives beside the API, not inside it', () => 
     })
 
     expect(answered.statusCode).toBe(404)
+  })
+
+  it('refuses a symlink out of the directory, and the dotfile beside the bundle', async () => {
+    // `mountAssets({ root })` is public API, and `studio: { root }` / `frontend: { root }`
+    // point it at a directory an application chose. One `ln -s` in a `public/` folder
+    // — or a pnpm `node_modules`, which is a farm of them — must not turn the mount
+    // into a reader for the whole disk (SPEC.md §85).
+    const outside = await mkdtemp(join(tmpdir(), 'assemora-outside-'))
+    const bundle = join(outside, 'bundle')
+
+    await mkdir(bundle, { recursive: true })
+    await writeFile(join(bundle, 'index.html'), '<!doctype html><title>Preview</title>')
+    await writeFile(join(bundle, '.env'), 'DATABASE_URL=postgres://u:p@h/db')
+    await writeFile(join(outside, 'secret.txt'), 'SUPER SECRET OUTSIDE ROOT')
+    await symlink(join(outside, 'secret.txt'), join(bundle, 'link.txt'))
+    await symlink(outside, join(bundle, 'up'))
+
+    // `fallback: false`, so a refusal is visible as a 404 rather than as the entry
+    // document a single-page mount would answer an unknown path with.
+    server.mountAssets({ path: '/preview', root: bundle, fallback: false })
+    await server.ready()
+
+    const codes = await Promise.all(
+      [
+        '/preview/index.html',
+        '/preview/link.txt',
+        '/preview/up/secret.txt',
+        '/preview/.env',
+        '/preview/up/bundle/.env',
+      ].map(async (url) => (await server.inject({ method: 'GET', url })).statusCode),
+    )
+
+    expect(codes).toEqual([200, 404, 404, 404, 404])
   })
 })
 

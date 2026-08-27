@@ -62,17 +62,25 @@ starter.
 
 ## Writing a starter
 
-A starter is an ordinary workspace package. Four conventions turn it into a template.
+A starter is an ordinary workspace package. Five conventions turn it into a template.
 
-**A dotfile is carried under a leading `_`.** npm strips a real `.gitignore` out of a
-published tarball, so a template holding one would scaffold a project without it, and
-the same is true of `.npmrc`. Any path segment beginning `_` becomes `.`:
+**A dotfile is carried under a leading `_`, at the root.** npm strips a real
+`.gitignore` out of a published tarball, so a template holding one would scaffold a
+project without it, and the same is true of `.npmrc`. A leading `_` on the *first*
+path segment becomes `.`:
 
 ```text
-_gitignore              →  .gitignore
-_npmrc                  →  .npmrc
-_github/workflows/ci.yml → .github/workflows/ci.yml
+_gitignore               →  .gitignore
+_npmrc                   →  .npmrc
+_github/workflows/ci.yml →  .github/workflows/ci.yml
+src/_internal.ts         →  src/_internal.ts     (unchanged)
+pages/_app.tsx           →  pages/_app.tsx       (unchanged)
 ```
+
+Only the root, because every dotfile npm strips is a root-level one and `_` means
+something else everywhere below it: `pages/_app.tsx` is Next.js's own spelling and
+`app/_components/` is an ordinary private-folder convention. Rewriting those produced
+dotfiles that nothing could import.
 
 `.env.example` needs no such treatment and is copied as it stands. A `.env` is written
 only when a database URL was actually given, and it holds that one variable — an
@@ -101,6 +109,23 @@ Paths are template-relative and a directory counts. `template.json` is never cop
 into a project. A feature name it does not recognise is a failed scaffold, not a
 silently ignored line.
 
+**The template's own `.gitignore` says what its tooling writes.** A starter carries it
+as `_gitignore`, and everything it names is excluded from the project — `.next/`,
+`out/`, `.svelte-kit/`, whatever the starter's build tool happens to produce. That is
+the list the starter's author already maintains, and reading it is what makes a new
+starter correct on the day it lands rather than the day somebody remembers to teach
+this package another name.
+
+The other half of the rule is `NEVER_COPIED` in `src/exclusions.ts`, which is one
+list, exported, and read by `scripts/copy-templates.mjs` too. It names only what no
+`.gitignore` can be asked to name: what a checkout of a *workspace package*
+accumulates (`node_modules/`, `dist/`, `.turbo/`, `coverage/`, `*.tsbuildinfo`,
+`.git/`), and what running an Assemora project writes (`.assemora/`,
+`database/migrations/*.sql`, `openapi.json`, `src/generated/`). A real project commits
+those four, so no `.gitignore` can exclude them — and a project that inherited them
+would begin life with a migration it did not generate, whose first `db:generate`
+writes every table a second time.
+
 **Anything smaller than a file is fenced with a marker comment.** A marker is
 recognised by its text rather than by its comment syntax, and the whole line goes — so
 the same two words work in TypeScript, in Markdown, in an `.env.example` and in YAML:
@@ -122,12 +147,26 @@ This project has no page builder.
 each of them would otherwise delete a region for ever — or keep one for ever — and
 nothing downstream would notice.
 
+A marker owns its line: with anything but comment punctuation beside it, the line is
+content. A bundle or a source map quoting a fenced file is copied rather than edited,
+which is what a scaffolder's *user* needs — they cannot fix a template they have never
+seen. And `assemora:\if` is the escape, written into the project without its
+backslash, so a document explaining this mechanism can print the syntax it explains:
+
+```text
+    // assemora:\if studio      in the template
+    // assemora:if studio       in the project
+```
+
 `package.json` is the one file markers stay out of, since JSON cannot carry a comment.
 That is what the manifest is for.
 
 Three yes/no questions make one starter eight projects, and every one of them has to
 compile: no import of a file that was left out, no dependency on a package that was
-left out. `src/scaffold.test.ts` asserts all eight, mechanically.
+left out. `src/scaffold.test.ts` asserts all eight against a synthetic template, and
+`src/starters.test.ts` asserts all eight against every real starter in `starters/`, in
+whatever state this checkout has left it — built, installed, or run. `--template
+nextjs` shipped unable to scaffold at all because nothing did the second one.
 
 ## What a generated project can install today
 

@@ -91,15 +91,27 @@ const attach = async (roleId: string, names: readonly string[]): Promise<void> =
   }
 }
 
+/**
+ * The two commands a route has to front (SPEC.md §85).
+ *
+ * `publicAuthPolicy` authorizes them for everybody, because the caller of a login is
+ * nobody yet. That removes the floor every other command stands on — the bus
+ * authorizes first, and authorization denies by default — so the checks that make
+ * them safe live in the routes written for them: the session leaves as an `httpOnly`
+ * cookie rather than as readable JSON, a CSRF token is minted beside it, logging out
+ * clears both, and the forensic fields come off the request.
+ *
+ * A generated `POST /commands/auth.login` or an MCP tool would be the same handler
+ * with none of that in front of it — and, since agent permissions never gate a
+ * publicly authorized command, an agent token would be a password oracle. Saying it
+ * here is what keeps both generators away, instead of a list of names each of them
+ * would have to maintain.
+ */
 export const SignIn = command('auth.login', {
   description: 'Exchanges an email and a password for a session',
-  input: {
-    email: emailSchema(),
-    password: string(),
-    userAgent: string().optional(),
-    ipAddress: string().optional(),
-  },
-  handle: async ({ email, password, userAgent, ipAddress }, context) => {
+  reachableFrom: 'its own route',
+  input: { email: emailSchema(), password: string() },
+  handle: async ({ email, password }, context) => {
     const user = await User.where('email', email.toLowerCase()).first()
     const correct = await verifyPassword(user?.passwordHash ?? DECOY, password)
 
@@ -107,9 +119,13 @@ export const SignIn = command('auth.login', {
     // unauthenticated caller gets to learn.
     if (user === null || !correct || !user.active) throw INVALID
 
+    // Off the context, never out of the input: a caller that names its own user agent
+    // is writing the forensic record of its own sign-in. There is no `ipAddress` for
+    // the same reason there is none on the context — nothing here knows the client's
+    // address without a trusted-proxy policy the HTTP server does not yet offer, and
+    // a column holding a claim is worse than a column holding nothing.
     const session = await startSession(user.id, {
-      ...(userAgent === undefined ? {} : { userAgent }),
-      ...(ipAddress === undefined ? {} : { ipAddress }),
+      ...(context.userAgent === undefined ? {} : { userAgent: context.userAgent }),
     })
 
     context.emit('auth.signed-in', { userId: user.id })
@@ -120,6 +136,7 @@ export const SignIn = command('auth.login', {
 
 export const SignOut = command('auth.logout', {
   description: 'Ends a session',
+  reachableFrom: 'its own route',
   input: { token: string() },
   handle: async ({ token }, context) => {
     await endSession(token)

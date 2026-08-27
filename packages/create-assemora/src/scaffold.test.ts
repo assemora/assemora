@@ -96,6 +96,25 @@ describe('scaffold', () => {
     expect(result.files.every((file) => !file.startsWith('/'))).toBe(true)
   })
 
+  it('turns a leading _ into a dot at the template root, and nowhere else', async () => {
+    const root = await temporary()
+    const template = await writeTemplate(root)
+    const directory = join(root, 'my-project')
+
+    await write(template, '_github/workflows/ci.yml', 'name: ci\n')
+    await write(template, 'src/_internal.ts', 'export const internal = 1\n')
+    // Next.js's own spelling, and the case the old any-segment rule corrupted.
+    await write(template, 'pages/_app.tsx', 'export default () => null\n')
+
+    const { files } = await scaffold({ name: 'my-project', directory, template })
+
+    expect(files).toContain('.github/workflows/ci.yml')
+    expect(files).toContain('src/_internal.ts')
+    expect(files).toContain('pages/_app.tsx')
+    expect(files).not.toContain('src/.internal.ts')
+    expect(files).not.toContain('pages/.app.tsx')
+  })
+
   it('never copies the manifest, which is the template talking about itself', async () => {
     const { result } = await project()
 

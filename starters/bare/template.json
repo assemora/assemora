@@ -4,7 +4,7 @@
       "dependencies": ["@assemora/studio"]
     },
     "pages": {
-      "files": ["src/blocks", "app"],
+      "files": ["src/blocks", "src/routes.ts", "app"],
       "dependencies": [
         "@assemora/pages",
         "@assemora/react",

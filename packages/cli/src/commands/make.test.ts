@@ -251,6 +251,14 @@ describe('make:module', () => {
       "export const blogEngine = () => module('blog-engine')",
     )
   })
+
+  it('names the call the scaffolded project actually makes', async () => {
+    const root = await project()
+    const ran = await make('make:module', ['blog-engine'], root)
+
+    expect(ran.stderr).toContain('assemora({ modules: [blogEngine()] })')
+    expect(ran.stderr).not.toContain('createApplication')
+  })
 })
 
 describe('make:command', () => {

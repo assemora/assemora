@@ -29,6 +29,14 @@
  * Every mistake here is refused rather than guessed at. A misspelt feature name would
  * otherwise delete a region for ever, or keep one for ever, and nothing downstream
  * would notice: `assemora:if studios` is a failed scaffold with a line number.
+ *
+ * Two rules keep the mechanism from reading its own name in somebody's *content*,
+ * because "recognised by its text" used to mean "recognised anywhere". A marker owns
+ * its line: with anything but comment punctuation beside it the line is content, so a
+ * minified bundle or a source map that happens to quote a fenced file is copied
+ * rather than edited. And `assemora:\if` is the escape — not a marker, and written
+ * into the project without its backslash — so a document explaining this mechanism
+ * can print the syntax it is explaining instead of deleting itself.
  */
 import { ScaffoldError } from './error.js'
 
@@ -43,10 +51,28 @@ export type Features = Readonly<Record<Feature, boolean>>
 export const isFeature = (name: string): name is Feature =>
   (FEATURES as readonly string[]).includes(name)
 
-/** `!` is the other branch: what the project says when the feature is *not* there. */
+/**
+ * `!` is the other branch: what the project says when the feature is *not* there.
+ *
+ * Neither pattern matches the escaped spelling — `assemora:\if` has a backslash where
+ * these expect a letter — so the escape costs the matcher nothing.
+ */
 const OPENS = /assemora:if\s+(!?)([A-Za-z][A-Za-z0-9-]*)/
 /** Guarded so that a word merely beginning `assemora:end` does not close a region. */
 const CLOSES = /assemora:end(?![A-Za-z0-9-])/
+
+/**
+ * What a comment is allowed to put around a marker, and nothing else.
+ *
+ * Enough for every syntax a starter writes one in: two slashes, a hash, an HTML
+ * comment, the leading star of a doc comment, the braces JSX wraps one in. Anything
+ * else on the line — a statement, a JSON string, half a minified bundle — means the
+ * line is content that mentions a marker rather than a marker.
+ */
+const PUNCTUATION = /^[\s/*#<>!{}-]*$/
+
+/** The escape, undone: the project reads the syntax the template was quoting. */
+const ESCAPED = /assemora:\\(if|end)/g
 
 type Region = {
   readonly feature: Feature
@@ -63,6 +89,18 @@ type Region = {
  * line is what the repository's own formatter would leave, so that is what is left.
  */
 const HOLES = /\n{3,}/g
+
+/**
+ * Whether the marker this match found is the whole of its line.
+ *
+ * A source map is one line holding an entire file, and a bundle is one line holding
+ * several. Both quote the starters they were built from, markers and all, so "the
+ * text appears" is not enough to act on — and acting on it is how `--template nextjs`
+ * came to fail on a chunk called `_00_v442._.js.map`.
+ */
+const ownsTheLine = (line: string, match: RegExpExecArray): boolean =>
+  PUNCTUATION.test(line.slice(0, match.index)) &&
+  PUNCTUATION.test(line.slice(match.index + match[0].length))
 
 /**
  * The text with every region the answers exclude removed.
@@ -83,7 +121,7 @@ export const applyFeatures = (text: string, features: Features, file: string): s
   lines.forEach((line, index) => {
     const opened = OPENS.exec(line)
 
-    if (opened !== null) {
+    if (opened !== null && ownsTheLine(line, opened)) {
       const name = opened[2] ?? ''
 
       if (!isFeature(name)) {
@@ -97,7 +135,9 @@ export const applyFeatures = (text: string, features: Features, file: string): s
       return
     }
 
-    if (CLOSES.test(line)) {
+    const closed = CLOSES.exec(line)
+
+    if (closed !== null && ownsTheLine(line, closed)) {
       if (open.pop() === undefined) {
         throw new ScaffoldError(
           `${file}:${index + 1}: this "assemora:end" closes a region that was never opened.`,
@@ -107,7 +147,7 @@ export const applyFeatures = (text: string, features: Features, file: string): s
       return
     }
 
-    if (keeping()) kept.push(line)
+    if (keeping()) kept.push(line.replace(ESCAPED, 'assemora:$1'))
     else removed = true
   })
 

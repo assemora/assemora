@@ -39,18 +39,39 @@ export const blocks = createBlockRegistry(
 )
 
 /**
- * Reads one page through the Query Bus, the way Studio and an agent do (ADR-0014).
+ * What a visitor gets: the published tree, by slug, with no session at all.
  *
- * The session cookie goes with it because reading is denied by default like every
- * other operation (SPEC.md §50): the canvas is authenticated, and a site meant for
- * anonymous visitors adds `policy('pages', { read: () => true })` to `auth()` — a
- * decision worth making deliberately, since `mode=draft` is then public too.
+ * `src/routes.ts` is the other half, and it says why this is a route rather than a
+ * policy. Nothing here is authenticated, so `/preview` and `/preview?slug=about` are
+ * pages anybody can open.
+ */
+export const readPublished = async (slug: string): Promise<BlockTree> => {
+  const response = await fetch(`/api/site/pages/${encodeURIComponent(slug)}`)
+
+  if (response.status === 404) throw new Error(`No page is published at “${slug}”.`)
+  if (!response.ok) throw new Error(`The page could not be loaded (${response.status})`)
+
+  return ((await response.json()) as { tree: BlockTree }).tree
+}
+
+/**
+ * What the builder's canvas gets: one page by id, in whichever mode it asked for,
+ * through the Query Bus the way Studio and an agent reach it (ADR-0014).
+ *
+ * The session cookie goes with it because a draft is not public: reading is denied by
+ * default like every other operation (SPEC.md §50), and the editor looking at the
+ * canvas is the actor being authorized. Signed out, this is a 403 — which is correct,
+ * and is why the visitor's path above does not use it.
  */
 export const readTree = async (parameters: Record<string, string>): Promise<BlockTree> => {
   const query = new URLSearchParams(parameters)
   const response = await fetch(`/api/queries/pages.get?${query.toString()}`, {
     credentials: 'include',
   })
+
+  if (response.status === 403) {
+    throw new Error('Sign in to Studio at /studio: an unpublished draft is not public.')
+  }
 
   if (!response.ok) throw new Error(`The page could not be loaded (${response.status})`)
 

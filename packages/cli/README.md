@@ -27,8 +27,9 @@ client of the application layer (ADR-0021).
 Two things follow, and they are the honest cost rather than bugs. An application that
 cannot be constructed cannot be introspected: `assemora routes` boots the app, which
 means it also opens a database connection. And `assemora agents` is subject to
-policies — run it as nobody and it lists nothing, which is correct and will surprise
-somebody at least once. `--actor <id>` is how you say who is asking.
+policies — run it as nobody and it does not list nothing, it refuses, which is correct
+and will surprise somebody at least once. The refusal says so and names the flag:
+`--actor <id>` is how you say who is asking.
 
 The alternative was a CLI that parses the project's TypeScript, which would need a
 second implementation of what a model, a resource and a block are. The Schema Registry
@@ -94,19 +95,25 @@ It calls `scaffold()` from `create-assemora` — the same code path as
 | | |
 | --- | --- |
 | `assemora dev` | run the server and restart it when a file changes |
-| `assemora build` | typecheck the project and regenerate what the config declares |
+| `assemora build` | typecheck, regenerate what the config declares, run the project's build |
 | `assemora start` | run the server |
 
 `dev` and `start` spawn `node [--watch] <config.server>` under the same Node the CLI is
-running under, streaming its output, forwarding SIGINT and SIGTERM and exiting with
-its code. Everything after `--` is node's: `assemora dev -- --inspect` runs
+running under, streaming its output, forwarding SIGINT, SIGTERM and SIGHUP and exiting
+with its code. Everything after `--` is node's: `assemora dev -- --inspect` runs
 `node --watch --inspect src/server.ts`.
 
-`build` is "everything that must be current before this is deployed". If the project
-declares its own `build` script it runs that instead and says so, with the package
-manager the project names. Otherwise it typechecks with the project's own TypeScript
-and its own `tsconfig.json`, then regenerates exactly what the config declares — by
-running `api:openapi` and `sdk:generate`, rather than by generating anything itself.
+The child runs in a process group of its own and every signal is sent to that group,
+because `node --watch` is a wrapper and the server holding the port is its child — a
+signal delivered to the watcher alone would leave the server running with init for a
+parent. A second signal escalates to SIGKILL, on the group for the same reason.
+
+`build` is "everything that must be current before this is deployed", in three steps:
+a typecheck with the project's own TypeScript and its own `tsconfig.json` (skip it with
+`--no-typecheck`), then exactly what the config declares — by running `api:openapi` and
+`sdk:generate` rather than by generating anything itself — and then the project's own
+`build` script, if it declares one, with the package manager the project names. That
+script runs last because the generated SDK is an input to whatever bundles it.
 
 ### Generate
 
@@ -132,7 +139,7 @@ code the framework rejects is worse than no generator.
 
 | | |
 | --- | --- |
-| `assemora db:generate [name]` | write a migration for everything the models changed |
+| `assemora db:generate [name] [--check] [--force]` | write a migration for everything the models changed |
 | `assemora db:migrate` | apply every migration that has not run yet |
 | `assemora db:rollback` | undo the most recently applied migration |
 | `assemora db:status` | list every migration and whether it is applied |
@@ -148,6 +155,14 @@ The diff is taken against the snapshot rather than against a live database, so
 generation is deterministic, works offline, and produces the same migration for two
 developers whose databases have drifted. `db:status` is where drift against a real
 database is reported.
+
+A missing snapshot means "nothing has been created yet", which is true for the first
+migration and a lie once `<migrations>` holds one — the migration generated then
+re-creates every table and `db:migrate` fails on the first that already exists. So
+`db:generate` refuses that combination and names both files: the snapshot belongs in
+version control, and a checkout that received the migrations without it is the state to
+fix. `--force` diffs against an empty schema anyway, for a project whose migrations were
+written by hand and never had a snapshot.
 
 A pending migration that changes or destroys stored data needs `--force` outside
 development, and so does any rollback (SPEC.md §34). The CLI has `NODE_ENV` and
@@ -201,10 +216,13 @@ the directory meant. A migration with no `down` section is refused by
 | `assemora blocks` | the block types a page can be assembled from |
 | `assemora agents` | the agent identities this application knows |
 
-All five take `--json`, because the next thing anybody does with a listing is pipe it.
-`agents` additionally takes `--actor <id>`, `--page` and `--per-page`. An application
-built without `@assemora/auth` registers no `auth.agents.list`, and `agents` says that
-plainly rather than failing on an unknown query.
+All five take `--json`, because the next thing anybody does with a listing is pipe it —
+and every log the booted application writes goes to stderr for the same reason, so what
+is on stdout is the answer and nothing else. `agents` additionally takes `--actor <id>`,
+`--page` and `--per-page`. An application built without `@assemora/auth` registers no
+`auth.agents.list`, and `agents` says that plainly rather than failing on an unknown
+query. A read the authorizer refuses names `--actor`, because running as nobody is the
+commonest way to meet that refusal and the authorizer has never heard of a flag.
 
 ### Artifacts
 

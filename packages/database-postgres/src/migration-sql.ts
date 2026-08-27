@@ -54,17 +54,20 @@ import {
   belongsToRelations,
   checkConstraintName,
   columnSql,
+  createForeignKeyIndexSql,
   createIndexSql,
   createTableSql,
+  dropForeignKeyIndexSql,
   dropIndexSql,
+  dropTableIndexSql,
   dropTableSql,
   enumCheckSql,
   foreignKeyName,
-  indexedColumns,
   needsIndex,
   primaryKeyName,
   quote,
   sqlType,
+  tableIndexSql,
   uniqueConstraintName,
 } from './migrations.js'
 import { toColumnName } from './schema.js'
@@ -408,9 +411,10 @@ const addColumnSteps = (table: string, column: ColumnDescriptor): readonly Step[
       down: [dropColumnSql(table, column)],
     }),
     // `columnSql` writes the uniqueness and the enum check inline, but never the
-    // index: on a fresh table `createSchemaSql` emits that as a statement of its own.
+    // index: on a fresh table `tableIndexSql` emits that as a statement of its own.
     // Emitting it here too is what keeps a migrated database identical to one built
-    // from the same registry.
+    // from the same registry — and the *other* index `tableIndexSql` writes, the one a
+    // foreign key needs, is emitted the same way beside `foreignKeyAdded`.
     ...(needsIndex(column)
       ? [
           step('create-index', {
@@ -420,6 +424,39 @@ const addColumnSteps = (table: string, column: ColumnDescriptor): readonly Step[
         ]
       : []),
   ]
+}
+
+/**
+ * The column's own index appearing or disappearing because something else moved.
+ *
+ * `needsIndex` reads three flags, and only one of them — `isIndexed` — is reported as
+ * an index change. A column that becomes unique loses the index it declared, because
+ * the unique constraint brings one; a column that stops being unique gets it back. A
+ * fresh build reads that straight off the descriptor, so a migration that stayed quiet
+ * left the two databases with different indexes and no diff able to see it.
+ *
+ * Empty whenever the answer did not move, which is every other change.
+ */
+const ownIndexSteps = (
+  table: string,
+  before: ColumnDescriptor,
+  after: ColumnDescriptor,
+): readonly Step[] => {
+  if (needsIndex(before) === needsIndex(after)) return []
+
+  return needsIndex(after)
+    ? [
+        step('create-index', {
+          up: [createIndexSql(table, after.name, 'migration')],
+          down: [dropIndexSql(table, after.name, 'migration')],
+        }),
+      ]
+    : [
+        step('drop-index', {
+          up: [dropIndexSql(table, before.name, 'migration')],
+          down: [createIndexSql(table, before.name, 'migration')],
+        }),
+      ]
 }
 
 const dropColumnSteps = (table: string, column: ColumnDescriptor): readonly Step[] => {
@@ -462,11 +499,7 @@ const dropTableSteps = (descriptor: TableDescriptor): readonly Step[] => [
       addForeignKeySql(descriptor.name, relation),
     ),
   }),
-  step('drop-index', {
-    down: indexedColumns(descriptor).map((column) =>
-      createIndexSql(descriptor.name, column, 'migration'),
-    ),
-  }),
+  step('drop-index', { down: tableIndexSql(descriptor, 'migration') }),
   step('drop-table', {
     up: [dropTableSql(descriptor, 'migration')],
     down: [createTableSql(descriptor, 'migration')],
@@ -482,12 +515,8 @@ const createTableSteps = (descriptor: TableDescriptor): readonly Step[] => [
     down: [dropTableSql(descriptor, 'migration')],
   }),
   step('create-index', {
-    up: indexedColumns(descriptor).map((column) =>
-      createIndexSql(descriptor.name, column, 'migration'),
-    ),
-    down: indexedColumns(descriptor).map((column) =>
-      dropIndexSql(descriptor.name, column, 'migration'),
-    ),
+    up: tableIndexSql(descriptor, 'migration'),
+    down: dropTableIndexSql(descriptor, 'migration'),
   }),
   step('add-foreign-key', {
     up: belongsToRelations(descriptor).map((relation) =>
@@ -532,6 +561,12 @@ const stepsFor = (change: SchemaChange): readonly Step[] => {
               : dropUniqueSql(change.table, change.before),
           ],
         }),
+        // Uniqueness moves the column's own index without anybody mentioning an index:
+        // a unique constraint carries a btree index already, so `needsIndex` is false
+        // while the column is unique. `string().unique().index()` is written in the
+        // guide, and dropping the `.unique()` from it is what a fresh build answers
+        // with an index the migration never created.
+        ...ownIndexSteps(change.table, change.before, change.after),
       ]
     case 'columnEnumChanged':
       // The column's SQL type does not change with its allowed values — an enum is
@@ -552,6 +587,13 @@ const stepsFor = (change: SchemaChange): readonly Step[] => {
       // Two steps rather than one, because the two halves belong at opposite ends of
       // the migration: the old key has to be off before the column under it can be
       // dropped, and the new one can only be added once its column is there.
+      //
+      // The one index question this file cannot answer: `needsIndex` is false for a
+      // primary column, so a column that declared `.index()` and then became the key
+      // loses its own index in a fresh build. `PrimaryKeyMoved` carries two column
+      // *names* and no descriptor, so there is nothing here to read the flag off.
+      // Closing it means the change carrying its columns, which is `@assemora/database`
+      // and an ADR, not a patch here.
       return [
         step('drop-primary-key', {
           up: [dropPrimaryKeySql(change.table)],
@@ -563,21 +605,38 @@ const stepsFor = (change: SchemaChange): readonly Step[] => {
         }),
       ]
     case 'indexAdded':
+      // `.index()` on a column that is already unique or already the key asks for a
+      // second index on a column that has one, and `needsIndex` refuses it — so a
+      // fresh build has nothing there and this must produce nothing either.
+      return needsIndex(change.after)
+        ? [
+            step('create-index', {
+              up: [createIndexSql(change.table, change.column, 'migration')],
+              down: [dropIndexSql(change.table, change.column, 'migration')],
+            }),
+          ]
+        : []
+    case 'indexRemoved':
+      return needsIndex(change.before)
+        ? [
+            step('drop-index', {
+              up: [dropIndexSql(change.table, change.column, 'migration')],
+              down: [createIndexSql(change.table, change.column, 'migration')],
+            }),
+          ]
+        : []
+    case 'foreignKeyAdded':
+      // The index is a second statement rather than part of the constraint:
+      // PostgreSQL indexes the referenced side of a foreign key and never the
+      // referencing one. `tableIndexSql` builds it for every relation a fresh table
+      // has, so a migration that adds a relation to a table that already exists has
+      // to build it too — otherwise the migrated database is one index short of a
+      // built one, silently, and no later diff can see the difference.
       return [
         step('create-index', {
-          up: [createIndexSql(change.table, change.column, 'migration')],
-          down: [dropIndexSql(change.table, change.column, 'migration')],
+          up: [createForeignKeyIndexSql(change.table, change.after, 'migration')],
+          down: [dropForeignKeyIndexSql(change.table, change.after, 'migration')],
         }),
-      ]
-    case 'indexRemoved':
-      return [
-        step('drop-index', {
-          up: [dropIndexSql(change.table, change.column, 'migration')],
-          down: [createIndexSql(change.table, change.column, 'migration')],
-        }),
-      ]
-    case 'foreignKeyAdded':
-      return [
         step('add-foreign-key', {
           up: [addForeignKeySql(change.table, change.after)],
           down: [dropForeignKeySql(change.table, change.after)],
@@ -588,6 +647,10 @@ const stepsFor = (change: SchemaChange): readonly Step[] => {
         step('drop-foreign-key', {
           up: [dropForeignKeySql(change.table, change.before)],
           down: [addForeignKeySql(change.table, change.before)],
+        }),
+        step('drop-index', {
+          up: [dropForeignKeyIndexSql(change.table, change.before, 'migration')],
+          down: [createForeignKeyIndexSql(change.table, change.before, 'migration')],
         }),
       ]
   }

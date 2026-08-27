@@ -472,7 +472,13 @@ describe('after migration the system automatically provides (SPEC.md §124)', ()
   })
 
   it('the API Explorer', async () => {
-    const explorer = await server.inject({ method: 'GET', url: '/api/_introspection' })
+    // Signed in, like Studio: the snapshot is the registry itself, so the route asks
+    // for a credential (SPEC.md §85).
+    const explorer = await server.inject({
+      method: 'GET',
+      url: '/api/_introspection',
+      headers: asReader(),
+    })
     const snapshot =
       explorer.json<Record<string, { name: string; fields?: { name: string; kind: string }[] }[]>>()
     const names = (section: string) => (snapshot[section] ?? []).map((entry) => entry.name)
@@ -543,7 +549,13 @@ describe('Studio lets a page be assembled from blocks (SPEC.md §124, §60)', ()
   it('offers the block the developer declared, and places it', async () => {
     // A block reaches the palette by being listed in `pages({ blocks })`, and by
     // nothing else. Studio reads it from the registry like everything else it draws.
-    const explorer = await server.inject({ method: 'GET', url: '/api/_introspection' })
+    // Signed in, like Studio: the snapshot is the registry itself, so the route asks
+    // for a credential (SPEC.md §85).
+    const explorer = await server.inject({
+      method: 'GET',
+      url: '/api/_introspection',
+      headers: asReader(),
+    })
     const blocks = explorer.json<{
       blocks: { name: string; fields: { name: string }[] }[]
     }>().blocks

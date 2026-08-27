@@ -10,6 +10,7 @@
  * of what a generated project is.
  */
 export { ScaffoldError } from './error.js'
+export { MANIFEST_FILE, NEVER_COPIED } from './exclusions.js'
 export { applyFeatures, FEATURES, type Feature, type Features } from './features.js'
 export { dependencyRange } from './package-json.js'
 export {
@@ -21,7 +22,6 @@ export {
 export {
   DEFAULT_TEMPLATE,
   type FeatureManifest,
-  MANIFEST_FILE,
   type ResolveTemplateOptions,
   readManifest,
   resolveTemplate,

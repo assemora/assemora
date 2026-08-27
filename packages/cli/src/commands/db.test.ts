@@ -376,6 +376,9 @@ describe('db:generate', () => {
     const root = await project()
     declareModels()
     await writeMigration(root, '0009_earlier.sql', 'select 1;')
+    // The snapshot is what `0009` left behind. Without one the command refuses rather
+    // than numbering a migration that would create every table a second time.
+    await writeSnapshot(root, [snapshotTable('products')])
     postgres.migrationSql.mockReturnValue({ up: ['select 1'], down: [], destructive: [] })
 
     const output = captureOutput()
@@ -464,6 +467,94 @@ describe('db:generate', () => {
     output.restore()
 
     expect(code).toBe(2)
+  })
+
+  /*
+   * The snapshot is what says which tables already exist. Missing, the diff calls
+   * every table new — true for the first migration, and a lie the moment
+   * `database/migrations` already holds one, which is the checkout of a teammate who
+   * received the migrations without `.assemora/`.
+   */
+  it('refuses to diff against nothing when the migrations directory says otherwise', async () => {
+    const root = await project()
+    declareModels()
+    await writeMigration(root, '0001_initial.sql', 'create table "products" ();')
+    postgres.migrationSql.mockReturnValue({
+      up: ['create table "products" ()'],
+      down: [],
+      destructive: [],
+    })
+
+    const output = captureOutput()
+    const code = await invoke(dbGenerate, ['db:generate', 'add-sku'], root)
+    output.restore()
+
+    expect(code).toBe(1)
+    expect(output.stderr).toContain('no schema snapshot')
+    expect(output.stderr).toContain('--force')
+
+    // The whole point of the refusal: nothing was written, so nothing has to be
+    // noticed and deleted before `db:migrate` is run.
+    expect((await readMigrations(migrationsIn(root))).map((file) => file.name)).toEqual([
+      '0001_initial',
+    ])
+  })
+
+  it('refuses the same for --check, which would otherwise fail CI over a whole schema', async () => {
+    const root = await project()
+    declareModels()
+    await writeMigration(root, '0001_initial.sql', 'create table "products" ();')
+    postgres.migrationSql.mockReturnValue({
+      up: ['create table "products" ()'],
+      down: [],
+      destructive: [],
+    })
+
+    const output = captureOutput()
+    const code = await invoke(dbGenerate, ['db:generate', '--check'], root)
+    output.restore()
+
+    expect(code).toBe(1)
+    expect(output.stderr).toContain('no schema snapshot')
+    expect(output.stderr).not.toContain('A migration is missing')
+  })
+
+  it('generates against an empty schema when --force says that is what was meant', async () => {
+    const root = await project()
+    declareModels()
+    await writeMigration(root, '0001_by-hand.sql', 'select 1;')
+    postgres.migrationSql.mockReturnValue({
+      up: ['create table "products" ()'],
+      down: [],
+      destructive: [],
+    })
+
+    const output = captureOutput()
+    const code = await invoke(dbGenerate, ['db:generate', 'everything', '--force'], root)
+    output.restore()
+
+    expect(code).toBe(0)
+    expect((await readMigrations(migrationsIn(root))).map((file) => file.name)).toEqual([
+      '0001_by-hand',
+      '0002_everything',
+    ])
+  })
+
+  it('is not refused by a migrations directory holding no migration', async () => {
+    const root = await project()
+    declareModels()
+    await mkdir(migrationsIn(root), { recursive: true })
+    await writeFile(join(migrationsIn(root), 'README.md'), 'how we migrate\n')
+    postgres.migrationSql.mockReturnValue({ up: ['select 1'], down: [], destructive: [] })
+
+    const output = captureOutput()
+    const code = await invoke(dbGenerate, ['db:generate', 'initial'], root)
+    output.restore()
+
+    expect(code).toBe(0)
+    expect((await readMigrations(migrationsIn(root))).map((file) => file.name)).toEqual([
+      '0001_initial',
+    ])
   })
 
   it('refuses a snapshot it could not have written', async () => {
@@ -579,6 +670,47 @@ describe('db:migrate', () => {
 
     expect(code).toBe(0)
     expect(postgres.applyMigrations).toHaveBeenCalled()
+  })
+
+  it('names the migration the run stopped at, which the database error never does', async () => {
+    const root = await project()
+    useAdapter(postgresAdapter())
+    await writeMigration(root, '0001_first.sql', 'create table "a" ();')
+    await writeMigration(root, '0002_second.sql', 'create table "b" ();')
+
+    postgres.migrationStatus
+      .mockResolvedValueOnce([
+        { name: '0001_first', applied: false },
+        { name: '0002_second', applied: false },
+      ])
+      // Asked again once it failed: the runner commits each migration on its own, so
+      // what is still pending afterwards begins with the one that did not apply.
+      .mockResolvedValueOnce([
+        { name: '0001_first', applied: true },
+        { name: '0002_second', applied: false },
+      ])
+    postgres.applyMigrations.mockRejectedValue(new Error('The database rejected the operation'))
+
+    const output = captureOutput()
+    await expect(invoke(dbMigrate, ['db:migrate'], root)).rejects.toThrow(/rejected/)
+    output.restore()
+
+    expect(output.stderr).toContain('0002_second')
+  })
+
+  it('still reports a failure it cannot place, rather than swallowing it', async () => {
+    const root = await project()
+    useAdapter(postgresAdapter())
+    await writeMigration(root, '0001_first.sql', 'create table "a" ();')
+
+    postgres.migrationStatus
+      .mockResolvedValueOnce([{ name: '0001_first', applied: false }])
+      .mockRejectedValueOnce(new Error('the connection is gone'))
+    postgres.applyMigrations.mockRejectedValue(new Error('The database rejected the operation'))
+
+    const output = captureOutput()
+    await expect(invoke(dbMigrate, ['db:migrate'], root)).rejects.toThrow(/rejected/)
+    output.restore()
   })
 
   it('does not ask for --force over a destructive migration that already ran', async () => {

@@ -407,6 +407,21 @@ describe('agents', () => {
     expect(output.stderr).toContain('auth.agents.list')
   })
 
+  it('names --actor when the read was refused and nobody was named', async () => {
+    await cli(withAgents({ authorized: false }), ['agents'])
+
+    // The authorizer's sentence names the subject and the action, which is everything
+    // except the thing the reader has to type next.
+    expect(output.stderr).toContain('--actor')
+  })
+
+  it('names the actor it was given rather than the flag, when one was given', async () => {
+    await cli(withAgents({ authorized: false }), ['agents', '--actor', 'ada'])
+
+    expect(output.stderr).toContain('ada')
+    expect(output.stderr).toContain('auth.agents')
+  })
+
   it('says plainly that an application without @assemora/auth knows no agents', async () => {
     expect(await cli(empty(), ['agents'])).toBe(1)
 

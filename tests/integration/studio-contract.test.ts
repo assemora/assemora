@@ -72,7 +72,13 @@ beforeEach(async () => {
     logger: app.logger,
   })
 
-  server.mountCommands().mountQueries().mountResources().mount(introspectionRoute(app.registry))
+  // Open, because this server resolves no actor: the claim under test is what Studio
+  // is told, not who may ask. Who may ask is asserted in `@assemora/openapi`.
+  server
+    .mountCommands()
+    .mountQueries()
+    .mountResources()
+    .mount(introspectionRoute(app.registry, { public: true }))
 
   await server.ready()
 })

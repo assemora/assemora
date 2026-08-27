@@ -24,9 +24,14 @@ pnpm --filter @assemora/example-blog build   # the site bundle Studio's canvas f
 pnpm --filter @assemora/example-blog dev
 ```
 
-Both fall back to an in-memory database when `DATABASE_URL` is unset, seed themselves
-on first boot and print the accounts they created. Both serve Studio at `/studio`, the
-API at `/api` and the site at `/preview`.
+Both fall back to an in-memory database when `DATABASE_URL` is unset, and seed *that*
+database on first boot — a real one is seeded by `pnpm seed`, deliberately, because
+`assemora start` runs the same `src/server.ts` a deployment does. They print the
+addresses they created and put the password in `.env`, as `ASSEMORA_SEED_PASSWORD`.
+
+Both serve Studio at `/studio` and the API at `/api`. `company` serves its pages
+publicly at `/preview`; `blog` reads pages through the authorized query, so its
+`/preview` is the builder's preview and asks you to sign in.
 
 They are workspace packages, so CI typechecks and builds them on every commit: an
 example that no longer compiles is worse than no example at all.

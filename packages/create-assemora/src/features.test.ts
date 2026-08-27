@@ -86,6 +86,80 @@ describe('applyFeatures', () => {
 
     expect(() => applyFeatures(text, all, 'app.ts')).toThrow(/never closed/)
   })
+
+  /*
+   * A marker owns its line.
+   *
+   * Both cases here are real. The unbalanced one is why `--template nextjs` failed
+   * outright: `next build` inlines a starter's source into a source map, so one line
+   * of JSON quoted `// assemora:if pages` and nothing ever closed it. The balanced one
+   * is worse for being quiet — a bundle that quotes both halves used to have the
+   * quoting lines deleted out of it, and nothing said so.
+   */
+  it('leaves a marker that shares its line with content alone', () => {
+    const map = '{"sourcesContent":["// assemora:if pages\\nimport { hero }"]}'
+
+    expect(applyFeatures(map, all, 'chunk.js.map')).toBe(map)
+    expect(applyFeatures(map, none, 'chunk.js.map')).toBe(map)
+  })
+
+  it('does not quietly cut the middle out of a line that quotes both halves', () => {
+    const bundle = 'const a=1;/* assemora:if mcp */const b=2;/* assemora:end */const c=3'
+
+    expect(applyFeatures(bundle, none, 'vendor.min.js')).toBe(bundle)
+  })
+
+  it('reads a marker beside comment punctuation, in every syntax a starter uses', () => {
+    for (const line of [
+      '// assemora:if studio',
+      '# assemora:if studio',
+      '<!-- assemora:if studio -->',
+      ' * assemora:if studio',
+      '{/* assemora:if studio */}',
+    ]) {
+      expect(applyFeatures([line, 'kept', '// assemora:end'].join('\n'), all, 'x')).toBe('kept')
+    }
+  })
+
+  /*
+   * The escape.
+   *
+   * A document that explains this mechanism has to be able to print it. Without an
+   * escape the explanation deletes itself — which is exactly what would happen to a
+   * starter README with a section on how the questions work.
+   */
+  it('does not read an escaped marker, and writes it into the project unescaped', () => {
+    const text = [
+      'Fence a few lines with:',
+      '',
+      '    // assemora:\\if studio',
+      "    import { studio } from './studio.js'",
+      '    // assemora:\\end',
+    ].join('\n')
+
+    expect(applyFeatures(text, none, 'README.md')).toBe(
+      [
+        'Fence a few lines with:',
+        '',
+        '    // assemora:if studio',
+        "    import { studio } from './studio.js'",
+        '    // assemora:end',
+      ].join('\n'),
+    )
+  })
+
+  it('unescapes inside a region that survives, and takes one that does not with it', () => {
+    const text = [
+      '// assemora:if studio',
+      'Write `assemora:\\if pages` to fence a region.',
+      '// assemora:end',
+    ].join('\n')
+
+    expect(applyFeatures(text, all, 'README.md')).toBe(
+      'Write `assemora:if pages` to fence a region.',
+    )
+    expect(applyFeatures(text, none, 'README.md')).toBe('')
+  })
 })
 
 describe('FEATURES', () => {

@@ -41,6 +41,14 @@ const answer = (value: unknown) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }],
 })
 
+const messageOf = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+
+  const message = (error as { message?: unknown }).message
+
+  return typeof message === 'string' ? message : String(error)
+}
+
 const failure = (error: unknown) => ({
   content: [
     {
@@ -49,7 +57,10 @@ const failure = (error: unknown) => ({
         {
           error: {
             code: (error as { code?: string }).code ?? 'ERROR',
-            message: error instanceof Error ? error.message : String(error),
+            // An agent reads this and decides what to do next, so it has to be a
+            // sentence. `String(error)` on the plain objects raised here for a
+            // refusal turns every one of them into "[object Object]".
+            message: messageOf(error),
             ...((error as { fields?: unknown }).fields === undefined
               ? {}
               : { fields: (error as { fields?: unknown }).fields }),

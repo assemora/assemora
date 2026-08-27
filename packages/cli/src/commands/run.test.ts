@@ -12,6 +12,7 @@
  * real one the moment that group lands.
  */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -29,13 +30,22 @@ const created: string[] = []
 const artifacts: string[] = []
 const exits = new Map<string, number>()
 
+/** Anything a case started that has to die even when the case fails. */
+const stragglers: number[] = []
+
 let output: CapturedOutput
+
+/** The marker an artifact command leaves behind, as a filename can hold it. */
+const markerFor = (name: string): string => `ran-${name.replace(':', '-')}.txt`
 
 /**
  * Stands in for the commands `build` delegates to.
  *
  * `build` finds them by name in the table, which is the seam being tested: it must
- * run the command that owns an artifact rather than generate one of its own.
+ * run the command that owns an artifact rather than generate one of its own. The
+ * marker file is written where the project's own build script can see it, because the
+ * other half of the seam is ordering: a bundle that includes the generated SDK has to
+ * run after the command that generates it.
  */
 const artifact = (name: string) =>
   defineCommand({
@@ -43,8 +53,9 @@ const artifact = (name: string) =>
     group: 'artifacts',
     summary: `stands in for ${name}`,
     usage: `assemora ${name}`,
-    handler: async () => {
+    handler: async ({ cwd }) => {
       artifacts.push(name)
+      await writeFile(join(cwd, markerFor(name)), 'yes')
 
       return exits.get(name) ?? 0
     },
@@ -117,6 +128,92 @@ const waitFor = async (path: string): Promise<string> => {
   throw new Error(`${path} was never written`)
 }
 
+const pause = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, milliseconds)
+  })
+
+/** Whether anything answers on the port — the question `dev` has to leave answered "no". */
+const listening = (port: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    const socket = connect({ port, host: '127.0.0.1' })
+
+    const answer = (held: boolean) => (): void => {
+      socket.destroy()
+      resolve(held)
+    }
+
+    socket.once('connect', answer(true))
+    socket.once('error', answer(false))
+  })
+
+/**
+ * Waits for the port to come free, which after a signal is a moment away rather than
+ * instant: the CLI answers when its own child is reaped, and the process that held the
+ * socket is one below that.
+ */
+const freed = async (port: number): Promise<boolean> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (!(await listening(port))) return true
+
+    await pause(50)
+  }
+
+  return false
+}
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A server that ignores the polite signal and holds a port.
+ *
+ * This is what a graceful drain looks like for the seconds that matter, and it is the
+ * case the escalation to SIGKILL exists for. It reports where it is listening and who
+ * it is, because both are what the case has to check afterwards.
+ */
+const STUBBORN_SERVER = [
+  "import { writeFileSync } from 'node:fs'",
+  "import { createServer } from 'node:net'",
+  '',
+  "process.on('SIGTERM', () => {})",
+  "process.on('SIGINT', () => {})",
+  '',
+  'const socket = createServer(() => {})',
+  '',
+  "socket.listen(0, '127.0.0.1', () => {",
+  '  const address = socket.address()',
+  '',
+  '  writeFileSync(',
+  "    new URL('./listening.json', import.meta.url),",
+  "    JSON.stringify({ port: typeof address === 'object' && address !== null ? address.port : 0, pid: process.pid }),",
+  '  )',
+  '})',
+  '',
+].join('\n')
+
+const whereItListens = async (root: string): Promise<{ port: number; pid: number }> => {
+  const written: unknown = JSON.parse(await waitFor(join(root, 'listening.json')))
+
+  if (
+    typeof written !== 'object' ||
+    written === null ||
+    typeof (written as { port?: unknown }).port !== 'number' ||
+    typeof (written as { pid?: unknown }).pid !== 'number'
+  ) {
+    throw new Error('the server did not report where it was listening')
+  }
+
+  return written as { port: number; pid: number }
+}
+
 /**
  * Calls the signal handler the CLI installed, and only that one.
  *
@@ -139,6 +236,17 @@ beforeEach(() => {
 
 afterEach(async () => {
   output.restore()
+
+  // A case that fails is a case that left a server running, and a server that outlives
+  // the suite is the very defect under test leaking into the next run.
+  for (const pid of stragglers.splice(0)) {
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {
+      // Already gone, which is what every passing case leaves behind.
+    }
+  }
+
   for (const root of created.splice(0)) await rm(root, { recursive: true, force: true })
 })
 
@@ -214,6 +322,27 @@ describe('start', () => {
     },
     PATIENCE,
   )
+
+  it(
+    'stops the server on a hangup, which the child no longer hears for itself',
+    async () => {
+      const root = await project({
+        'assemora.config.ts': config("server: 'server.mjs'"),
+        'server.mjs': server(beside('ready.txt', "'ready'"), 'setInterval(() => {}, 1000)'),
+      })
+
+      const running = invoke(['start'], root)
+      await waitFor(join(root, 'ready.txt'))
+
+      // The child runs in a process group of its own, so closing the terminal reaches
+      // the CLI and nothing else. A hangup the CLI does not pass on is a dev server
+      // left running with no terminal to stop it from.
+      raise('SIGHUP')
+
+      expect(await running).toBe(129)
+    },
+    PATIENCE,
+  )
 })
 
 describe('dev', () => {
@@ -238,35 +367,130 @@ describe('dev', () => {
     },
     PATIENCE,
   )
+
+  it(
+    'takes the server the watcher started down with it, so nothing keeps the port',
+    async () => {
+      const root = await project({
+        'assemora.config.ts': config("server: 'server.mjs'"),
+        'server.mjs': STUBBORN_SERVER,
+      })
+
+      const running = invoke(['dev'], root)
+      const { port, pid } = await whereItListens(root)
+      stragglers.push(pid)
+
+      expect(await listening(port)).toBe(true)
+
+      // The first signal is the one this server ignores; the second escalates. Sent to
+      // the watcher alone, the escalation killed the wrapper and left the server — the
+      // process actually holding the port — running with init for a parent.
+      raise('SIGTERM')
+      raise('SIGTERM')
+
+      await running
+
+      expect(await freed(port)).toBe(true)
+      expect(alive(pid)).toBe(false)
+    },
+    PATIENCE,
+  )
 })
 
 describe('build', () => {
+  /**
+   * A project that builds itself, and reports whether the artifacts were there first.
+   *
+   * The generated SDK is an input to a project's own bundle, so "before" is not a
+   * detail of ordering — it is a bundle built against last week's client.
+   */
   const ownScript = {
     'assemora.config.ts': config("openapi: { out: 'openapi.json' }, sdk: { out: 'sdk.ts' }"),
     'package.json': '{ "name": "demo", "private": true, "scripts": { "build": "node own.mjs" } }',
-    'own.mjs': server(beside('built.txt', "'yes'")),
+    'own.mjs': [
+      "import { existsSync, writeFileSync } from 'node:fs'",
+      '',
+      `const generated = existsSync(new URL('./${markerFor('sdk:generate')}', import.meta.url))`,
+      '',
+      beside('built.txt', "generated ? 'after' : 'before'"),
+      '',
+    ].join('\n'),
   }
 
   it(
     "runs the project's own build script and says that it did",
     async () => {
-      const root = await project(ownScript)
+      const root = await project({ ...ownScript, ...typescript(0) })
 
       expect(await invoke(['build'], root)).toBe(0)
-      expect(await readFile(join(root, 'built.txt'), 'utf8')).toBe('yes')
+      expect(await readFile(join(root, 'built.txt'), 'utf8')).toBe('after')
       expect(output.stdout).toContain("the project's own build script")
     },
     PATIENCE,
   )
 
   it(
-    'leaves the artifacts alone when the project builds itself',
+    'regenerates the artifacts before the project bundles them',
+    async () => {
+      const root = await project({ ...ownScript, ...typescript(0) })
+
+      expect(await invoke(['build'], root)).toBe(0)
+
+      expect(artifacts).toEqual(['api:openapi', 'sdk:generate'])
+      expect(await readFile(join(root, 'built.txt'), 'utf8')).toBe('after')
+    },
+    PATIENCE,
+  )
+
+  it(
+    'typechecks a project that builds itself, which is the project the CLI scaffolds',
+    async () => {
+      const root = await project({ ...ownScript, ...typescript(0) })
+
+      expect(await invoke(['build'], root)).toBe(0)
+
+      const argv: unknown = JSON.parse(
+        await readFile(join(root, 'node_modules/typescript/bin/argv.json'), 'utf8'),
+      )
+
+      expect(argv).toEqual(['--project', join(root, 'tsconfig.json'), '--noEmit'])
+    },
+    PATIENCE,
+  )
+
+  it(
+    "never reaches the project's own build script when the typecheck failed",
+    async () => {
+      const root = await project({ ...ownScript, ...typescript(2) })
+
+      expect(await invoke(['build'], root)).toBe(1)
+      expect(artifacts).toEqual([])
+      expect(await readFile(join(root, 'built.txt'), 'utf8').catch(() => undefined)).toBeUndefined()
+    },
+    PATIENCE,
+  )
+
+  it(
+    '--no-typecheck is heard on that path too, so a project that builds itself can skip it',
     async () => {
       const root = await project(ownScript)
 
-      await invoke(['build'], root)
+      expect(await invoke(['build', '--no-typecheck'], root)).toBe(0)
+      expect(await readFile(join(root, 'built.txt'), 'utf8')).toBe('after')
+    },
+    PATIENCE,
+  )
 
-      expect(artifacts).toEqual([])
+  it(
+    "fails the build when the project's own build script does, and says which half broke",
+    async () => {
+      const root = await project({
+        ...ownScript,
+        'own.mjs': 'process.exit(1)\n',
+      })
+
+      expect(await invoke(['build', '--no-typecheck'], root)).toBe(1)
+      expect(output.stderr).toContain("project's own build script")
     },
     PATIENCE,
   )

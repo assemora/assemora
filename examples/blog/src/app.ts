@@ -17,12 +17,34 @@ import { type AssemoraApplication, assemora } from 'assemora'
 
 import { blogBlocks } from './blocks.ts'
 import { blog } from './blog.ts'
+import { ENV_FILE } from './env.ts'
+
+// Node does not read `.env` on its own, and the CLI reaches this file through
+// `assemora.config.ts`, so loading it here is what makes one `.env` serve the server
+// and every `assemora db:*` command alike.
+try {
+  process.loadEnvFile(ENV_FILE)
+} catch {
+  // There is no .env, which is the ordinary case.
+}
+
+/**
+ * Where this example's data lives, or `undefined` when nowhere yet.
+ *
+ * `src/server.ts` asks the same question for a different reason: the in-memory
+ * fallback is the one database its seed may create accounts on.
+ */
+export const databaseUrl = (): string | undefined => {
+  const url = process.env.DATABASE_URL
+
+  return url === undefined || url === '' ? undefined : url
+}
 
 /** PostgreSQL when `DATABASE_URL` says where, and otherwise in memory — out loud. */
 const database = (): DatabaseAdapter => {
-  const url = process.env.DATABASE_URL
+  const url = databaseUrl()
 
-  if (url !== undefined && url !== '') return postgres({ url })
+  if (url !== undefined) return postgres({ url })
 
   console.warn(
     'DATABASE_URL is not set: this example is running on an in-memory database, and ' +

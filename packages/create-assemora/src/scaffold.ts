@@ -7,6 +7,9 @@
  * a workspace package that CI typechecks (ADR-0021), and every rule this file invents
  * about generated code is a rule the starter no longer proves.
  *
+ * What it leaves behind is decided in `exclusions.ts` rather than here — one list,
+ * which `scripts/copy-templates.mjs` reads as well, because two of them drifted.
+ *
  * `assemora new` calls this function rather than owning a second scaffolder, so the
  * two commands cannot disagree about what a project is.
  */
@@ -14,12 +17,12 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
 import { ScaffoldError } from './error.js'
+import { type Ignores, MANIFEST_FILE, templateExclusions } from './exclusions.js'
 import { applyFeatures, FEATURES, type Features } from './features.js'
 import { dependencyRange, packageVersion, projectPackageJson } from './package-json.js'
 import {
   DEFAULT_TEMPLATE,
   type FeatureManifest,
-  MANIFEST_FILE,
   readManifest,
   resolveTemplate,
   type TemplateManifest,
@@ -49,37 +52,23 @@ export type ScaffoldResult = {
 }
 
 /**
- * Directories and files a template can hold but a project must not inherit.
- *
- * The starter is a workspace package, so a checkout of it has been installed and
- * built at least once. None of that is part of what it is a template *of*.
- */
-const NEVER_COPIED = new Set([
-  'node_modules',
-  'dist',
-  '.turbo',
-  '.git',
-  '.assemora',
-  'coverage',
-  MANIFEST_FILE,
-])
-
-const isBuildArtefact = (name: string): boolean => name.endsWith('.tsbuildinfo')
-
-/**
- * `_gitignore` becomes `.gitignore`.
+ * `_gitignore` becomes `.gitignore`, and only at the template root.
  *
  * npm strips a real `.gitignore` out of a published tarball, so a template that
  * carried one would scaffold a project without it — and the same is true of
  * `.npmrc`. The convention is one rule rather than a list of the two files it is
- * known to be needed for: a leading `_` on any path segment becomes a `.`, so a
- * template can carry `_github/workflows/ci.yml` without this file learning about it.
+ * known to be needed for, so that a template can carry `_github/workflows/ci.yml`
+ * without this file learning about it.
+ *
+ * It applies to the *first* segment only. Applied to every segment it silently
+ * corrupted real code: `pages/_app.tsx` and `pages/_document.tsx` are Next.js's own
+ * spelling, `app/_components/` is an ordinary private-folder convention, and a
+ * bundler's `_00_v442._.js` is a name nobody chose at all — all three arrived in the
+ * project as dotfiles, which is to say as files their imports could no longer find.
+ * Every dotfile npm actually strips is a root-level one, so the root is where the
+ * rewrite belongs.
  */
-const undotted = (path: string): string =>
-  path
-    .split('/')
-    .map((segment) => (segment.startsWith('_') ? `.${segment.slice(1)}` : segment))
-    .join('/')
+const undotted = (path: string): string => (path.startsWith('_') ? `.${path.slice(1)}` : path)
 
 /** npm will not take a name longer than this. */
 const NAME_LIMIT = 214
@@ -251,19 +240,37 @@ const copyFile = async (plan: CopyPlan, path: string): Promise<string | undefine
   return target
 }
 
-/** Every file in the template, template-relative, in a stable order. */
-const templateFiles = async (template: string, prefix = ''): Promise<readonly string[]> => {
+/**
+ * Every file in the template, template-relative, in a stable order.
+ *
+ * `ignores` is asked about directories as well as files, so `node_modules/` is pruned
+ * rather than descended into — the difference between reading a starter and reading
+ * everything it depends on. Nothing under an excluded directory is reconsidered,
+ * which is git's rule as well.
+ *
+ * What it is asked about is the path the *project* will have, because a template's
+ * `.gitignore` was written for the project rather than for the directory it is
+ * carried in.
+ */
+const templateFiles = async (
+  template: string,
+  ignores: Ignores,
+  prefix = '',
+): Promise<readonly string[]> => {
   const entries = await readdir(join(template, ...(prefix === '' ? [] : prefix.split('/'))), {
     withFileTypes: true,
   })
   const found: string[] = []
 
   for (const entry of [...entries].sort((left, right) => left.name.localeCompare(right.name))) {
-    if (NEVER_COPIED.has(entry.name) || isBuildArtefact(entry.name)) continue
-
     const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`
 
-    if (entry.isDirectory()) found.push(...(await templateFiles(template, path)))
+    // The manifest is the template talking about itself, at its own root. One further
+    // down belongs to something inside the project and is none of this file's business.
+    if (path === MANIFEST_FILE) continue
+    if (ignores(undotted(path), entry.isDirectory())) continue
+
+    if (entry.isDirectory()) found.push(...(await templateFiles(template, ignores, path)))
     else found.push(path)
   }
 
@@ -309,7 +316,7 @@ export const scaffold = async (options: ScaffoldOptions): Promise<ScaffoldResult
 
   const written: string[] = []
 
-  for (const path of await templateFiles(template)) {
+  for (const path of await templateFiles(template, await templateExclusions(template))) {
     const target = await copyFile(plan, path)
     if (target !== undefined) written.push(target)
   }

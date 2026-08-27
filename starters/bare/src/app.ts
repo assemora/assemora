@@ -28,7 +28,38 @@ import manifest from '../package.json' with { type: 'json' }
 import { Hero } from './blocks/hero.ts'
 import { RichText } from './blocks/rich-text.ts'
 // assemora:end
+import { ENV_FILE } from './env.ts'
 import { content } from './modules/content.ts'
+
+/**
+ * `.env`, read before anything asks what is in it.
+ *
+ * Node does not read `.env` on its own, and `assemora dev`, `assemora db:migrate` and
+ * every other command reach this file through `assemora.config.ts`. Loading it here
+ * rather than in `server.ts` is what makes one `.env` serve all of them — a migration
+ * run against a different database than the server uses is a long afternoon.
+ *
+ * It never overwrites a variable the environment already has, so a container's
+ * configuration still wins.
+ */
+try {
+  process.loadEnvFile(ENV_FILE)
+} catch {
+  // There is no .env, which is the ordinary case in a deployment.
+}
+
+/**
+ * Where this project's data lives, or `undefined` when nowhere yet.
+ *
+ * Exported because `src/server.ts` asks the same question for a different reason:
+ * the in-memory fallback is the one database a seed may create an account on
+ * (see `src/seed.ts`), and both answers have to come from one place.
+ */
+export const databaseUrl = (): string | undefined => {
+  const url = process.env.DATABASE_URL
+
+  return url === undefined || url === '' ? undefined : url
+}
 
 /**
  * A real database when there is one, and a loud fallback when there is not.
@@ -39,9 +70,9 @@ import { content } from './modules/content.ts'
  * database is honest only while it is announcing itself.
  */
 const database = (): DatabaseAdapter => {
-  const url = process.env.DATABASE_URL
+  const url = databaseUrl()
 
-  if (url !== undefined && url !== '') return postgres({ url })
+  if (url !== undefined) return postgres({ url })
 
   console.warn(
     'DATABASE_URL is not set: this project is running on an in-memory database, and ' +

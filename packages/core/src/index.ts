@@ -114,6 +114,7 @@ export {
 } from './queries.js'
 export {
   type CommandDescriptor,
+  type CommandReach,
   createSchemaRegistry,
   type RegistryEntry,
   type RegistrySections,

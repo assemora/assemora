@@ -86,7 +86,10 @@ beforeEach(async () => {
     .mountResources()
     .mount(
       openApiRoute({ registry: app.registry, info: { title: 'Assemora', version: '1.0.0' } }),
-      introspectionRoute(app.registry),
+      // Open, because this server resolves no actor at all: what is under test is that
+      // one declaration reaches the snapshot, not who may read it (that is asserted in
+      // `@assemora/openapi` and in `@assemora/assemora`).
+      introspectionRoute(app.registry, { public: true }),
     )
 
   await server.ready()

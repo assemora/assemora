@@ -1,26 +1,30 @@
 /**
- * The document Studio's builder canvas frames (SPEC.md §59).
+ * The entry document, for both audiences (SPEC.md §57, §59).
  *
- * The canvas is an iframe pointed at `/preview`, and this is what loads in it: the
- * real site, with the real block views, in a real viewport. That is the whole reason
- * it is an iframe — CSS is isolated and the preview is accurate rather than
- * approximate.
+ * `/preview` on its own is the site: it takes `?slug=` — or `home`, which is what the
+ * seed publishes — and reads the published tree from the public route in
+ * `src/routes.ts`. No session, no query parameter to remember, nothing to configure.
  *
- * Without `?editing=1` this is an ordinary page that knows nothing about a builder,
- * which is what a visitor gets. With it, three messages go back to the editor —
- * "I am ready", "this block was clicked", "here is where every block is" — and one
- * comes in: the tree to draw. Studio never reaches inside the frame; it draws its own
- * selection outline on top of the geometry this file reports.
+ * `/preview?page=<id>&editing=1&editor=<origin>` is the other audience: Studio's
+ * builder canvas, which names a page by id and reads the *draft* as the signed-in
+ * editor. That is the whole reason the canvas is an iframe pointed here — one
+ * renderer, one set of block views, so what an editor sees is the site rather than an
+ * imitation of it. While editing, three messages go back — "I am ready", "this block
+ * was clicked", "here is where every block is" — and one comes in: the tree to draw.
+ * Studio never reaches inside the frame; it draws its selection outline on top of the
+ * geometry this file reports.
  */
 import { blockAt, type CanvasEvent, isCanvasInstruction, measureBlocks } from '@assemora/react'
 import type { BlockTree } from '@assemora/schema'
 import { StrictMode, useCallback, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { readTree, Site } from './main.tsx'
+import { readPublished, readTree, Site } from './main.tsx'
 
 const parameters = new URLSearchParams(location.search)
 const pageId = parameters.get('page') ?? ''
+/** The page a visitor gets when the URL names none. The seed publishes this one. */
+const slug = parameters.get('slug') ?? 'home'
 const mode = parameters.get('mode') === 'draft' ? 'draft' : 'published'
 const editing = parameters.get('editing') === '1'
 
@@ -45,10 +49,12 @@ const Preview = () => {
     post({ type: 'assemora:geometry', blocks: measureBlocks(document) })
   }, [])
 
+  // The canvas names a page by id and wants the draft; everybody else asks for a slug
+  // and gets what is published. Two readers, because they are two different rights.
   useEffect(() => {
-    if (pageId === '') return
+    const first = pageId === '' ? readPublished(slug) : readTree({ id: pageId, mode })
 
-    readTree({ id: pageId, mode })
+    first
       .then(setTree)
       .catch((error: unknown) => setFailure(error instanceof Error ? error.message : String(error)))
   }, [])

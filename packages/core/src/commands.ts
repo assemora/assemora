@@ -26,7 +26,7 @@ import type {
   RevisionEntry,
   TransactionPort,
 } from './ports.js'
-import type { SchemaRegistry } from './registry.js'
+import type { CommandReach, SchemaRegistry } from './registry.js'
 
 /** What a handler receives in addition to its validated input. */
 export type CommandContext = AssemoraContext & {
@@ -81,6 +81,16 @@ export type CommandDefinition<S extends Shape, R> = {
    * nothing changed, so it says so here and `dryRun()` refuses it.
    */
   readonly previewable: boolean
+  /**
+   * Where this command may be called from (SPEC.md §85).
+   *
+   * Every generated door — `POST /commands/<name>`, the MCP tool — exists because
+   * the bus authorizes before a handler sees anything, and authorization denies by
+   * default. A publicly authorized command has no such floor: the checks that make
+   * it safe are in the route written for it, and a generated alias would bypass all
+   * of them. Such a command says `'its own route'`, and the generators skip it.
+   */
+  readonly reachableFrom: CommandReach
   handle(input: InferShape<S>, context: CommandContext): Promise<R>
 }
 
@@ -91,6 +101,7 @@ export type AnyCommand = {
   readonly input: Schema<unknown>
   readonly subject: string | undefined
   readonly previewable: boolean
+  readonly reachableFrom: CommandReach
   handle(input: never, context: CommandContext): Promise<unknown>
 }
 
@@ -140,6 +151,11 @@ export const command = <S extends Shape, R>(
     readonly subject?: string
     /** Defaults to true. Say `false` when the handler reaches outside the database. */
     readonly previewable?: boolean
+    /**
+     * Defaults to `'anywhere'`. Say `'its own route'` when the command is publicly
+     * authorized and a route written for it is what makes it safe.
+     */
+    readonly reachableFrom?: CommandReach
     handle(input: InferShape<S>, context: CommandContext): Promise<R>
   },
 ): CommandDefinition<S, R> => ({
@@ -148,6 +164,7 @@ export const command = <S extends Shape, R>(
   input: object(definition.input),
   subject: definition.subject,
   previewable: definition.previewable ?? true,
+  reachableFrom: definition.reachableFrom ?? 'anywhere',
   handle: definition.handle,
 })
 
@@ -358,6 +375,11 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         ...(definition.description === undefined ? {} : { description: definition.description }),
         input: definition.input.toJsonSchema(),
         ...(module === undefined ? {} : { module }),
+        // Carried only when it restricts something. The presence of the field is the
+        // declaration, so the description of a command that made none is unchanged.
+        ...(definition.reachableFrom === 'anywhere'
+          ? {}
+          : { reachableFrom: definition.reachableFrom }),
       })
     },
 
@@ -381,6 +403,24 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
       // Checked before anything opens: a batch that cannot be previewed should say so
       // rather than run half of itself and undo it.
       for (const definition of definitions) {
+        /**
+         * A preview is not a call through the command's own route.
+         *
+         * `changesets.propose` previews whatever commands it is handed, which makes
+         * it the third generic door beside the generated endpoint and the MCP tool.
+         * Previewing a publicly authorized `auth.login` answers differently for a
+         * right and a wrong password — and hands back the session token it would
+         * have issued — so a caller holding only `changesets.propose` would have a
+         * password oracle (SPEC.md §85).
+         */
+        if (definition.reachableFrom === 'its own route') {
+          throw new AssemoraError(
+            'UNREACHABLE_COMMAND',
+            `"${definition.name}" is reachable only through the route written for it`,
+            { status: 422 },
+          )
+        }
+
         if (!definition.previewable) {
           throw new AssemoraError(
             'NOT_PREVIEWABLE',

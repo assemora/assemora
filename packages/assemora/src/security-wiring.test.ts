@@ -2,16 +2,15 @@
  * The switches the umbrella hands the HTTP layer (SPEC.md §85, ADR-0022).
  *
  * CORS, CSRF, the content security policy and the cookies are asserted through real
- * requests in `assemora.test.ts`, because they can be. The rate limit cannot be:
- * `createHttpServer` registers `@fastify/rate-limit` from a promise nothing awaits
- * before routes are added, and `@fastify/rate-limit` attaches itself to routes
- * through an `onRoute` hook — so every route this package mounts is defined before
- * the plugin has loaded and is never counted, whatever limit is passed. That is a
- * defect in `@assemora/http`, which owns Fastify; until it is fixed, the honest thing
- * this package can prove is that it asked for a ceiling and never stopped asking.
+ * requests in `assemora.test.ts`, and so is the ceiling: `createHttpServer` sequences
+ * `@fastify/rate-limit` ahead of the routes it mounts, so a request past the limit is
+ * refused rather than counted by nobody. The behavioural half of that lives at the
+ * bottom of this file — an earlier version of this comment said the limit was not
+ * enforced, and used that to justify asserting only that a number had been passed.
  *
- * So this file watches one seam: the options `serve()` hands `createHttpServer`. The
- * server underneath is the real one — the mock only records the call and delegates.
+ * What the rest of the file watches is the other seam: the options `serve()` hands
+ * `createHttpServer`. A default that stops being asked for is a default that is gone,
+ * and the mock only records the call and delegates to the real server.
  */
 import { createMemoryAdapter } from '@assemora/database'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -79,5 +78,32 @@ describe('what the umbrella asks the HTTP layer for (SPEC.md §85)', () => {
       origins: ['https://studio.example'],
       credentials: true,
     })
+  })
+})
+
+describe('and the ceiling it asked for is one requests are counted against', () => {
+  it('refuses the request past the limit, on a route this package mounted', async () => {
+    const built = assemora({
+      database: createMemoryAdapter(),
+      api: { rateLimit: { max: 2, windowMs: 60_000 } },
+    })
+
+    running.push(built)
+
+    await built.boot()
+
+    const server = built.server
+
+    if (server === undefined) throw new Error('this application was built without an API')
+
+    const codes: number[] = []
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      codes.push((await server.inject({ method: 'GET', url: '/api/health' })).statusCode)
+    }
+
+    // Every route here is mounted by `serve()`, which is exactly the case an
+    // unsequenced plugin registration would have left uncounted.
+    expect(codes).toEqual([200, 200, 429, 429])
   })
 })

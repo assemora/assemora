@@ -13,11 +13,34 @@ export type RegistryEntry = {
   readonly name: string
 }
 
+/**
+ * Where a command may be called from (SPEC.md §85).
+ *
+ * `'anywhere'` is the default and the ordinary case: the generated
+ * `POST /commands/<name>` endpoint and the MCP tool are safe by construction,
+ * because the bus authorizes first and authorization denies by default.
+ *
+ * `'its own route'` is for the handful of commands that are *publicly* authorized —
+ * a login has to be callable by somebody who is nobody yet. For those, the checks
+ * that make them safe live in the route written for them (cookie-only issuance,
+ * CSRF minting, the forensic fields taken from the request rather than the caller),
+ * and a generated endpoint or a tool beside it would be a second, unhardened door on
+ * to the same handler.
+ */
+export type CommandReach = 'anywhere' | 'its own route'
+
 /** A command as the outside world sees it. */
 export type CommandDescriptor = RegistryEntry & {
   readonly description?: string
   readonly input: JsonSchema
   readonly module?: string
+  /**
+   * Absent when the command is reachable from anywhere, which is nearly all of them.
+   *
+   * The generators read this section rather than the bus, so a restriction the
+   * registry does not carry is one no generator can honour (ADR-0002).
+   */
+  readonly reachableFrom?: CommandReach
 }
 
 /**

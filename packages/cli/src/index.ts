@@ -60,6 +60,41 @@ const declaredVersion = async (): Promise<string> => {
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
+/** The console methods that write to stdout, which is the stream the answer owns. */
+const LOGGING = ['log', 'info', 'debug'] as const
+
+/**
+ * Keeps stdout for the answer, for as long as this invocation lasts.
+ *
+ * `@assemora/core`'s logger writes info records with `console.log`, and every command
+ * that inspects an application boots one — so `assemora routes --json | jq` was handed
+ * a boot record before the JSON, and `assemora api:openapi --stdout > openapi.json`
+ * wrote a file that was not a document. The CLI cannot reach into the logger: the
+ * project's config builds the application, and `logger` is its option to pass. What
+ * the CLI does own is what stdout means for one invocation, and this is that: anything
+ * that is not the answer goes to stderr, which is the rule the whole of `output.ts` is
+ * written to.
+ *
+ * The REPL is unaffected — it writes to its own stream — though a `console.log` typed
+ * inside it lands on stderr, where a terminal shows it just the same.
+ *
+ * It is put back afterwards because `run()` is called in process, by `assemora new`
+ * running two commands and by every test in this package.
+ */
+const keepStdoutForTheAnswer = (): (() => void) => {
+  const original = LOGGING.map((name) => [name, console[name]] as const)
+
+  for (const [name] of original) {
+    console[name] = (...values: readonly unknown[]) => {
+      console.error(...values)
+    }
+  }
+
+  return () => {
+    for (const [name, method] of original) console[name] = method
+  }
+}
+
 /** The stack and every cause below it — what `--debug` is for. */
 const reportStack = (error: unknown): void => {
   let current: unknown = error
@@ -90,6 +125,7 @@ export const run = async (argv: readonly string[], options: RunOptions = {}): Pr
   const args = parseArgs(argv)
   const commands = options.commands ?? registeredCommands()
   const debug = bool(args, 'debug')
+  const restoreConsole = keepStdoutForTheAnswer()
 
   try {
     if (bool(args, 'version')) {
@@ -122,6 +158,8 @@ export const run = async (argv: readonly string[], options: RunOptions = {}): Pr
 
     return 1
   } finally {
+    // Shutting down is still the application talking, so the redirect outlives it.
     await close(debug)
+    restoreConsole()
   }
 }

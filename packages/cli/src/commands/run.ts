@@ -7,10 +7,12 @@
  * there must not be one — it would put a build step back between the file a
  * developer edits and the file that runs, which is the step Node removed.
  *
- * `build` is the exception that proves it: the only thing it compiles is the
- * project's types, and it does that with the project's own TypeScript.
+ * `build` is the exception that proves it: the only thing this CLI compiles is the
+ * project's types, and it does that with the project's own TypeScript. A project that
+ * bundles something of its own declares a `build` script, and that script is the last
+ * of `build`'s three steps rather than a replacement for the other two.
  */
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { constants } from 'node:os'
@@ -37,21 +39,66 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** What the shell reports for a process a signal killed, and what Ctrl-C leaves behind. */
 const codeForSignal = (signal: NodeJS.Signals): number => 128 + (constants.signals[signal] ?? 0)
 
-/** The signals a terminal sends when it wants what is running to stop. */
-const FORWARDED = ['SIGINT', 'SIGTERM'] as const satisfies readonly NodeJS.Signals[]
+/**
+ * The signals a terminal sends when it wants what is running to stop.
+ *
+ * SIGHUP is here because the child runs in a process group of its own: closing the
+ * terminal signals its foreground group, which is now the CLI alone, so a hangup the
+ * CLI does not pass on is a `dev` server left running with no terminal to stop it from.
+ */
+const FORWARDED = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const satisfies readonly NodeJS.Signals[]
+
+/**
+ * Whether a signal can address a whole process group.
+ *
+ * POSIX has one; Windows has nothing equivalent — the shape of the answer there is
+ * `taskkill /T`, a second process spawned to end the first, which is not something to
+ * write untested. On Windows the child alone is signalled, exactly as before.
+ */
+const GROUPS = process.platform !== 'win32'
+
+/**
+ * Stops the child, and everything the child started with it.
+ *
+ * A negative pid addresses the process group, which is the whole reason the child is
+ * spawned detached. `assemora dev` runs `node --watch`, and the watcher is a wrapper:
+ * the server holding the port is *its* child. Signalling the wrapper alone — and
+ * SIGKILL in particular, which it cannot pass on — left the server running with init
+ * for a parent and the port still held, which is exactly what the docstring below
+ * promises cannot happen.
+ */
+const stop = (child: ChildProcess, signal: NodeJS.Signals): void => {
+  const { pid } = child
+
+  if (pid === undefined) return
+
+  try {
+    if (GROUPS) process.kill(-pid, signal)
+    else child.kill(signal)
+  } catch {
+    // ESRCH is the group having already gone, which is the outcome being asked for;
+    // anything else is a group that could not be signalled, and the child alone is
+    // better than nothing. Neither may throw: this runs inside a signal listener,
+    // where an exception ends the process with the child still running.
+    child.kill(signal)
+  }
+}
 
 /**
  * Runs a child process to completion and answers with its exit code.
  *
- * Two things here are the whole point. Listening for SIGINT and SIGTERM suppresses
- * Node's default of dying on the spot, so Ctrl-C asks the child to stop and the CLI
- * stays alive until it has — a `dev` server never outlives the command that started
- * it, and never keeps the port. And a second signal escalates to SIGKILL, because
- * a child that ignores SIGTERM would otherwise make Ctrl-C look broken.
+ * Three things here are the whole point. Listening for the terminal's signals
+ * suppresses Node's default of dying on the spot, so Ctrl-C asks the child to stop and
+ * the CLI stays alive until it has — a `dev` server never outlives the command that
+ * started it, and never keeps the port. A second signal escalates to SIGKILL, because
+ * a child that ignores SIGTERM would otherwise make Ctrl-C look broken. And every
+ * signal goes to the child's process group rather than to the child, because what is
+ * spawned is often a wrapper — `node --watch`, a package manager — and the process
+ * that holds the port is one below it.
  *
- * The child is not detached, so it shares the process group and a terminal's own
- * Ctrl-C reaches it as well. The forwarding is what covers `kill` sent to the CLI
- * alone, which is how a supervisor stops a process.
+ * `detached` is what creates that group. It also takes the child out of the terminal's
+ * foreground group, so the terminal's own Ctrl-C no longer reaches it directly and the
+ * forwarding below is the only path — which is why SIGHUP is forwarded too.
  */
 const spawnProcess = (
   executable: string,
@@ -59,12 +106,16 @@ const spawnProcess = (
   options: { readonly cwd: string },
 ): Promise<number> =>
   new Promise<number>((resolve, reject) => {
-    const child = spawn(executable, [...argv], { cwd: options.cwd, stdio: 'inherit' })
+    const child = spawn(executable, [...argv], {
+      cwd: options.cwd,
+      stdio: 'inherit',
+      detached: GROUPS,
+    })
 
     let asked = false
 
     const forward = (signal: NodeJS.Signals): void => {
-      child.kill(asked ? 'SIGKILL' : signal)
+      stop(child, asked ? 'SIGKILL' : signal)
       asked = true
     }
 
@@ -270,10 +321,17 @@ const regenerate = async (name: string, cwd: string): Promise<number> => {
 /**
  * Everything that must be current before the project is deployed.
  *
- * A project that declares its own `build` script owns the answer, and this defers to
- * it whole rather than running half of each. Otherwise: typecheck first, because
- * generating an OpenAPI document from an application that does not compile is worse
- * than generating nothing, and then regenerate exactly what the config declares.
+ * Three steps, in the only order that makes sense. Typecheck first, because generating
+ * an OpenAPI document from an application that does not compile is worse than
+ * generating nothing. Then regenerate exactly what the config declares. Then the
+ * project's own `build` script, if it declares one — last, because the generated SDK is
+ * an input to whatever bundles it, and a bundle built before it is a bundle built
+ * against the previous client.
+ *
+ * The project's script used to be an alternative to the other two rather than a step
+ * after them, and the scaffolded project declares one — so `assemora build` there did
+ * neither of the things this command exists to do, and `--no-typecheck` was a flag with
+ * nowhere to take effect.
  *
  * Any failed step answers `1`. A child's own code is not passed through, because `2`
  * already means the invocation was wrong and a compiler's `2` does not mean that.
@@ -283,23 +341,11 @@ const build: CommandHandler = async ({ args, cwd }) => {
   const manifest = await manifestAt(loaded.root)
   const own = scriptNamed(manifest, 'build')
 
-  if (own !== undefined) {
-    const manager = await packageManagerFor(loaded.root, manifest)
-
-    line(`Running the project's own build script (${manager} run build): ${own}`)
-
-    const code = await spawnProcess(executableName(manager), ['run', 'build'], {
-      cwd: loaded.root,
-    })
-
-    return code === 0 ? 0 : 1
-  }
-
   if (!bool(args, 'no-typecheck')) {
     line('Typechecking')
 
     if ((await typecheck(loaded.root)) !== 0) {
-      fail('The typecheck failed, so nothing was regenerated.')
+      fail('The typecheck failed, so nothing was regenerated and nothing was built.')
 
       return 1
     }
@@ -315,6 +361,20 @@ const build: CommandHandler = async ({ args, cwd }) => {
   for (const name of declared) {
     if ((await regenerate(name, loaded.root)) !== 0) {
       fail(`${name} failed, so the build is not complete.`)
+
+      return 1
+    }
+  }
+
+  if (own !== undefined) {
+    const manager = await packageManagerFor(loaded.root, manifest)
+
+    line(`Running the project's own build script (${manager} run build): ${own}`)
+
+    if (
+      (await spawnProcess(executableName(manager), ['run', 'build'], { cwd: loaded.root })) !== 0
+    ) {
+      fail("The project's own build script failed, so the build is not complete.")
 
       return 1
     }
@@ -336,7 +396,7 @@ register(
   defineCommand({
     name: 'build',
     group: 'run',
-    summary: 'typecheck the project and regenerate what the config declares',
+    summary: "typecheck, regenerate what the config declares, run the project's build",
     usage: 'assemora build [--no-typecheck]',
     handler: build,
   }),

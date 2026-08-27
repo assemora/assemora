@@ -18,20 +18,19 @@ import type { ResolvedSession } from './options.js'
 export const CSRF_COOKIE = 'assemora_csrf'
 
 /**
- * The commands these routes front, which `serve()` therefore does not publish twice.
+ * These are the routes `SignIn` and `SignOut` mean by `reachableFrom: 'its own
+ * route'` (SPEC.md §85).
  *
  * `mountCommands()` is safe by construction for every other command, because the bus
- * authorizes first and authorization denies by default. These two are the exception:
- * `auth.login` and `auth.logout` are publicly authorized, so the generic
- * `POST /commands/<name>` endpoint would be a second, unhardened door on to a session
- * — one that hands the session token back as JSON a script can read rather than as an
- * httpOnly cookie, mints no CSRF token, clears no cookies, and lets the caller choose
- * the IP address and user agent recorded against the session (SPEC.md §85).
+ * authorizes first and authorization denies by default. Those two are publicly
+ * authorized, so a generic `POST /commands/<name>` alias — or an MCP tool — would be
+ * a second, unhardened door on to a session: one that hands the token back as JSON a
+ * script can read rather than as an httpOnly cookie, mints no CSRF token and clears
+ * no cookies. Any hardening added here later would be bypassed by such an alias.
  *
- * Any hardening added here later — throttling, cookie-only issuance — would be
- * bypassed by that alias, which is why the two are named in one place.
+ * The commands say so themselves, and every generator reads it off the registry, so
+ * nothing in this package keeps a list of their names to fall out of date.
  */
-export const AUTH_ROUTE_COMMANDS: readonly string[] = [SignIn.name, SignOut.name]
 
 const EXPIRED = new Date(0)
 
@@ -78,11 +77,13 @@ export const authRoutes = (commands: CommandBus, session: ResolvedSession): Rout
       errors: [
         { code: 'INVALID_CREDENTIALS', status: 401, description: 'Wrong email or password' },
       ],
-      handler: async ({ body, headers }) => {
+      handler: async ({ body }) => {
+        // The user agent is not passed: the command reads it off the context the HTTP
+        // server built from the request, so nothing a caller writes in a body can
+        // become the forensic record of its own sign-in (SPEC.md §85).
         const started = await commands.execute(SignIn, {
           email: body.email,
           password: body.password,
-          ...(headers['user-agent'] === undefined ? {} : { userAgent: headers['user-agent'] }),
         })
 
         // Double-submit: the value is compared against the cookie it is sent beside,

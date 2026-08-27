@@ -38,7 +38,10 @@ const Preview = () => {
   }, [])
 
   // The canvas names a page by id; anything else asks for a slug. Both go through the
-  // same authorized query, which is why this page is blank until somebody signs in.
+  // same *authorized* query, so this document is the builder's preview rather than
+  // the site: signed out it says so rather than drawing anything. The public surface
+  // of this example is the two routes in `src/routes.ts` — and `examples/company`
+  // shows the other arrangement, where `/preview` really is what a visitor opens.
   useEffect(() => {
     readTree(pageId === '' ? { slug, mode } : { id: pageId, mode })
       .then(setTree)

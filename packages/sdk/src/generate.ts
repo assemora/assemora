@@ -17,7 +17,17 @@ export type GenerateOptions = {
   readonly clientModule?: string
 }
 
-const RESERVED = /[^A-Za-z0-9_]/g
+/**
+ * What TypeScript accepts as a bare name, whether a property key or a type.
+ *
+ * Deliberately not a global regex. `test` on a `/g` pattern is stateful: a match
+ * leaves `lastIndex` past it and the next call resumes from there, so one shared
+ * pattern answered correctly only every other time and the *second* name that needed
+ * quoting was emitted bare. It also has to be anchored rather than a search for a
+ * character that is not allowed — `2fa` is made only of identifier characters and is
+ * still not an identifier.
+ */
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 
 const pascal = (value: string): string =>
   value
@@ -32,7 +42,44 @@ const camel = (value: string): string => {
   return cased.charAt(0).toLowerCase() + cased.slice(1)
 }
 
-const quoteKey = (key: string): string => (RESERVED.test(key) ? JSON.stringify(key) : key)
+/**
+ * A TypeScript string literal, quoted the way the rest of the emitted file is.
+ *
+ * `JSON.stringify` escapes correctly but quotes with `"`, while the generated import
+ * quotes with `'`. A file that changes its mind halfway through is a file every
+ * formatter rewrites the moment it lands in somebody's repository.
+ */
+const stringLiteral = (value: string): string => {
+  let escaped = ''
+
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+
+    // A control character has no printable form, and an unescaped newline inside a
+    // quoted literal ends the literal rather than appearing in it.
+    if (character === '\\' || character === "'") escaped += `\\${character}`
+    else if (code < 0x20) escaped += `\\u${code.toString(16).padStart(4, '0')}`
+    else escaped += character
+  }
+
+  return `'${escaped}'`
+}
+
+const quoteKey = (key: string): string => (IDENTIFIER.test(key) ? key : stringLiteral(key))
+
+/**
+ * A resource name as the name of its record type.
+ *
+ * `pascal` cases the words it is handed and nothing more, so a resource named
+ * `2fa-tokens` arrives as `2faTokens` and one named `--` arrives as nothing at all.
+ * Neither is a name TypeScript will accept, and both emit a file that does not parse
+ * from a build that reported success.
+ */
+const typeName = (value: string): string => {
+  const cased = pascal(value)
+
+  return IDENTIFIER.test(cased) ? cased : `_${cased}`
+}
 
 /**
  * Whether an element type has to be bracketed before `[]` is put after it.
@@ -62,7 +109,7 @@ export const toTypeScript = (schema: JsonSchema | undefined, indent = ''): strin
 
   const enumValues = schema.enum as readonly string[] | undefined
 
-  if (enumValues !== undefined) return enumValues.map((value) => JSON.stringify(value)).join(' | ')
+  if (enumValues !== undefined) return enumValues.map(stringLiteral).join(' | ')
 
   switch (schema.type) {
     case 'string':
@@ -131,7 +178,7 @@ const recordType = (resource: ResourceEntry): string => {
     ),
   ]
 
-  return `export type ${pascal(resource.name)} = {\n${lines.join('\n')}\n}`
+  return `export type ${typeName(resource.name)} = {\n${lines.join('\n')}\n}`
 }
 
 const endpointMethod = (entry: RouteEntry): string => {
@@ -169,7 +216,8 @@ export const generateSdk = (snapshot: RegistrySnapshot, options: GenerateOptions
   const records = resources.map(recordType)
 
   const resourceMembers = resources.map(
-    (resource) => `  readonly ${quoteKey(resource.name)}: ResourceClient<${pascal(resource.name)}>`,
+    (resource) =>
+      `  readonly ${quoteKey(resource.name)}: ResourceClient<${typeName(resource.name)}>`,
   )
 
   const endpoints =

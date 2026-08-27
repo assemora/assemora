@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { ParsedArgs } from './args.js'
 import { run } from './index.js'
-import { type CapturedOutput, captureOutput } from './output.js'
+import { type CapturedOutput, captureOutput, line } from './output.js'
 import { type CliCommand, defineCommand } from './registry.js'
 
 let output: CapturedOutput
@@ -40,6 +40,25 @@ const commands: readonly CliCommand[] = [
     usage: 'assemora boom',
     handler: async () => {
       throw new Error('the database refused the connection')
+    },
+  }),
+  /**
+   * An application logging while a command answers.
+   *
+   * `@assemora/core`'s logger writes an info record with `console.log`, and every
+   * command that inspects an application boots one — so this is what `assemora routes
+   * --json` does before it prints a single byte of JSON.
+   */
+  defineCommand({
+    name: 'noisy',
+    group: 'inspect',
+    summary: 'boots something that logs',
+    usage: 'assemora noisy',
+    handler: async () => {
+      console.log(JSON.stringify({ level: 'info', message: 'Application ready' }))
+      line('{"routes":[]}')
+
+      return 0
     },
   }),
 ]
@@ -117,6 +136,73 @@ describe('resolving a command', () => {
     expect(code).toBe(0)
     expect(output.stdout).toContain('assemora db:migrate [--force]')
     expect(output.stdout).toContain('apply pending migrations')
+  })
+})
+
+describe('what reaches stdout', () => {
+  /**
+   * The console, watched from where a log actually lands.
+   *
+   * The streams themselves cannot be read here — the test runner installs its own
+   * `console` and routes it to a reporter rather than to a file descriptor — so the
+   * two methods are the seam: what a booted application calls, and where the CLI is
+   * supposed to have sent it.
+   */
+  const watchConsole = (): {
+    readonly toStdout: readonly string[]
+    readonly toStderr: readonly string[]
+    restore(): void
+  } => {
+    const toStdout: string[] = []
+    const toStderr: string[] = []
+    const original = { log: console.log, error: console.error }
+
+    console.log = (...values: readonly unknown[]) => {
+      toStdout.push(values.map(String).join(' '))
+    }
+    console.error = (...values: readonly unknown[]) => {
+      toStderr.push(values.map(String).join(' '))
+    }
+
+    return {
+      toStdout,
+      toStderr,
+      restore: () => {
+        console.log = original.log
+        console.error = original.error
+      },
+    }
+  }
+
+  it("keeps an application's own logging off stdout, so a listing stays pipeable", async () => {
+    const watched = watchConsole()
+
+    try {
+      expect(await run(['noisy'], { commands })).toBe(0)
+    } finally {
+      watched.restore()
+    }
+
+    expect(watched.toStdout).toEqual([])
+    expect(watched.toStderr).toEqual([
+      JSON.stringify({ level: 'info', message: 'Application ready' }),
+    ])
+
+    // The answer itself is untouched: only what the CLI did not write is moved.
+    expect(output.stdout).toBe('{"routes":[]}\n')
+  })
+
+  it('puts the console back the way it found it, because run() is called in process', async () => {
+    const watched = watchConsole()
+    const installed = console.log
+
+    try {
+      await run(['noisy'], { commands })
+
+      expect(console.log).toBe(installed)
+    } finally {
+      watched.restore()
+    }
   })
 })
 

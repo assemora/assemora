@@ -91,11 +91,11 @@ truth.
 ## What the registry publishes, and where an application turns it off
 
 `plugins` lives in the Schema Registry, so it reaches every reader of the registry —
-including `GET /api/_introspection`, which is declared with no authentication
-(`introspectionRoute` in `@assemora/openapi`). A plugin's `version` is therefore
-readable by anyone who can reach that endpoint: the exact version of a package the
-application did not write, which is how a published vulnerability is matched to a
-target.
+including `GET /api/_introspection` (`introspectionRoute` in `@assemora/openapi`),
+which requires a credential unless the application passes `{ public: true }`. A
+plugin's `version` is therefore readable by anyone who can reach that endpoint: the
+exact version of a package the application did not write, which is how a published
+vulnerability is matched to a target.
 
 The version stays, deliberately. It is what makes the entry provenance rather than a
 list of names — "which version of this did we install" is the first question anyone
@@ -106,16 +106,15 @@ resource, command and query the application has, which fingerprints it more prec
 than a version string does.
 
 What an application decides is who may read it. That endpoint is mounted by the
-application, not by this package, so an application that does not want its description
-public either leaves `introspectionRoute` unmounted or serves the registry behind
-authentication instead:
+application, not by this package, so an application that wants its description open
+says so — and one that wants no description at all leaves the route unmounted:
 
 ```ts
-route.get('/_introspection', {
-  auth: true,
-  response: json<Readonly<Record<string, readonly unknown[]>>>(),
-  handler: () => app.registry.describe(),
-})
+// Anybody may read it, deliberately.
+introspectionRoute(app.registry, { public: true })
+
+// Under the umbrella.
+assemora({ api: { introspection: 'public' }, modules: [...] })
 ```
 
 `installedPlugins(app.registry)` answers the same question in process — for a Studio

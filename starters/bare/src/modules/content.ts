@@ -12,5 +12,15 @@ import { module } from '@assemora/core'
 
 import { Article } from '../models/article.ts'
 import { Articles } from '../resources/articles.ts'
+// assemora:if pages
+import { readPage } from '../routes.ts'
+// assemora:end
 
-export const content = () => module('content').models(Article).resources(Articles)
+export const content = () =>
+  module('content')
+    .models(Article)
+    .resources(Articles)
+    // assemora:if pages
+    // The one thing this project serves to somebody who is not signed in.
+    .routes(readPage)
+// assemora:end

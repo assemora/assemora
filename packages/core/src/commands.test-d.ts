@@ -6,6 +6,7 @@ import { command } from './commands.js'
 import { createContainer, token } from './container.js'
 import { module } from './module.js'
 import { permitAll } from './ports.js'
+import type { CommandReach } from './registry.js'
 
 const PublishPage = command('pages.publish', {
   input: {
@@ -50,6 +51,18 @@ describe('command input inference', () => {
     const result = await app.commands.execute('pages.publish', {})
 
     expectTypeOf(result).toEqualTypeOf<unknown>()
+  })
+
+  it('resolves where a command may be called from, declared or not', () => {
+    expectTypeOf(PublishPage.reachableFrom).toEqualTypeOf<CommandReach>()
+
+    const SignIn = command('auth.login', {
+      reachableFrom: 'its own route',
+      input: { email: string() },
+      handle: async () => null,
+    })
+
+    expectTypeOf(SignIn.reachableFrom).toEqualTypeOf<CommandReach>()
   })
 })
 
@@ -112,5 +125,14 @@ describe('invalid usage does not compile', () => {
   it('rejects a lifecycle hook that is not callable', () => {
     // @ts-expect-error a hook is a function
     module('blog').boot('later')
+  })
+
+  it('rejects a reach nobody defined, so a typo cannot quietly publish a command', () => {
+    command('probe.reach', {
+      // @ts-expect-error the only restriction is 'its own route'
+      reachableFrom: 'route',
+      input: { title: string() },
+      handle: async () => null,
+    })
   })
 })

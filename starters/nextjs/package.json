@@ -13,6 +13,7 @@
     "start": "node scripts/dev.mjs start",
     "start:api": "assemora start",
     "start:web": "next start",
+    "seed": "node src/seed.ts",
     "build": "next build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "sdk:generate": "assemora sdk:generate",

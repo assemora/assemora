@@ -90,6 +90,11 @@ is a route that is documented, and that is a contract test rather than a manual 
 Hidden fields are left out of both. The document is published, and secrets stay out of
 what is published.
 
+The introspection route needs a credential — it hands back the registry itself, every
+model and every column of it, and the API Explorer that reads it is behind Studio's
+login. `introspectionRoute(app.registry, { public: true })` is the opt-out, and under
+`assemora()` it is `api: { introspection: 'public' }`.
+
 ## The SDK
 
 ```bash
@@ -118,10 +123,15 @@ Errors arrive as `SdkError`, carrying `code`, `status`, `details`, `fields` and
 ## Cookies, CSRF and CORS
 
 A browser session is a `httpOnly`, `SameSite=Strict`, `Secure` cookie. A **mutating
-request that arrives with cookies and no `Authorization` header** is a browser acting on
-an ambient credential — the one case another site can provoke — so it must repeat the
-CSRF cookie in a header, which a cross-site caller cannot read and therefore cannot
-repeat. That check lives in `@assemora/http` and is on by default under `assemora()`.
+request that arrives with cookies and no bearer credential** is a browser acting on an
+ambient credential — the one case another site can provoke — so it must repeat the CSRF
+cookie in a header, which a cross-site caller cannot read and therefore cannot repeat.
+That check lives in `@assemora/http` and is on by default under `assemora()`.
+
+The exemption is a `Bearer` token, not the presence of an `Authorization` header: an
+actor resolver reads a bearer token and falls through to the session cookie for
+anything else, so `Authorization: Basic …` beside a session cookie is still a request
+authenticated by the cookie, and is still asked for its CSRF token.
 
 CORS is registered only when you name origins, always as a list, never `*`. `origins`
 says who may *call* the API; who may *frame* it is `frontend.framedBy`, and they are

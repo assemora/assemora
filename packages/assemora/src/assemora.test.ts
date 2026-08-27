@@ -6,9 +6,10 @@
  * against a real application over `inject()` — not against the shape of the object
  * this package returns.
  */
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdtemp, rm, rmdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { AuditLog } from '@assemora/audit'
 import {
@@ -20,6 +21,7 @@ import {
   policy,
   Role,
   RolePermission,
+  Session,
   User,
   UserRole,
 } from '@assemora/auth'
@@ -27,14 +29,14 @@ import { clearRestorers, createLogger, type Logger, module, silentWriter } from 
 import { model, string, uuid } from '@assemora/data'
 import { createMemoryAdapter, type DatabaseAdapter } from '@assemora/database'
 import { clearRouteRegistry, type HttpServer, type InjectedResponse } from '@assemora/http'
-import { clearStorage, localStorage, media, useStorage } from '@assemora/media'
+import { clearStorage, localStorage, media, s3Storage, useStorage } from '@assemora/media'
 import { block, clearBlockRegistry, pages } from '@assemora/pages'
 import { clearResourceRegistry, resource, select, text } from '@assemora/resources'
 import { Revision } from '@assemora/revisions'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { type AssemoraApplication, assemora } from './assemora.js'
-import type { AssemoraOptions } from './options.js'
+import { type AssemoraOptions, defaultMediaRoot, resolve } from './options.js'
 
 const Note = model('notes', {
   id: uuid().primary().defaultRandom(),
@@ -173,13 +175,20 @@ afterEach(async () => {
   for (const built of running) await built.shutdown()
 
   running = []
+
+  // The default media directory is under the working directory, which for a test run
+  // is the repository. A test that uploads through it leaves nothing behind — and the
+  // directory above it goes only if this was the only thing in it.
+  await rm(defaultMediaRoot(), { recursive: true, force: true })
+  await rmdir(dirname(defaultMediaRoot())).catch(() => undefined)
 })
 
 describe('a model and a resource are the whole configuration (SPEC.md §124)', () => {
   it('publishes REST CRUD, OpenAPI, the API Explorer and a registry an SDK can read', async () => {
-    const built = build({ modules: [notes()] })
+    const built = build({ modules: [auth(), notes()] })
 
     await built.boot()
+    await administrator()
 
     const server = serverOf(built)
 
@@ -196,7 +205,12 @@ describe('a model and a resource are the whole configuration (SPEC.md §124)', (
     expect(paths).toContain('/api/notes')
     expect(paths).toContain('/api/notes/{id}')
 
-    const explorer = await server.inject({ method: 'GET', url: '/api/_introspection' })
+    const jar = cookiesOf(await signIn(server))
+    const explorer = await server.inject({
+      method: 'GET',
+      url: '/api/_introspection',
+      headers: asReader(jar),
+    })
     const described = explorer.json<Record<string, { name: string }[]>>()
 
     expect(described.resources?.map((entry) => entry.name)).toContain('notes')
@@ -205,6 +219,32 @@ describe('a model and a resource are the whole configuration (SPEC.md §124)', (
 
     // The SDK is generated from the same snapshot the explorer just served.
     expect(built.app.registry.describe()).toMatchObject({ resources: expect.anything() })
+  })
+
+  it('does not describe itself to a caller it cannot name (SPEC.md §85)', async () => {
+    const built = build({ modules: [auth(), notes()] })
+
+    await built.boot()
+
+    const server = serverOf(built)
+    const anonymous = await server.inject({ method: 'GET', url: '/api/_introspection' })
+
+    // The snapshot holds every model and every column of the auth schema, the API
+    // Explorer that reads it is behind Studio's login, and every other read on this
+    // surface denies by default. This one used to be the exception.
+    expect(anonymous.statusCode).toBe(401)
+    expect(anonymous.body).not.toContain('passwordHash')
+  })
+
+  it('describes itself to anybody only for an application that asked for that', async () => {
+    const built = build({ modules: [notes()], api: { introspection: 'public' } })
+
+    await built.boot()
+
+    const open = await serverOf(built).inject({ method: 'GET', url: '/api/_introspection' })
+
+    expect(open.statusCode).toBe(200)
+    expect(open.json<Record<string, { name: string }[]>>().resources?.[0]?.name).toBe('notes')
   })
 
   it('refuses a command sent by nobody, so the umbrella did not open the door', async () => {
@@ -526,6 +566,58 @@ describe('the agent endpoint (SPEC.md §68, §76)', () => {
     expect(tools.map((tool) => tool.name)).toContain('assemora.entries.create')
   })
 
+  it('counts tool calls against a ceiling, and against the default one by default', async () => {
+    // SPEC.md §76 lists rate limits among the seven things a tool call must pass, and
+    // the agent-facing half of §85's ceiling had nothing pinning it: raising
+    // MCP_RATE_LIMIT to ten million, or handing the endpoint a limiter of its own, left
+    // every test in the repository green. Both mutations fail here.
+    expect(resolve({ database: createMemoryAdapter(), mcp: true }).mcp?.rateLimit).toEqual({
+      max: 120,
+      windowMs: 60_000,
+    })
+
+    const built = build({
+      modules: [auth(), notes()],
+      mcp: { rateLimit: { max: 2, windowMs: 60_000 } },
+    })
+
+    await built.boot()
+
+    const agent = await createAgent({ name: 'content-agent', permissions: ['assemora.*'] })
+    const server = serverOf(built)
+    const headers = { authorization: `Bearer ${agent.token}` }
+
+    await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: rpc(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    })
+
+    const call = async (id: number): Promise<string> => {
+      const answered = await server.inject({
+        method: 'POST',
+        url: '/api/mcp',
+        headers,
+        payload: rpc(id, 'tools/call', { name: 'assemora.describe', arguments: {} }),
+      })
+
+      const result = answered.json<{ result: { isError?: boolean; content: { text: string }[] } }>()
+        .result
+
+      return result.isError === true
+        ? ((JSON.parse(result.content[0]?.text ?? '{}') as { error?: { code?: string } }).error
+            ?.code ?? 'UNKNOWN')
+        : 'ok'
+    }
+
+    expect([await call(2), await call(3), await call(4)]).toEqual(['ok', 'ok', 'RATE_LIMITED'])
+  })
+
   it('refuses an anonymous caller rather than running its tools as nobody', async () => {
     const built = build({ modules: [auth(), notes()], mcp: true })
 
@@ -587,6 +679,150 @@ describe('an MCP mutation is a proposal (SPEC.md §75, ADR-0020)', () => {
     // production state changes when a person applies the proposal, not before.
     expect(proposal.status).toBe('pending')
     expect(await Note.where('title', 'From an agent').first()).toBeNull()
+  })
+})
+
+describe('a session command is not an agent tool (SPEC.md §76, §85)', () => {
+  /** Everything a real agent does before it can call a tool. */
+  const speak = async (built: AssemoraApplication, mutations?: 'direct') => {
+    await built.boot()
+    await administrator()
+
+    const agent = await createAgent({
+      name: 'content-agent',
+      // Exactly what `tests/integration/v1.test.ts` grants a content agent, and no
+      // auth permission at all.
+      permissions: ['assemora.*', 'notes.read', 'changesets.propose'],
+    })
+    const server = serverOf(built)
+    const headers = { authorization: `Bearer ${agent.token}` }
+
+    await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: rpc(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    })
+
+    const call = async (name: string, args: Record<string, unknown>, id: number) => {
+      const answered = await server.inject({
+        method: 'POST',
+        url: '/api/mcp',
+        headers,
+        payload: rpc(id, 'tools/call', { name, arguments: args }),
+      })
+
+      return answered.json<{ result: { isError?: boolean; content: { text: string }[] } }>().result
+    }
+
+    return { server, headers, call, mutations }
+  }
+
+  it('does not list it, whatever an agent is allowed to do', async () => {
+    const { server, headers } = await speak(build({ modules: [auth(), notes()], mcp: true }))
+
+    const listed = await server.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      headers,
+      payload: rpc(2, 'tools/list'),
+    })
+
+    const names = listed
+      .json<{ result: { tools: { name: string }[] } }>()
+      .result.tools.map((tool) => tool.name)
+
+    expect(names).not.toContain('assemora.auth.login')
+    expect(names).not.toContain('assemora.auth.logout')
+    expect(names).toContain('assemora.entries.create')
+  })
+
+  it('answers a right password exactly as it answers a wrong one', async () => {
+    const { call } = await speak(build({ modules: [auth(), notes()], mcp: true }))
+
+    const right = await call(
+      'assemora.auth.login',
+      { email: 'ada@assemora.dev', password: PASSWORD },
+      2,
+    )
+    const wrong = await call(
+      'assemora.auth.login',
+      { email: 'ada@assemora.dev', password: 'nope' },
+      3,
+    )
+
+    // The oracle was exactly this difference: a wrong password answered
+    // INVALID_CREDENTIALS and a right one answered with a pending change set, at 120
+    // guesses a minute, from a credential holding no auth permission.
+    expect(right.isError).toBe(true)
+    expect(wrong.isError).toBe(true)
+    expect(right.content[0]?.text).toContain('UNKNOWN_TOOL')
+    expect(right.content[0]?.text).toEqual(wrong.content[0]?.text)
+  })
+
+  it('cannot be smuggled in as a proposed command either', async () => {
+    const { call } = await speak(build({ modules: [auth(), notes()], mcp: true }))
+
+    // `changesets.propose` takes the name of any command and previews it, so it is a
+    // third generic door beside the endpoint and the tool. The preview is refused.
+    const proposed = await call(
+      'assemora.changesets.propose',
+      {
+        title: 'nothing to see here',
+        commands: [
+          { command: 'auth.login', input: { email: 'ada@assemora.dev', password: PASSWORD } },
+        ],
+      },
+      2,
+    )
+
+    expect(proposed.isError).toBe(true)
+    expect(proposed.content[0]?.text).toContain('UNREACHABLE_COMMAND')
+    expect(proposed.content[0]?.text).not.toContain('ses_')
+  })
+
+  it('hands a zero-permission agent no session under `mutations: direct` either', async () => {
+    const { call } = await speak(
+      build({ modules: [auth(), notes()], mcp: { mutations: 'direct' } }),
+      'direct',
+    )
+
+    const called = await call(
+      'assemora.auth.login',
+      { email: 'ada@assemora.dev', password: PASSWORD },
+      2,
+    )
+
+    expect(called.isError).toBe(true)
+    // Under `direct` this used to answer with a live administrator session.
+    expect(called.content[0]?.text).not.toContain('ses_')
+    expect(await Session.count()).toBe(0)
+  })
+
+  it('leaves the route that was written for it working', async () => {
+    const built = build({ modules: [auth(), notes()], mcp: true })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+
+    const signedIn = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'ada@assemora.dev', password: PASSWORD },
+      headers: { 'user-agent': 'Mozilla/5.0 (a real browser)' },
+    })
+
+    expect(signedIn.statusCode).toBe(200)
+
+    // Taken off the request, not out of the body: the caller does not get to write
+    // the forensic record of its own sign-in (SPEC.md §85).
+    expect((await Session.firstOrFail()).userAgent).toBe('Mozilla/5.0 (a real browser)')
   })
 })
 
@@ -762,6 +998,49 @@ describe('the frontend the builder canvas frames (SPEC.md §59, §85)', () => {
 
   it('refuses "*" rather than producing a policy open to everybody', () => {
     expect(() => build({ modules: [notes()], origins: ['*'] })).toThrow(/not an origin/)
+  })
+
+  it('lets the browser render the images the media driver hands out (SPEC.md §63)', async () => {
+    const built = build({
+      modules: [auth(), media(), notes()],
+      media: {
+        storage: s3Storage({
+          bucket: 'assets',
+          region: 'auto',
+          accessKeyId: 'AKIAEXAMPLE',
+          secretAccessKey: 'not-a-real-key',
+          publicUrl: 'https://cdn.example.com/files',
+        }),
+      },
+    })
+
+    await built.boot()
+
+    const response = await serverOf(built).inject({ method: 'GET', url: '/api/health' })
+    const policy = String(response.headers['content-security-policy'])
+
+    // S3 is mandatory in v1 and its URLs are not this origin, so `img-src 'self'`
+    // alone blocks every image in Studio and in the preview. The origin is not an
+    // option somebody types: it is read off the driver this application configured,
+    // which is why it cannot become a way to open the policy generally.
+    expect(policy).toContain("img-src 'self' data: blob: https://cdn.example.com")
+    expect(policy).toContain("media-src 'self' https://cdn.example.com")
+    expect(policy).toContain("script-src 'self';")
+    expect(policy).not.toContain("script-src 'self' https://cdn.example.com")
+  })
+
+  it('keeps the narrow policy when the files are served from this origin', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [auth(), media(), notes()], media: { root } })
+
+    await built.boot()
+
+    const response = await serverOf(built).inject({ method: 'GET', url: '/api/health' })
+
+    // `media: { root }` serves from `<prefix>/media`, which `'self'` already covers.
+    expect(String(response.headers['content-security-policy'])).toContain(
+      "img-src 'self' data: blob:;",
+    )
   })
 
   it('refuses an origin that would add directives to the policy', async () => {
@@ -1089,10 +1368,6 @@ describe('what the CLI is handed (ADR-0021)', () => {
 })
 
 describe('a configuration that cannot work is refused where it was written', () => {
-  it('refuses media() with nowhere to put the bytes', () => {
-    expect(() => build({ modules: [auth(), media(), notes()] })).toThrow(/storage/)
-  })
-
   it('accepts media() when the application registered a driver itself', async () => {
     const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
 
@@ -1118,6 +1393,76 @@ describe('a configuration that cannot work is refused where it was written', () 
 
     expect(() => build({ modules: [media(), notes()], api: false, media: { root } })).toThrow(
       /api: false/,
+    )
+  })
+
+  it('refuses the default media directory too when there is no route to serve it', () => {
+    // The same URLs, and the same reason: `media()` with nothing said about storage
+    // now builds a local driver whose URLs point at `<prefix>/media`, which "api:
+    // false" does not mount.
+    expect(() => build({ modules: [media(), notes()], api: false })).toThrow(/api: false/)
+  })
+})
+
+describe('the configuration SPEC.md §9 writes, written exactly as §9 writes it', () => {
+  it('builds, boots and stores a file, with nothing said about where the bytes go', async () => {
+    // §9 is "the reference against which architectural decisions are made", and this
+    // package exists to implement it (ADR-0022). Listing media() among the modules and
+    // passing no second "media" option is how §9 writes it, so it has to work: local
+    // storage is mandatory in v1 (SPEC.md §63), and a project directory is where a
+    // CMS keeps it until somebody says otherwise.
+    const built = build({
+      modules: [auth(), pages({ blocks: [Hero] }), media(), notes()],
+      // §9 writes `studio: true`, which resolves the published bundle at boot; this
+      // repository deliberately does not install it, so the bundle is named here and
+      // the clause under test — media() with nothing said about storage — is untouched.
+      studio: { root: await bundle('<!doctype html><title>Studio</title>') },
+      api: true,
+      mcp: true,
+    })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+    const uploaded = await upload(server, jar)
+
+    expect(uploaded.statusCode).toBe(200)
+
+    const url = uploaded.json<{ url: string }>().url
+
+    expect(url.startsWith('/api/media/')).toBe(true)
+
+    const file = await server.inject({ method: 'GET', url, headers: asReader(jar) })
+
+    expect(file.statusCode).toBe(200)
+    expect([...file.rawBody]).toEqual(PNG)
+
+    // Written where the umbrella said it would be, and not anywhere else.
+    expect(existsSync(join(defaultMediaRoot(), url.replace('/api/media/', '')))).toBe(true)
+  })
+
+  it('says out loud that the bytes are on a disk this process happens to have', () => {
+    const written: { message: string; fields: unknown }[] = []
+    const noticed: Logger = {
+      ...quiet,
+      warn: (message, fields) => written.push({ message, fields }),
+    }
+
+    running.push(
+      assemora({
+        modules: [auth(), media(), notes()],
+        database: createMemoryAdapter(),
+        logger: noticed,
+      }),
+    )
+
+    // A container replaces that directory on the next deploy, and an application that
+    // meant S3 has to be able to see that it did not get it (SPEC.md §63).
+    expect(written.map((line) => line.message).join('\n')).toMatch(/uploaded files/i)
+    expect(written.some((line) => JSON.stringify(line.fields).includes(defaultMediaRoot()))).toBe(
+      true,
     )
   })
 })

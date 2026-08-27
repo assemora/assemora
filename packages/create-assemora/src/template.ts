@@ -16,6 +16,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { ScaffoldError } from './error.js'
+import { MANIFEST_FILE } from './exclusions.js'
 import { FEATURES, type Feature, isFeature } from './features.js'
 
 /** What `pnpm create assemora my-project` copies when nobody says otherwise. */
@@ -26,9 +27,6 @@ const PACKED = 'templates'
 
 /** Inside the repository. */
 const WORKSPACE = 'starters'
-
-/** What a template says about itself, and the one file that is never copied. */
-export const MANIFEST_FILE = 'template.json'
 
 export type FeatureManifest = {
   /**

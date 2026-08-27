@@ -10,8 +10,14 @@
  * validation, authorization, the transaction, revisions and audit before a handler
  * sees anything, and authorization denies by default (SPEC.md §12, §50). An endpoint
  * exists for `auth.users.create`; reaching it without the permission answers 403.
+ *
+ * The exception is a command that has none of that floor because it is *publicly*
+ * authorized — a login is callable by somebody who is nobody yet. Such a command
+ * declares `reachableFrom: 'its own route'`, and this generator skips it: the checks
+ * that make it safe live in the route written for it, and a generic alias would be a
+ * second door past all of them (SPEC.md §85).
  */
-import type { CommandBus, SchemaRegistry } from '@assemora/core'
+import type { CommandBus, CommandReach, SchemaRegistry } from '@assemora/core'
 import { fail, type JsonSchema, ok, type Schema } from '@assemora/schema'
 
 import type { Route } from './route.js'
@@ -22,6 +28,7 @@ export type CommandEndpoint = {
   readonly description?: string
   readonly input: JsonSchema
   readonly module?: string
+  readonly reachableFrom?: CommandReach
 }
 
 /**
@@ -51,9 +58,14 @@ const isCommandEndpoint = (entry: unknown): entry is CommandEndpoint => {
   return typeof candidate?.name === 'string' && typeof candidate.input === 'object'
 }
 
-/** Reads the command descriptions out of the registry, whoever put them there. */
+/**
+ * Reads the command descriptions out of the registry, whoever put them there —
+ * except the ones that said a route written for them is the only way in.
+ */
 export const commandEndpoints = (registry: SchemaRegistry): CommandEndpoint[] =>
-  (registry.describe().commands ?? []).filter(isCommandEndpoint)
+  (registry.describe().commands ?? [])
+    .filter(isCommandEndpoint)
+    .filter((endpoint) => endpoint.reachableFrom !== 'its own route')
 
 export const commandRoutes = (
   endpoints: readonly CommandEndpoint[],

@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "assemora dev",
     "start": "assemora start",
+    "seed": "node src/seed.ts",
     "build": "vite build --config app/vite.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "assemora db:generate",

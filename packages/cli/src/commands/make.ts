@@ -314,7 +314,11 @@ const moduleFile = (name: string): Generated => {
 
   return {
     file: join('modules', `${moduleName}.ts`),
-    nextStep: `Register it with createApplication({ modules: [${factory}()] }).`,
+    // `assemora()`, not `createApplication()`: the project this same CLI scaffolds
+    // calls the umbrella in `src/app.ts` and contains the word `createApplication`
+    // nowhere at all, so the other name sends a reader looking for something that is
+    // not there (ADR-0022).
+    nextStep: `Register it with assemora({ modules: [${factory}()] }) in src/app.ts.`,
     contents: `/**
  * The ${moduleName} module.
  *

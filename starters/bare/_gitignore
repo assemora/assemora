@@ -2,7 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Real credentials. `.env.example` documents every variable this project reads.
+# Real credentials. `.env.example` documents every variable this project reads, and
+# the seed writes the administrator's password here itself rather than to a stream.
 .env
 
 # `.assemora/` is deliberately *not* ignored. `assemora db:generate` diffs the schema

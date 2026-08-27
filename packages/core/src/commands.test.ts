@@ -294,3 +294,68 @@ describe('command definition', () => {
     expect(Bare.description).toBeUndefined()
   })
 })
+
+describe('where a command may be called from (SPEC.md §85)', () => {
+  const SignIn = command('auth.login', {
+    description: 'Exchanges an email and a password for a session',
+    reachableFrom: 'its own route',
+    input: { email: string() },
+    handle: async () => ({ token: 'ses_secret' }),
+  })
+
+  it('is reachable from anywhere unless the command says otherwise', () => {
+    expect(PublishPage.reachableFrom).toBe('anywhere')
+    expect(SignIn.reachableFrom).toBe('its own route')
+  })
+
+  it('tells the registry, because the generators read the registry and not the bus', () => {
+    const { bus, registry } = harness()
+    bus.register(SignIn, 'auth')
+
+    // The generated HTTP endpoints and the MCP tool list are both built from this
+    // descriptor. A declaration the registry does not carry is a declaration no
+    // generator can honour (ADR-0002).
+    expect(registry.find('commands', 'auth.login')).toMatchObject({
+      reachableFrom: 'its own route',
+    })
+  })
+
+  it('says nothing about a command that made no such declaration', () => {
+    const { bus, registry } = harness()
+    bus.register(PublishPage, 'pages')
+
+    expect(registry.find('commands', 'pages.publish')).not.toHaveProperty('reachableFrom')
+  })
+
+  it('does not stop the bus: the route it was written for calls the same command', async () => {
+    const { bus } = harness({ authorization: permitAll() })
+    bus.register(SignIn, 'auth')
+
+    // The declaration removes generated doors, never the command itself. The route
+    // written for it reaches the bus by name like every other caller.
+    await expect(bus.execute('auth.login', { email: 'ada@assemora.dev' })).resolves.toEqual({
+      token: 'ses_secret',
+    })
+  })
+
+  it('cannot be previewed, because a preview is not a call through that route', async () => {
+    const { bus } = harness({ authorization: permitAll() })
+    bus.register(SignIn, 'auth')
+    bus.register(PublishPage, 'pages')
+
+    // `changesets.propose` previews whatever commands it is handed, so a preview is
+    // the third generic door: without this, an agent holding only `changesets.propose`
+    // proposes `auth.login` and reads the password out of whether the preview
+    // succeeded (SPEC.md §85).
+    await expect(bus.dryRun('auth.login', { email: 'ada@assemora.dev' })).rejects.toMatchObject({
+      code: 'UNREACHABLE_COMMAND',
+    })
+
+    await expect(
+      bus.dryRunAll([
+        { command: 'pages.publish', input: { id: PAGE_ID } },
+        { command: 'auth.login', input: { email: 'ada@assemora.dev' } },
+      ]),
+    ).rejects.toMatchObject({ code: 'UNREACHABLE_COMMAND' })
+  })
+})

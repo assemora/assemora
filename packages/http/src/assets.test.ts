@@ -2,10 +2,11 @@
  * Serving a single-page application (SPEC.md §85).
  *
  * The cases here are the ones static serving gets wrong: a path that climbs out of
- * the root, a document cached past a deploy, and a file whose type a browser would
- * otherwise guess.
+ * the root — lexically or through a symlink — a dotfile that shares the directory, a
+ * document cached past a deploy, and a file whose type a browser would otherwise
+ * guess.
  */
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -13,15 +14,29 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { assetCacheControl, assetContentType, findAsset, resolveAsset } from './assets.js'
 
 let root: string
+/** What lives beside the bundle. A deploy directory, a checkout, a home directory. */
+let outside: string
 
 beforeAll(async () => {
-  root = await mkdtemp(join(tmpdir(), 'assemora-assets-'))
+  outside = await mkdtemp(join(tmpdir(), 'assemora-outside-'))
+  root = join(outside, 'bundle')
 
+  await mkdir(root, { recursive: true })
   await writeFile(join(root, 'index.html'), '<!doctype html><title>Studio</title>')
   await mkdir(join(root, 'assets'), { recursive: true })
   await writeFile(join(root, 'assets', 'main-8f3a1c2b.js'), 'console.log(1)')
   await writeFile(join(root, 'assets', 'style.css'), 'body{}')
   await writeFile(join(root, 'notes.rtf'), 'nothing a browser should render')
+
+  // The two shapes a real directory grows: a dotfile that ended up beside the bundle,
+  // and symlinks — one to a single file, one to the whole parent, which is what a
+  // `public/` folder or a pnpm `node_modules` looks like.
+  await writeFile(join(root, '.env'), 'INSIDE_SECRET=1')
+  await writeFile(join(outside, 'secret.txt'), 'SUPER SECRET OUTSIDE ROOT')
+  await symlink(join(outside, 'secret.txt'), join(root, 'link.txt'))
+  await symlink(outside, join(root, 'up'))
+  // A symlink that stays inside is ordinary, and must keep working.
+  await symlink(join(root, 'assets', 'style.css'), join(root, 'aliased.css'))
 })
 
 describe('finding the file a request means', () => {
@@ -75,6 +90,43 @@ describe('a path may not leave the directory', () => {
 
   it('allows an ordinary nested path', () => {
     expect(resolveAsset(root, 'assets/style.css')).toBe(join(root, 'assets', 'style.css'))
+  })
+})
+
+describe('a symlink may not leave the directory either (SPEC.md §85)', () => {
+  it('refuses a file linked in from outside the root', async () => {
+    // The lexical check passes — `link.txt` is inside the root — and `stat` and
+    // `createReadStream` then follow the link out. Only the resolved real path says so.
+    expect(await findAsset({ path: '/preview', root, fallback: false }, 'link.txt')).toBeUndefined()
+  })
+
+  it('refuses a path that climbs out through a linked directory', async () => {
+    expect(
+      await findAsset({ path: '/preview', root, fallback: false }, 'up/secret.txt'),
+    ).toBeUndefined()
+  })
+
+  it('still serves a symlink that stays inside, which is what a bundle is made of', async () => {
+    const found = await findAsset({ path: '/preview', root, fallback: false }, 'aliased.css')
+
+    expect(found?.contentType).toBe('text/css; charset=utf-8')
+  })
+})
+
+describe('a dotfile is never part of a bundle (SPEC.md §85)', () => {
+  it('refuses one sitting beside the entry document', () => {
+    // `.env`, `.git/config`, `.npmrc`: the files a directory grows around a build, and
+    // the ones an application never meant to publish by pointing a mount at it.
+    expect(() => resolveAsset(root, '.env')).toThrow(/No such file/)
+  })
+
+  it('refuses one in a directory below it', () => {
+    expect(() => resolveAsset(root, 'assets/.env')).toThrow(/No such file/)
+    expect(() => resolveAsset(root, '.git/config')).toThrow(/No such file/)
+  })
+
+  it('answers with nothing rather than the file, through the whole lookup', async () => {
+    expect(await findAsset({ path: '/preview', root, fallback: false }, '.env')).toBeUndefined()
   })
 })
 

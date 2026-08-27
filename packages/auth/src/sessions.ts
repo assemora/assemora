@@ -24,6 +24,17 @@ export type StartedSession = {
 
 export type SessionDetails = {
   readonly userAgent?: string
+  /**
+   * Where the sign-in came from, when the host genuinely knows.
+   *
+   * `auth.login` does not fill it, and deliberately does not accept one either: the
+   * process cannot know the client's address on its own. Behind any proxy the socket
+   * peer is the proxy, and believing `X-Forwarded-For` without a configured chain of
+   * trusted hops is a value the client chose. Closing that means a trusted-proxy
+   * option on `createHttpServer` and an `ipAddress` on the context; until then an
+   * empty column is the truthful answer, and this stays for a host that has already
+   * resolved the address by other means (SPEC.md §85).
+   */
   readonly ipAddress?: string
   readonly ttlMs?: number
 }

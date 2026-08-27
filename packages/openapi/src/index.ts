@@ -13,4 +13,9 @@ export {
   type RegistrySnapshot,
   toOpenApiPath,
 } from './document.js'
-export { introspectionRoute, type OpenApiRouteOptions, openApiRoute } from './route.js'
+export {
+  type IntrospectionRouteOptions,
+  introspectionRoute,
+  type OpenApiRouteOptions,
+  openApiRoute,
+} from './route.js'

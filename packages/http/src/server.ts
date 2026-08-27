@@ -67,6 +67,16 @@ export type HttpServerOptions = {
    */
   readonly security?: {
     readonly frameAncestors?: readonly string[]
+    /**
+     * Origins a stored file may be rendered from, beside this one (SPEC.md §63, §85).
+     *
+     * S3-compatible storage is mandatory in v1 and its URLs are a bucket or a CDN, so
+     * `img-src 'self'` alone is a policy that blocks every image the media library
+     * hands out. These entries widen `img-src` and `media-src`, and nothing else: an
+     * origin trusted to hold an upload has not thereby been trusted to run a script
+     * here.
+     */
+    readonly mediaSources?: readonly string[]
     /** Replaces the generated policy outright, for an application with its own. */
     readonly contentSecurityPolicy?: string
   }
@@ -164,11 +174,20 @@ const policyFor = (security: HttpServerOptions['security']): string => {
       ? "'none'"
       : security.frameAncestors.join(' ')
 
+  // Where the stored files are. Named in the two directives that render them and in
+  // no other, so an application that serves its media from a bucket keeps the same
+  // policy everywhere else (SPEC.md §63).
+  const media = security?.mediaSources ?? []
+  const from = media.length === 0 ? '' : ` ${media.join(' ')}`
+
   return [
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob:${from}`,
+    // Only when there is something to say: with no entries `default-src 'self'` is
+    // already the answer, and repeating it would be a directive that says nothing.
+    ...(media.length === 0 ? [] : [`media-src 'self'${from}`]),
     "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -221,11 +240,29 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
   const csrfCookie = options.csrf?.cookie ?? 'assemora_csrf'
   const csrfHeader = options.csrf?.header ?? 'x-csrf-token'
 
-  /** Only a cookie-carrying mutation is exposed; a bearer token is never ambient. */
+  /**
+   * Only a cookie-carrying mutation is exposed; a bearer token is never ambient.
+   *
+   * The exemption asks whether a bearer credential was *presented*, not whether the
+   * header is there at all. An actor resolver reads a bearer token and falls through
+   * to the session cookie for anything else, so `Authorization: Basic …` beside a
+   * session cookie is a request authenticated by the ambient credential — exactly the
+   * one another site can provoke. Two predicates that disagree about what
+   * "authenticated by a header" means is how such a request gets in with no CSRF
+   * token at all (SPEC.md §85).
+   */
+  const bearerPresented = (authorization: string | undefined): boolean => {
+    if (authorization === undefined) return false
+
+    const [scheme, ...rest] = authorization.split(' ')
+
+    return scheme?.toLowerCase() === 'bearer' && rest.join(' ').trim() !== ''
+  }
+
   const csrfFails = (method: HttpMethod, headers: Readonly<Record<string, string>>): boolean => {
     if (options.csrf === undefined) return false
     if (method === 'get') return false
-    if (headers.cookie === undefined || headers.authorization !== undefined) return false
+    if (headers.cookie === undefined || bearerPresented(headers.authorization)) return false
 
     const sent = headers[csrfHeader]
     const expected = cookieValue(headers.cookie, csrfCookie)
@@ -242,6 +279,10 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
       source: definition.source ?? 'rest',
       requestId,
       ...(actor === undefined ? {} : { actor }),
+      // Read off the request rather than out of a body, so a command that records it
+      // records what arrived instead of what the caller asked to be remembered
+      // (SPEC.md §85).
+      ...(headers['user-agent'] === undefined ? {} : { userAgent: headers['user-agent'] }),
     })
 
     return runInContext(context, async () => {

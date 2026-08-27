@@ -15,9 +15,11 @@ pnpm --filter @assemora/example-company build   # the site bundle
 pnpm --filter @assemora/example-company dev
 ```
 
-Three pages are seeded and published. `/preview` is the site; `/preview?slug=team` and
-`/preview?slug=careers` are the other two. Studio is at `/studio`, and the boot log
-prints the administrator's password.
+Three pages are seeded and published. `/preview` is the site — no session, no query
+parameter; `/preview?slug=team` and `/preview?slug=careers` are the other two. Studio
+is at `/studio`, and the administrator's password is written into `.env` as
+`ASSEMORA_SEED_PASSWORD` rather than printed. Against a real database nothing is
+seeded until you type `pnpm seed`.
 
 ## Read in this order
 

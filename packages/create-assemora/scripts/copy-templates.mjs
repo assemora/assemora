@@ -6,16 +6,25 @@
  * the other at pack time. `templates/` is machine-made and gitignored; every edit
  * belongs in `starters/`.
  *
+ * What it must not carry is decided by `src/exclusions.ts`, which is the *only* place
+ * that decides it. This script used to keep a second copy of the list, and the two
+ * drifted exactly as two lists do: neither had `.next` in it, so a built checkout
+ * packed 40 MB of Next.js output into the tarball and scaffolded it into every
+ * project made from it.
+ *
  * It is `.mjs` rather than TypeScript on purpose: it has to run from a tarball's
  * `prepack` with nothing built, and this package has no build of its own to depend on
- * at that point.
+ * at that point. Node runs the `.ts` module it imports without one either.
+ *
+ * `node scripts/copy-templates.mjs [starters] [templates]` — the two directories
+ * default to the ones a checkout has, and are arguments so that a test can point it
+ * somewhere harmless.
  */
 import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** Anything a checkout of a workspace package accumulates that is not part of it. */
-const NEVER_COPIED = new Set(['node_modules', 'dist', '.turbo', '.assemora', 'coverage'])
+import { templateExclusions } from '../src/exclusions.ts'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 
@@ -42,18 +51,25 @@ const repositoryRoot = async () => {
   }
 }
 
-const root = await repositoryRoot()
+const [givenStarters, givenTemplates] = process.argv.slice(2)
 
-if (root === undefined) {
-  console.error(
-    'create-assemora: no pnpm-workspace.yaml above this package, so starters/ cannot be found. ' +
-      'This script only runs inside a checkout of the framework.',
-  )
-  process.exit(1)
+const defaultStarters = async () => {
+  const root = await repositoryRoot()
+
+  if (root === undefined) {
+    console.error(
+      'create-assemora: no pnpm-workspace.yaml above this package, so starters/ cannot be found. ' +
+        'This script only runs inside a checkout of the framework.',
+    )
+    process.exit(1)
+  }
+
+  return join(root, 'starters')
 }
 
-const starters = join(root, 'starters')
-const templates = join(packageRoot, 'templates')
+const starters = givenStarters === undefined ? await defaultStarters() : resolve(givenStarters)
+const templates =
+  givenTemplates === undefined ? join(packageRoot, 'templates') : resolve(givenTemplates)
 
 if (!(await exists(starters))) {
   console.error(`create-assemora: ${starters} does not exist, so there is nothing to pack.`)
@@ -69,7 +85,7 @@ const entries = await readdir(starters, { withFileTypes: true })
 const copied = []
 
 for (const entry of entries) {
-  if (!entry.isDirectory() || NEVER_COPIED.has(entry.name)) continue
+  if (!entry.isDirectory()) continue
 
   const source = join(starters, entry.name)
 
@@ -78,9 +94,25 @@ for (const entry of entries) {
     continue
   }
 
+  const excluded = await templateExclusions(source)
+
   await cp(source, join(templates, entry.name), {
     recursive: true,
-    filter: (path) => !NEVER_COPIED.has(basename(path)) && !path.endsWith('.tsbuildinfo'),
+    // `cp` asks about the starter root itself as the empty path, and about a
+    // directory before its contents — refusing a directory skips everything under it,
+    // so `node_modules` is never walked. The manifest is not excluded here: a packed
+    // template still has to be able to say what its optional parts are, and it is the
+    // scaffolder that drops it.
+    filter: async (path) => {
+      const inside = relative(source, path)
+
+      if (inside === '') return true
+
+      return !excluded(
+        sep === '/' ? inside : inside.split(sep).join('/'),
+        (await stat(path)).isDirectory(),
+      )
+    },
   })
 
   copied.push(entry.name)

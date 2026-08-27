@@ -12,6 +12,8 @@
  * is broken without them. An application that wants a different answer builds its
  * own with `createApplication()`, which stays fully supported.
  */
+import { resolve as resolvePath } from 'node:path'
+
 import type { Logger, ModuleBuilder } from '@assemora/core'
 import type { DatabaseAdapter } from '@assemora/database'
 import type { MutationMode } from '@assemora/mcp'
@@ -46,6 +48,19 @@ export type ApiOptions = {
   readonly crud?: boolean
   /** `/openapi.json` and `/_introspection` (SPEC.md §44, §45). On by default. */
   readonly documentation?: boolean
+  /**
+   * Who may read `/_introspection`. `authenticated`.
+   *
+   * The snapshot is not the API a caller may use — that is `/openapi.json`, with the
+   * hidden fields already gone — but the registry itself: every model, every column of
+   * the auth schema, every command and query, including the ones this caller could
+   * never reach. The API Explorer that reads it sits behind Studio's login, and every
+   * other read on this surface denies by default (SPEC.md §85).
+   *
+   * `public` is the deliberate opt-out, for the application whose description is meant
+   * to be open — a sandbox, a documentation site.
+   */
+  readonly introspection?: 'authenticated' | 'public'
 }
 
 export type StudioOptions = {
@@ -187,6 +202,20 @@ export type AssemoraOptions = {
   readonly changeSets?: boolean
 }
 
+/**
+ * Where uploaded bytes go when the application says nothing (SPEC.md §9, §63).
+ *
+ * SPEC.md §9 lists `media()` among the modules and passes no second option, so that
+ * has to be a working application: local storage is mandatory in v1, and a directory
+ * in the project is where a CMS keeps it. Read at call time rather than at import,
+ * because it is relative to the project the process was started in.
+ *
+ * It is a disk this process happens to have, which a container replaces on the next
+ * deploy — `assemora()` says so out loud, once, so an application that meant S3 can
+ * see that it did not get it.
+ */
+export const defaultMediaRoot = (): string => resolvePath(process.cwd(), 'storage', 'media')
+
 export const DEFAULT_PREFIX = '/api'
 export const DEFAULT_STUDIO_PATH = '/studio'
 export const DEFAULT_PREVIEW_PATH = '/preview'
@@ -204,6 +233,7 @@ export type ResolvedApi = {
   readonly rateLimit: RateWindow
   readonly crud: boolean
   readonly documentation: boolean
+  readonly introspection: 'authenticated' | 'public'
 }
 
 export type ResolvedStudio = {
@@ -258,6 +288,7 @@ const apiOf = (value: AssemoraOptions['api']): ResolvedApi | undefined => {
     rateLimit: given.rateLimit ?? API_RATE_LIMIT,
     crud: given.crud ?? true,
     documentation: given.documentation ?? true,
+    introspection: given.introspection ?? 'authenticated',
   }
 }
 

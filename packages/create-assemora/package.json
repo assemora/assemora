@@ -28,7 +28,7 @@
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepack": "node scripts/copy-templates.mjs",
+    "prepack": "node --disable-warning=ExperimentalWarning scripts/copy-templates.mjs",
     "clean": "rm -rf dist templates *.tsbuildinfo"
   }
 }

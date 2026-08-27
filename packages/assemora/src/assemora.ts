@@ -41,13 +41,14 @@ import { currentStorage, localStorage, type StorageDriver, useStorage } from '@a
 import { introspectionRoute, openApiRoute } from '@assemora/openapi'
 import { revisions, revisionsModule } from '@assemora/revisions'
 
-import { AUTH_ROUTE_COMMANDS, authRoutes, CSRF_COOKIE } from './auth-routes.js'
+import { authRoutes, CSRF_COOKIE } from './auth-routes.js'
 import { healthRoutes } from './health-routes.js'
 import { type MountedMcp, mcpRoutes } from './mcp-routes.js'
 import { mediaRoutes } from './media-routes.js'
 import {
   type AssemoraOptions,
   DEFAULT_PORT,
+  defaultMediaRoot,
   type MediaOptions,
   type ResolvedApi,
   resolve,
@@ -125,11 +126,64 @@ const closable = (adapter: DatabaseAdapter): { close(): Promise<void> } | undefi
  * `media.list` and `media.upload` answer with `driver.url(path)`, and the bytes are
  * served from `<prefix>/media`. Two strings kept the same by hand is how every image
  * in Studio becomes a 404.
+ *
+ * With nothing said at all it is still a local driver, pointed at the project's own
+ * `storage/media`: SPEC.md §9 lists `media()` among the modules and passes no second
+ * option, and the reference configuration of the specification has to be one that runs.
  */
-const storageFor = (media: MediaOptions, prefix: string): StorageDriver =>
-  'storage' in media
+const storageFor = (media: MediaOptions | undefined, prefix: string): StorageDriver =>
+  media !== undefined && 'storage' in media
     ? media.storage
-    : localStorage({ root: media.root, baseUrl: `${prefix}/media` })
+    : localStorage({ root: media?.root ?? defaultMediaRoot(), baseUrl: `${prefix}/media` })
+
+/**
+ * The origin a stored file is rendered from, when it is not this one (SPEC.md §63).
+ *
+ * S3-compatible storage is mandatory in v1, and a bucket or a CDN is a different
+ * origin — so `img-src 'self'` blocks every image in Studio and in the preview. The
+ * policy has to name it, and this is where the name comes from: the driver the
+ * application configured, asked what URL it hands a browser. Nobody types this string
+ * into an option, which is what keeps it from becoming a general way to widen the
+ * policy.
+ */
+const mediaOriginOf = (driver: StorageDriver, logger: Logger): string | undefined => {
+  const url = (() => {
+    try {
+      // Any key will do: only the origin of the answer is read, and `url()` is a pure
+      // string operation for both drivers that ship (the S3 one signs, in memory).
+      return driver.url('assemora-probe.png')
+    } catch {
+      return undefined
+    }
+  })()
+
+  if (url === undefined) return undefined
+
+  const origin = (() => {
+    try {
+      return new URL(url).origin
+    } catch {
+      // A relative URL is this origin, which `'self'` already covers.
+      return undefined
+    }
+  })()
+
+  if (origin === undefined) return undefined
+
+  if (!ORIGIN.test(origin)) {
+    // Never assembled from a string this package has not proved is an origin: a CSP
+    // source list is space-separated and `;`-terminated, so anything else would append
+    // directives to the policy (SPEC.md §85).
+    logger.warn('The media driver serves from something that is not a browser origin', {
+      origin,
+      effect: 'the content security policy is left as it is, and those files may not render',
+    })
+
+    return undefined
+  }
+
+  return origin
+}
 
 /**
  * Who may frame this application's pages (SPEC.md §59, §85).
@@ -215,7 +269,12 @@ const refuseImpossible = (
       )
     }
 
-    if (options.media !== undefined && 'root' in options.media) {
+    // Either an explicit local root, or the default one the media module gets when
+    // nothing was said: both build URLs into routes that "api: false" never mounts.
+    if (
+      (options.media !== undefined && 'root' in options.media) ||
+      (options.media === undefined && declared.has('media') && !hasStorage())
+    ) {
       fail(
         '"media: { root }" builds URLs that point at the media routes this application serves, and "api: false" means it serves none — every stored URL would point at nothing. Pass a driver of your own with "media: { storage }", or set "api: true".',
       )
@@ -229,12 +288,6 @@ const refuseImpossible = (
   ) {
     fail(
       `Studio and the frontend are both asked for at "${settings.studio.path}", and one origin cannot serve two bundles from one path. Give one of them a path of its own.`,
-    )
-  }
-
-  if (declared.has('media') && options.media === undefined && !hasStorage()) {
-    fail(
-      'The media module has nowhere to put the bytes: nothing was passed as "media", and no storage driver is registered. Set "media: { root }", pass "media: { storage }", or call useStorage() before assemora().',
     )
   }
 
@@ -309,6 +362,10 @@ const serve = (
   modules: ReadonlySet<string>,
   isReady: () => boolean,
 ): Served => {
+  // Read off the driver this application actually configured, so a bucket or a CDN is
+  // named in `img-src` and nothing else is (SPEC.md §63, §85).
+  const mediaOrigin = hasStorage() ? mediaOriginOf(currentStorage(), app.logger) : undefined
+
   const server = createHttpServer({
     registry: app.registry,
     commands: app.commands,
@@ -325,7 +382,10 @@ const serve = (
     // Passed unconditionally: the option is optional in createHttpServer, and leaving
     // it out turns CSRF off entirely (SPEC.md §85).
     csrf: { cookie: CSRF_COOKIE },
-    security: { frameAncestors: frameAncestorsFor(settings) },
+    security: {
+      frameAncestors: frameAncestorsFor(settings),
+      ...(mediaOrigin === undefined ? {} : { mediaSources: [mediaOrigin] }),
+    },
   })
 
   const endpoint =
@@ -346,19 +406,13 @@ const serve = (
 
   if (api.crud) server.mountResources()
 
-  // Every command except the ones this package fronts with a route of its own.
+  // Every command that did not say a route written for it is the only way in.
   // Mounting the rest is safe by construction — the bus validates and authorizes
-  // first, and authorization denies by default — but a publicly authorized command
-  // behind a hardened route would have a second, unhardened door beside it
-  // (AUTH_ROUTE_COMMANDS, SPEC.md §85).
-  server.mount(
-    ...commandRoutes(
-      commandEndpoints(app.registry).filter(
-        (endpoint) => !AUTH_ROUTE_COMMANDS.includes(endpoint.name),
-      ),
-      app.commands,
-    ),
-  )
+  // first, and authorization denies by default — and the exceptions exclude
+  // themselves, because `commandEndpoints()` reads the declaration off the registry.
+  // A list of names kept here would have gone stale the moment a package added a
+  // publicly authorized command (SPEC.md §85).
+  server.mount(...commandRoutes(commandEndpoints(app.registry), app.commands))
 
   server.mountQueries()
 
@@ -380,7 +434,10 @@ const serve = (
             },
             prefix: api.prefix,
           }),
-          introspectionRoute(app.registry),
+          // Authenticated unless the application said otherwise: the snapshot is the
+          // internal shape of the application, not the API a caller may use, and the
+          // API Explorer that reads it is behind Studio's login (SPEC.md §45, §85).
+          introspectionRoute(app.registry, { public: api.introspection === 'public' }),
         ]
       : []),
   )
@@ -414,11 +471,25 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   // registration is user code, and user code may query.
   useAdapter(options.database)
 
-  if (options.media !== undefined) {
-    // The prefix is always there when the driver's URLs need it: `media: { root }`
-    // without an API is refused above, and a driver the application built decides its
-    // own URLs.
+  // The module needs somewhere to put bytes whether or not the application said where
+  // (SPEC.md §9). A driver registered with useStorage() before this call is left
+  // alone, because an application that built its own has already answered.
+  const needsDefaultStorage = options.media === undefined && declared.has('media') && !hasStorage()
+
+  if (options.media !== undefined || needsDefaultStorage) {
+    // The prefix is always there when the driver's URLs need it: a local root without
+    // an API is refused above, and a driver the application built decides its own URLs.
     useStorage(storageFor(options.media, settings.api?.prefix ?? ''))
+  }
+
+  if (needsDefaultStorage) {
+    // Not a refusal, and not silence either. A container replaces this directory on
+    // the next deploy, so the application that meant S3 has to be able to see that it
+    // did not get it (SPEC.md §63).
+    logger.warn('Uploaded files are stored on this process’s own disk', {
+      root: defaultMediaRoot(),
+      option: 'media: { root } for another directory, media: { storage } for a bucket',
+    })
   }
 
   const app = createApplication({

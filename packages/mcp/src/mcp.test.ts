@@ -245,6 +245,23 @@ describe('speaking the protocol (SPEC.md §68)', () => {
     await endpoint.close()
   })
 
+  it('says which tool it does not know, rather than "[object Object]"', async () => {
+    const endpoint = await connectDirectly(
+      createMcpServer({ registry: app.registry, commands: app.commands, queries: app.queries }),
+    )
+
+    const answered = (await endpoint.handle(
+      rpc('tools/call', { name: 'assemora.nothing.here', arguments: {} }, 42),
+    )) as { result: { content: { text: string }[] } }
+
+    const body = JSON.parse(answered.result.content[0]?.text ?? '{}') as {
+      error: { code: string; message: string }
+    }
+
+    expect(body.error.code).toBe('UNKNOWN_TOOL')
+    expect(body.error.message).toContain('assemora.nothing.here')
+  })
+
   it('answers an unknown tool as an error rather than throwing', async () => {
     const server = createMcpServer({
       registry: app.registry,
@@ -267,6 +284,122 @@ describe('speaking the protocol (SPEC.md §68)', () => {
 
     expect(called.result.isError).toBe(true)
     expect(called.result.content[0]?.text).toContain('UNKNOWN_TOOL')
+
+    await endpoint.close()
+  })
+})
+
+describe('a command reachable only from its own route is not a tool (SPEC.md §85)', () => {
+  const rpc = (method: string, params: unknown = {}, id = 1) => ({
+    jsonrpc: '2.0' as const,
+    id,
+    method,
+    params,
+  })
+
+  /**
+   * The shape of the problem, in one declaration.
+   *
+   * `auth.login` is publicly authorized — it has to be, since the caller is nobody
+   * yet — so agent permissions never gate it. As a generated tool it is a password
+   * oracle for any agent token, and under `mutations: 'direct'` it hands that agent
+   * a live user session.
+   */
+  const SignIn = command('auth.login', {
+    description: 'Exchanges an email and a password for a session',
+    reachableFrom: 'its own route',
+    input: { email: string(), password: string() },
+    handle: async () => ({ token: 'ses_secret' }),
+  })
+
+  beforeEach(async () => {
+    app = createApplication({
+      modules: [module('pages').commands(Publish), module('auth').commands(SignIn), mcp()],
+      authorization: permitAll(),
+      logger: createLogger(silentWriter),
+    })
+
+    await app.boot()
+  })
+
+  const speak = async (mutations?: 'direct') => {
+    const endpoint = await connectDirectly(
+      createMcpServer({
+        registry: app.registry,
+        commands: app.commands,
+        queries: app.queries,
+        ...(mutations === undefined ? {} : { mutations }),
+      }),
+    )
+
+    await endpoint.handle(
+      rpc('initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      }),
+    )
+
+    return endpoint
+  }
+
+  it('leaves it out of the generated tool list', () => {
+    const names = toolsOf(app.registry).map((tool) => tool.name)
+
+    expect(names).toContain('assemora.pages.publish')
+    expect(names).not.toContain('assemora.auth.login')
+  })
+
+  it('does not offer it over the protocol', async () => {
+    const endpoint = await speak()
+
+    const listed = (await endpoint.handle(rpc('tools/list', {}, 2))) as {
+      result: { tools: { name: string }[] }
+    }
+
+    expect(listed.result.tools.map((tool) => tool.name)).not.toContain('assemora.auth.login')
+
+    await endpoint.close()
+  })
+
+  it('refuses a call to it by name, so guessing the name is not a way in', async () => {
+    const endpoint = await speak()
+
+    const called = (await app.run({ source: 'mcp' }, () =>
+      endpoint.handle(
+        rpc(
+          'tools/call',
+          { name: 'assemora.auth.login', arguments: { email: 'ada@x.io', password: 'guess' } },
+          3,
+        ),
+      ),
+    )) as { result: { isError?: boolean; content: { text: string }[] } }
+
+    expect(called.result.isError).toBe(true)
+    expect(called.result.content[0]?.text).toContain('UNKNOWN_TOOL')
+
+    // The oracle is what the refusal closes: a tool that answered differently for a
+    // right and a wrong password would be one, whether it proposed or performed.
+    expect(called.result.content[0]?.text).not.toContain('ses_secret')
+
+    await endpoint.close()
+  })
+
+  it('is refused under `mutations: direct` too, where the answer would be a session', async () => {
+    const endpoint = await speak('direct')
+
+    const called = (await app.run({ source: 'mcp' }, () =>
+      endpoint.handle(
+        rpc(
+          'tools/call',
+          { name: 'assemora.auth.login', arguments: { email: 'ada@x.io', password: 'right' } },
+          4,
+        ),
+      ),
+    )) as { result: { isError?: boolean; content: { text: string }[] } }
+
+    expect(called.result.isError).toBe(true)
+    expect(called.result.content[0]?.text).not.toContain('ses_secret')
 
     await endpoint.close()
   })

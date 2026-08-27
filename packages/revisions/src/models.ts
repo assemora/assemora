@@ -27,8 +27,17 @@ export const Revision = model('assemora_revisions', {
   actorType: string().nullable(),
   actorId: string().nullable(),
   command: string(),
-  before: json<unknown>(),
-  after: json<unknown>(),
+  /**
+   * The two snapshots, and why both are nullable.
+   *
+   * A creation has no `before` and a deletion has no `after` — `null` is not a
+   * missing value here, it is the statement "this entity did not exist at that
+   * side of the change", and a restorer is required to handle it (SPEC.md §65).
+   * Declared without `.nullable()` the generated DDL is `jsonb not null`, and the
+   * very first `entries.create` against a real database fails on it.
+   */
+  before: json<unknown>().nullable(),
+  after: json<unknown>().nullable(),
   /** Only what changed, so a person can read the entry without diffing it (SPEC.md §65). */
   patch: json<RevisionPatch>(),
   requestId: string(),

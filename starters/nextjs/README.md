@@ -58,20 +58,32 @@ which is also how a deployment runs them. Open <http://localhost:3000>.
 With no `DATABASE_URL` the project runs on an in-memory database — it says so on every
 boot, and everything in it disappears when the process restarts.
 
-The first boot seeds one administrator, prints its password, and prints a read-only
-token for the frontend. **Put the token in `.env` and restart**, or every page will
-say so:
-
-```bash
-cp .env.example .env      # then paste ASSEMORA_TOKEN, and edit DATABASE_URL
-```
+Because that database is throwaway, the first boot seeds it: one administrator, enough
+content to see something, and the read-only token the Next.js half reads with. Both
+credentials are **written into `.env`** — as `ASSEMORA_SEED_PASSWORD` and `ASSEMORA_TOKEN` — and neither is printed,
+because `pnpm start` hands its output to whatever supervises it. Next.js reads `.env`
+when it starts, so restart `pnpm dev:web` after a fresh seed.
 
 When you have a PostgreSQL to point at:
 
 ```bash
+cp .env.example .env      # then edit DATABASE_URL
 pnpm db:generate initial  # writes database/migrations/0001_initial.sql
 pnpm db:migrate           # applies it
+pnpm seed                 # the first administrator and the frontend token
 ```
+
+## Seeding, and why it is a separate command
+
+`pnpm start:api` runs `src/server.ts`, and so does a deployment. A seed that ran there
+unconditionally would create an administrator on the first boot of a production
+database — an account nobody asked for, holding every permission, with whatever
+password the starter happened to ship. So `src/server.ts` seeds *only* the in-memory
+fallback, and `pnpm seed` is the deliberate act for anything else.
+
+`pnpm seed` takes the password from `ASSEMORA_SEED_PASSWORD` and generates one into
+`.env` when the variable is unset. It does nothing at all if the database already has
+a user, so running it twice is safe.
 
 ## Why the frontend needs a token
 
@@ -103,7 +115,9 @@ src/                      the application — Node, no bundler, no build step
 <!-- assemora:end -->
   modules/content.ts      the module that registers them
   app.ts                  the application, un-booted
-  server.ts               boot, seed, listen
+  seed.ts                 the first administrator, the frontend token, `pnpm seed`
+  env.ts                  where a secret goes: .env, never a stream
+  server.ts               boot, seed the throwaway database, listen
 app/                      the Next.js App Router
 <!-- assemora:if pages -->
   blocks/                 what each block looks like: one React view each
@@ -131,7 +145,7 @@ changes all of these at once, with no further configuration:
 | `Article.where('published', true)` | typed querying, with the new column in `$infer` |
 | `GET/POST/PATCH/DELETE /api/articles` | REST CRUD, filtered, searched and paginated |
 | `GET /api/openapi.json` | an OpenAPI 3.1 document |
-| `GET /api/_introspection` | the API Explorer's view of this application |
+| `GET /api/_introspection` | the API Explorer's view, for a caller who has signed in |
 | `pnpm sdk:generate` | a typed TypeScript client in `app/lib/` |
 <!-- assemora:if studio -->
 | `/studio` | the form, the list, the filters and the search |
@@ -172,8 +186,9 @@ export const api = createTypedClient({ url, token })
 ## Studio
 
 Served at `/studio`, forwarded there by Next.js so it is on the same origin as
-everything else and its session cookie and CSRF protection are first-party. Sign in
-with the address `pnpm dev` printed.
+everything else and its session cookie and CSRF protection are first-party. Sign in as
+the address `pnpm dev` printed, with the password in `.env` under
+`ASSEMORA_SEED_PASSWORD`.
 
 Studio has no list of collections, no hand-written form and no list of block types: it
 reads the Schema Registry, so it already knows about anything you declare.
@@ -241,6 +256,7 @@ the rewrites become redundant.
 | `pnpm dev:api` / `pnpm dev:web` | run one of them |
 | `pnpm build` | build the Next.js site |
 | `pnpm start:api` / `pnpm start:web` | run one of them, built |
+| `pnpm seed` | create the first administrator on a real database |
 | `pnpm typecheck` | typecheck the whole project, both halves |
 | `pnpm sdk:generate` | write the typed client from the Schema Registry |
 | `pnpm db:generate [name]` | write a migration for whatever the models changed |

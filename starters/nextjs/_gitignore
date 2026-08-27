@@ -8,7 +8,8 @@ dist/
 next-env.d.ts
 
 # Real credentials. `.env.example` documents every variable this project reads, and
-# the read token `pnpm dev:api` prints on its first boot belongs here.
+# the seed writes two of them here itself rather than to a stream: the administrator's
+# password and the read-only token the Next.js half identifies itself with.
 .env
 
 # `.assemora/` is deliberately *not* ignored. `assemora db:generate` diffs the schema

@@ -136,20 +136,55 @@ export const foreignKeyName = (table: string, relation: RelationDescriptor): str
 export const indexName = (table: string, column: string): string =>
   `${table}_${toColumnName(column)}_idx`
 
+/**
+ * The index that backs a foreign key, which is never the column's own index.
+ *
+ * A column can be indexed for two independent reasons: it declared `.index()`, and a
+ * `belongsTo` relation put a foreign key on it. A schema diff reports those reasons
+ * separately — `indexAdded` carries a column, `foreignKeyAdded` carries a relation,
+ * and neither says anything about the other — so one shared name leaves every
+ * migration guessing. Dropping the relation could not tell whether the index it was
+ * about to drop was the column's own, and removing `.index()` from a foreign key
+ * column dropped the index the relation still needs. Two names give every index
+ * exactly one owner, and each owner arrives and leaves with its own.
+ */
+export const foreignKeyIndexName = (table: string, relation: RelationDescriptor): string =>
+  `${foreignKeyName(table, relation)}_idx`
+
+const createIndexNamed = (
+  name: string,
+  table: string,
+  column: string,
+  mode: SchemaSqlMode,
+): string =>
+  `create index${ifNotExists(mode)} ${quote(name)} on ${quote(table)} (${quote(
+    toColumnName(column),
+  )})`
+
 export const createIndexSql = (
   table: string,
   column: string,
   mode: SchemaSqlMode = 'bootstrap',
-): string =>
-  `create index${ifNotExists(mode)} ${quote(indexName(table, column))} on ${quote(
-    table,
-  )} (${quote(toColumnName(column))})`
+): string => createIndexNamed(indexName(table, column), table, column, mode)
 
 export const dropIndexSql = (
   table: string,
   column: string,
   mode: SchemaSqlMode = 'bootstrap',
 ): string => `drop index${ifExists(mode)} ${quote(indexName(table, column))}`
+
+export const createForeignKeyIndexSql = (
+  table: string,
+  relation: RelationDescriptor,
+  mode: SchemaSqlMode = 'bootstrap',
+): string =>
+  createIndexNamed(foreignKeyIndexName(table, relation), table, relation.foreignKey, mode)
+
+export const dropForeignKeyIndexSql = (
+  table: string,
+  relation: RelationDescriptor,
+  mode: SchemaSqlMode = 'bootstrap',
+): string => `drop index${ifExists(mode)} ${quote(foreignKeyIndexName(table, relation))}`
 
 export const addForeignKeySql = (table: string, relation: RelationDescriptor): string =>
   `alter table ${quote(table)} add constraint ${quote(
@@ -166,17 +201,50 @@ export const belongsToRelations = (table: TableDescriptor): readonly RelationDes
  * Whether a column of its own asks for an index.
  *
  * A primary key and a unique column already have one, so asking for a second would
- * only cost writes. `indexedColumns` and the migration that adds a single column
- * both ask this question, and they have to answer it the same way or a migrated
- * database ends up with an index a fresh one does not have.
+ * only cost writes. `tableIndexSql` and the migration that adds a single column both
+ * ask this question, and they have to answer it the same way or a migrated database
+ * ends up with an index a fresh one does not have.
+ *
+ * It says nothing about the foreign keys on the column: those are the relation's, and
+ * `foreignKeyIndexName` says why the two are kept apart.
  */
 export const needsIndex = (column: ColumnDescriptor): boolean =>
   column.isIndexed && !column.isPrimary && !column.isUnique
 
-/** Every column the table wants an index on, foreign keys included. */
-export const indexedColumns = (table: TableDescriptor): readonly string[] => [
-  ...table.columns.filter(needsIndex).map((column) => column.name),
-  ...belongsToRelations(table).map((relation) => relation.foreignKey),
+/**
+ * Every index the table has: one per column that asked for one, and one per foreign
+ * key.
+ *
+ * PostgreSQL indexes the *referenced* side of a foreign key and never the referencing
+ * one, so the child's key is unindexed unless something creates the index — and then
+ * every batched relation load and every `on delete cascade` scans the child table.
+ *
+ * A fresh `createSchemaSql` build and a migration that creates the same table both
+ * call this, and the migration that merely *adds a relation* to a table that already
+ * exists emits the same statement beside the constraint (`migration-sql.ts`). That is
+ * what keeps a migrated database and a built one the same shape.
+ */
+export const tableIndexSql = (
+  table: TableDescriptor,
+  mode: SchemaSqlMode = 'bootstrap',
+): string[] => [
+  ...table.columns
+    .filter(needsIndex)
+    .map((column) => createIndexSql(table.name, column.name, mode)),
+  ...belongsToRelations(table).map((relation) =>
+    createForeignKeyIndexSql(table.name, relation, mode),
+  ),
+]
+
+/** The same set, dropped. What the reversal of `tableIndexSql` has to say. */
+export const dropTableIndexSql = (
+  table: TableDescriptor,
+  mode: SchemaSqlMode = 'bootstrap',
+): string[] => [
+  ...table.columns.filter(needsIndex).map((column) => dropIndexSql(table.name, column.name, mode)),
+  ...belongsToRelations(table).map((relation) =>
+    dropForeignKeyIndexSql(table.name, relation, mode),
+  ),
 ]
 
 /** `create table` for one model, without foreign keys. */
@@ -192,14 +260,11 @@ export const createTableSql = (
 const foreignKeySql = (table: TableDescriptor): string[] =>
   belongsToRelations(table).map((relation) => addForeignKeySql(table.name, relation))
 
-const indexSql = (table: TableDescriptor): string[] =>
-  indexedColumns(table).map((column) => createIndexSql(table.name, column))
-
 /** Every statement needed to build a fresh schema, in the order they must run. */
 export const createSchemaSql = (tables: readonly TableDescriptor[]): string[] => [
   ...tables.map((table) => createTableSql(table)),
   ...tables.flatMap(foreignKeySql),
-  ...tables.flatMap(indexSql),
+  ...tables.flatMap((table) => tableIndexSql(table)),
 ]
 
 export const dropTableSql = (table: TableDescriptor, mode: SchemaSqlMode = 'bootstrap'): string =>

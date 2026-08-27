@@ -68,7 +68,7 @@ to the resource changes all of this at once:
 | `Article.where('published', true)` | typed querying, with the new column in `$infer` |
 | `GET/POST/PATCH/DELETE /api/articles` | REST CRUD, filtered, searched and paginated |
 | `GET /api/openapi.json` | an OpenAPI 3.1 document |
-| `GET /api/_introspection` | the API Explorer's view of this application |
+| `GET /api/_introspection` | the API Explorer's view, for a caller who has signed in |
 | `pnpm assemora sdk:generate` | a typed TypeScript client |
 | `/studio` | the list, the form, the filters and the search |
 | `POST /api/mcp` | the tools an agent introspects and calls |

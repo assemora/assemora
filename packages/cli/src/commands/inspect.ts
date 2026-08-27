@@ -13,7 +13,7 @@
  * validated, authorized and audited exactly as it is from Studio or from an agent
  * asking about itself (SPEC.md §72, §76).
  */
-import type { Actor, Application, ContextInit } from '@assemora/core'
+import { type Actor, type Application, AssemoraError, type ContextInit } from '@assemora/core'
 
 import { bool, flag, type ParsedArgs } from '../args.js'
 import { loadConfig } from '../config.js'
@@ -248,6 +248,25 @@ const rowsIn = (answer: unknown): Entry[] => {
   return Array.isArray(data) ? data.filter(isEntry) : []
 }
 
+/** What the authorizer raises, whichever package registered it (SPEC.md §83). */
+const isRefusal = (error: unknown): boolean =>
+  error instanceof AssemoraError && error.code === 'FORBIDDEN'
+
+/**
+ * The one sentence a refused listing is missing.
+ *
+ * The authorizer names the subject and the action, because that is all it knows — it
+ * has never heard of a command line. Running as nobody is the commonest way to meet
+ * it, and `--actor` is the thing to type next, so the CLI says so rather than leaving
+ * a reader to find it in the guide.
+ */
+const refusalHint = (actorId: string | undefined): string =>
+  actorId === undefined
+    ? 'Reading agent identities is authorized like every other query, and no actor was named. ' +
+      'Pass --actor <user id> — a user allowed to read auth.agents.'
+    : `${actorId} is not allowed to read auth.agents. Pass --actor with a user who holds that ` +
+      'permission, or grant it to this one.'
+
 export const Agents = defineCommand({
   name: 'agents',
   group: 'inspect',
@@ -286,12 +305,25 @@ export const Agents = defineCommand({
     // that refusal is the correct answer rather than a fault in this command.
     const context: ContextInit = { source: 'cli', ...(actor === undefined ? {} : { actor }) }
 
-    const answer = await app.run(context, () =>
-      app.queries.execute(AGENTS_QUERY, {
-        ...(page.value === undefined ? {} : { page: page.value }),
-        ...(perPage.value === undefined ? {} : { perPage: perPage.value }),
-      }),
-    )
+    let answer: unknown
+
+    try {
+      answer = await app.run(context, () =>
+        app.queries.execute(AGENTS_QUERY, {
+          ...(page.value === undefined ? {} : { page: page.value }),
+          ...(perPage.value === undefined ? {} : { perPage: perPage.value }),
+        }),
+      )
+    } catch (error) {
+      // Everything else is `run()`'s to report: a query that could not run is a
+      // failure of the application, and only the refusal has a next step to offer.
+      if (!isRefusal(error)) throw error
+
+      fail(error instanceof Error ? error.message : String(error))
+      detail(refusalHint(named))
+
+      return 1
+    }
 
     // The whole answer, not just its rows: a page carries the total and where in it
     // this page sits, and a pipe that asked for JSON wants to know both.

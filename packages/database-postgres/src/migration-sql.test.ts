@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from 'vitest'
 
 import { migrationSql } from './migration-sql.js'
+import { tableIndexSql } from './migrations.js'
 
 const column = (
   name: string,
@@ -65,7 +66,7 @@ describe('a table that appears', () => {
         ')',
       ].join('\n'),
       'create index "posts_title_idx" on "posts" ("title")',
-      'create index "posts_author_id_idx" on "posts" ("author_id")',
+      'create index "posts_author_id_fkey_idx" on "posts" ("author_id")',
       'alter table "posts" add constraint "posts_author_id_fkey" foreign key ("author_id") references "users" ("id") on delete cascade',
     ])
   })
@@ -82,7 +83,7 @@ describe('a table that appears', () => {
     expect(down).toEqual([
       'alter table "posts" drop constraint "posts_author_id_fkey"',
       'drop index "posts_title_idx"',
-      'drop index "posts_author_id_idx"',
+      'drop index "posts_author_id_fkey_idx"',
       'drop table "posts"',
     ])
   })
@@ -112,7 +113,7 @@ describe('a table that disappears', () => {
     expect(down[0]).toContain('create table "posts"')
     expect(down.slice(1)).toEqual([
       'create index "posts_title_idx" on "posts" ("title")',
-      'create index "posts_author_id_idx" on "posts" ("author_id")',
+      'create index "posts_author_id_fkey_idx" on "posts" ("author_id")',
       'alter table "posts" add constraint "posts_author_id_fkey" foreign key ("author_id") references "users" ("id") on delete cascade',
     ])
   })
@@ -528,7 +529,9 @@ describe('indexes and foreign keys on their own', () => {
         kind: 'indexRemoved',
         table: 'posts',
         column: 'publishedAt',
-        before: column('publishedAt', 'timestamp'),
+        // `diffSchema` reports the state going away, so the index it is removing is
+        // still on the descriptor it hands over.
+        before: column('publishedAt', 'timestamp', { isIndexed: true }),
       },
     ])
 
@@ -542,9 +545,13 @@ describe('indexes and foreign keys on their own', () => {
     ])
 
     expect(added.up).toEqual([
+      'create index "posts_author_id_fkey_idx" on "posts" ("author_id")',
       'alter table "posts" add constraint "posts_author_id_fkey" foreign key ("author_id") references "users" ("id") on delete cascade',
     ])
-    expect(added.down).toEqual(['alter table "posts" drop constraint "posts_author_id_fkey"'])
+    expect(added.down).toEqual([
+      'alter table "posts" drop constraint "posts_author_id_fkey"',
+      'drop index "posts_author_id_fkey_idx"',
+    ])
 
     const removed = migrationSql([
       { ...risk, kind: 'foreignKeyRemoved', table: 'posts', column: 'authorId', before: author },
@@ -598,6 +605,7 @@ describe('the order a mixed migration applies in', () => {
       'create table "users" (\n  "id" uuid primary key\n)',
       'alter table "comments" add column "author_id" uuid',
       'create index "comments_created_at_idx" on "comments" ("created_at")',
+      'create index "comments_author_id_fkey_idx" on "comments" ("author_id")',
       'alter table "comments" add constraint "comments_author_id_fkey" foreign key ("author_id") references "users" ("id") on delete cascade',
     ])
   })
@@ -606,6 +614,7 @@ describe('the order a mixed migration applies in', () => {
     expect(down).toEqual([
       'alter table "comments" drop constraint "comments_author_id_fkey"',
       'drop index "comments_created_at_idx"',
+      'drop index "comments_author_id_fkey_idx"',
       'alter table "comments" drop column "author_id"',
       'drop table "users"',
       'alter table "comments" add column "legacy_author" varchar(255)',
@@ -653,6 +662,7 @@ describe('a table that disappears with the relation that pointed at it', () => {
     // on a table that survives — refuses the drop instead of vanishing unrecorded.
     expect(up).toEqual([
       'alter table "comments" drop constraint "comments_post_id_fkey"',
+      'drop index "comments_post_id_fkey_idx"',
       'alter table "comments" drop column "post_id"',
       'drop table "posts"',
     ])
@@ -662,6 +672,7 @@ describe('a table that disappears with the relation that pointed at it', () => {
     expect(down).toEqual([
       'create table "posts" (\n  "id" uuid primary key\n)',
       'alter table "comments" add column "post_id" uuid',
+      'create index "comments_post_id_fkey_idx" on "comments" ("post_id")',
       'alter table "comments" add constraint "comments_post_id_fkey" foreign key ("post_id") references "posts" ("id") on delete cascade',
     ])
   })
@@ -795,5 +806,146 @@ describe('identifiers a diff did not choose', () => {
 describe('nothing to do', () => {
   it('produces an empty migration', () => {
     expect(migrationSql([])).toEqual({ up: [], down: [], destructive: [] })
+  })
+})
+
+/**
+ * `tableIndexSql` indexes every `belongsTo` foreign key, so a fresh `createSchemaSql`
+ * build has one. A migration that adds the relation used to emit only the constraint:
+ * the migrated database silently ended up with one index fewer than a built one, every
+ * batched relation load and every `on delete cascade` became a sequential scan of the
+ * child table, and no later `db:generate` noticed — the snapshot and the registry
+ * agreed, so the diff was empty.
+ */
+describe('the index that belongs to a foreign key', () => {
+  const id = column('id', 'uuid', { isPrimary: true, isNullable: false, hasDefault: true })
+
+  const users: TableDescriptor = { name: 'users', primaryKey: 'id', columns: [id], relations: [] }
+
+  const unrelated: TableDescriptor = {
+    name: 'posts',
+    primaryKey: 'id',
+    columns: [id],
+    relations: [],
+  }
+
+  const related: TableDescriptor = {
+    name: 'posts',
+    primaryKey: 'id',
+    columns: [id, column('authorId', 'uuid')],
+    relations: [author],
+  }
+
+  const forward = migrationSql(diffSchema([users, unrelated], [users, related]).changes)
+
+  it('arrives with the relation, after the column and before the constraint', () => {
+    expect(forward.up).toEqual([
+      'alter table "posts" add column "author_id" uuid',
+      'create index "posts_author_id_fkey_idx" on "posts" ("author_id")',
+      'alter table "posts" add constraint "posts_author_id_fkey" foreign key ("author_id") references "users" ("id") on delete cascade',
+    ])
+  })
+
+  it('leaves the migrated database with exactly the indexes a fresh build has', () => {
+    const fresh = tableIndexSql(related, 'migration')
+
+    expect(fresh).toEqual(['create index "posts_author_id_fkey_idx" on "posts" ("author_id")'])
+    expect(forward.up.filter((statement) => statement.startsWith('create index'))).toEqual(fresh)
+  })
+
+  it('goes with the relation, and the two migrations are each other reversed', () => {
+    const backward = migrationSql(diffSchema([users, related], [users, unrelated]).changes)
+
+    expect(backward.up).toEqual(forward.down)
+    expect(backward.down).toEqual(forward.up)
+  })
+
+  it('is not the column own index, so neither reason can drop the other index', () => {
+    // A column can be indexed for two independent reasons at once: it declared
+    // `.index()`, and a relation put a foreign key on it. A schema diff reports those
+    // reasons separately and never both at once, so one shared name left each of them
+    // able to drop the index the other still needs.
+    const both: TableDescriptor = {
+      ...related,
+      columns: [id, column('authorId', 'uuid', { isIndexed: true })],
+    }
+
+    const columnOnly: TableDescriptor = { ...both, relations: [] }
+
+    expect(tableIndexSql(both, 'migration')).toEqual([
+      'create index "posts_author_id_idx" on "posts" ("author_id")',
+      'create index "posts_author_id_fkey_idx" on "posts" ("author_id")',
+    ])
+
+    // `.index()` comes off the column; the relation keeps the index it needs.
+    expect(migrationSql(diffSchema([users, both], [users, related]).changes).up).toEqual([
+      'drop index "posts_author_id_idx"',
+    ])
+
+    // The relation goes; the column keeps the one it asked for.
+    expect(migrationSql(diffSchema([users, both], [users, columnOnly]).changes).up).toEqual([
+      'alter table "posts" drop constraint "posts_author_id_fkey"',
+      'drop index "posts_author_id_fkey_idx"',
+    ])
+  })
+})
+
+/**
+ * `needsIndex` is false for a unique column: the unique constraint carries a btree
+ * index of its own, and a second one would only cost writes. So `.index()` on a column
+ * produces an index only while the column is *not* unique — and a fresh build works
+ * that out from the descriptor, while a migration has to say it out loud.
+ */
+describe('an index that appears or goes because uniqueness moved', () => {
+  const id = column('id', 'uuid', { isPrimary: true, isNullable: false, hasDefault: true })
+
+  const table = (slug: ColumnDescriptor): TableDescriptor => ({
+    name: 'posts',
+    primaryKey: 'id',
+    columns: [id, slug],
+    relations: [],
+  })
+
+  const indexed = column('slug', 'string', { isIndexed: true })
+  const indexedAndUnique = column('slug', 'string', { isIndexed: true, isUnique: true })
+
+  it('drops the column own index when the column becomes unique', () => {
+    // A fresh build of the unique table has no "posts_slug_idx" at all.
+    expect(tableIndexSql(table(indexedAndUnique), 'migration')).toEqual([])
+
+    const { up, down } = migrationSql(
+      diffSchema([table(indexed)], [table(indexedAndUnique)]).changes,
+    )
+
+    expect(up).toEqual([
+      'drop index "posts_slug_idx"',
+      'alter table "posts" add constraint "posts_slug_key" unique ("slug")',
+    ])
+    expect(down).toEqual([
+      'alter table "posts" drop constraint "posts_slug_key"',
+      'create index "posts_slug_idx" on "posts" ("slug")',
+    ])
+  })
+
+  it('creates it again when the column stops being unique', () => {
+    const { up } = migrationSql(diffSchema([table(indexedAndUnique)], [table(indexed)]).changes)
+
+    expect(up).toEqual([
+      'alter table "posts" drop constraint "posts_slug_key"',
+      'create index "posts_slug_idx" on "posts" ("slug")',
+    ])
+  })
+
+  it('creates nothing for .index() on a column that is already unique', () => {
+    const unique = column('slug', 'string', { isUnique: true })
+    const { up, down } = migrationSql(
+      diffSchema([table(unique)], [table(indexedAndUnique)]).changes,
+    )
+
+    // `docs/guide/03-models.md` writes `string().unique().index()`, and the index it
+    // asks for is the one the unique constraint already built. A migration that
+    // created a second would leave the database with an index no fresh build has.
+    expect(up).toEqual([])
+    expect(down).toEqual([])
   })
 })

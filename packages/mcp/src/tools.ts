@@ -10,7 +10,7 @@
  * a block type, and the registry exists precisely so subsystems stop keeping their
  * own copies (ADR-0002, ADR-0020).
  */
-import type { SchemaRegistry } from '@assemora/core'
+import type { CommandReach, SchemaRegistry } from '@assemora/core'
 import type { JsonSchema } from '@assemora/schema'
 
 /** The MCP wire shape for a tool. Plain JSON Schema — no second schema system. */
@@ -45,7 +45,24 @@ const objectSchema = (input: unknown): { type: 'object' } & JsonSchema => {
   return { ...schema, type: 'object' }
 }
 
-type Described = { readonly name: string; readonly description?: string; readonly input?: unknown }
+type Described = {
+  readonly name: string
+  readonly description?: string
+  readonly input?: unknown
+  readonly reachableFrom?: CommandReach
+}
+
+/**
+ * A command that said a route written for it is the only way in (SPEC.md §85).
+ *
+ * Generating a tool for every command is safe because the bus authorizes first and
+ * authorization denies by default — every command except a publicly authorized one.
+ * `auth.login` is that case: agent permissions never gate it, so as a tool it is a
+ * password oracle for any agent token, and under `mutations: 'direct'` it answers
+ * with a live user session. The declaration is what keeps it off this list, rather
+ * than a list of names this package would have to maintain.
+ */
+const routeOnly = (entry: Described): boolean => entry.reachableFrom === 'its own route'
 
 /**
  * Every tool this application offers.
@@ -67,6 +84,8 @@ export const toolsOf = (registry: SchemaRegistry): ToolDescriptor[] => {
 
   return [
     ...(sections.queries ?? []).map((entry) => describe(entry, false)),
-    ...(sections.commands ?? []).map((entry) => describe(entry, true)),
+    ...(sections.commands ?? [])
+      .filter((entry) => !routeOnly(entry))
+      .map((entry) => describe(entry, true)),
   ].sort((left, right) => left.name.localeCompare(right.name))
 }

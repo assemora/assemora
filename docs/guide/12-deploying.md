@@ -34,7 +34,10 @@ processes that will serve traffic.
 
 ## Storage
 
-The media library needs somewhere to put bytes. Both drivers SPEC.md §63 makes
+The media library needs somewhere to put bytes. Under `assemora()`, saying nothing gets
+the local driver pointed at the project's own `storage/media`, with one warning saying
+so — a working development answer, and a directory a container replaces on the next
+deploy. A deployment says where the bytes really go. Both drivers SPEC.md §63 makes
 mandatory implement the same interface, and neither names a vendor in a signature:
 
 ```ts
@@ -88,7 +91,13 @@ it:
 - **Authorization is `policies()`.** Never `permitAll()` — core denies by default and
   the umbrella must not be the thing that opens the door.
 - **CSRF is on.** It is optional in `createHttpServer` and leaving it out turns it off,
-  so the umbrella passes it unconditionally.
+  so the umbrella passes it unconditionally. A mutation carrying cookies is exempt only
+  when it also carries a `Bearer` credential — the header alone is not the exemption,
+  because a header that is not a bearer token leaves the session cookie doing the
+  authenticating.
+- **`/api/_introspection` requires a credential**, unlike `/openapi.json` beside it: it
+  answers with the registry itself, and the API Explorer that reads it is behind
+  Studio's login. `api: { introspection: 'public' }` is the opt-out.
 - **CORS is registered only when `origins` names something**, always as a list, never
   `*`. Every entry is checked to be `scheme://host[:port]`; `*` is refused with a
   sentence saying why, and so is anything carrying a `;` — a CSP source list is
@@ -105,15 +114,22 @@ it:
   `media.get` on the Query Bus before it fetches a byte.
 - **An MCP mutation is a proposal.** `mcp: { mutations: 'direct' }` is the opt-out.
 
-### The one thing you cannot rely on yet
+### What the rate limits actually count
 
-Rate limits are 600 requests a minute and 120 MCP tool calls a minute, both per-process
-counters — two instances behind a load balancer give twice the allowance. The MCP
-ceiling is enforced inside `@assemora/mcp`. **The HTTP one is passed to
-`createHttpServer` and is not currently enforced**: `@assemora/http` registers its rate
-limit plugin from a promise nothing awaits before routes are added, and the plugin only
-attaches to routes defined after it has loaded. Put a limiter in front of the process
-until that is fixed.
+Rate limits are 600 requests a minute and 120 MCP tool calls a minute. Both are
+enforced — the HTTP one by `@assemora/http`, which registers its plugin ahead of every
+route it mounts, and the MCP one inside `@assemora/mcp` — and `api: { rateLimit }` and
+`mcp: { rateLimit }` set them.
+
+Both are **per-process counters**, and that is the part to plan around: two instances
+behind a load balancer give a caller twice the allowance, and a restart forgets
+everything counted so far. A shared limiter in front of the processes is how a
+deployment gets one ceiling rather than one per replica.
+
+Images are the other thing worth knowing about the policy above: when media is stored
+in a bucket or behind a CDN, that origin is added to `img-src` and `media-src`
+automatically, read off the storage driver you configured. Nothing else in the policy
+moves, and there is no option that widens it by hand.
 
 ## Environment
 

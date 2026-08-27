@@ -8,7 +8,9 @@ import {
   createTableSql,
   dropIndexSql,
   dropSchemaSql,
+  dropTableIndexSql,
   dropTableSql,
+  tableIndexSql,
 } from './migrations.js'
 
 const users: TableDescriptor = {
@@ -154,9 +156,26 @@ describe('schema DDL', () => {
     expect(statements).toContain(
       'create index if not exists "users_created_at_idx" on "users" ("created_at")',
     )
+    // Named for the constraint rather than for the column: the column may carry an
+    // index of its own, and neither reason may be able to drop the other's.
     expect(statements).toContain(
-      'create index if not exists "posts_author_id_idx" on "posts" ("author_id")',
+      'create index if not exists "posts_author_id_fkey_idx" on "posts" ("author_id")',
     )
+  })
+
+  it('builds the same indexes for a fresh database and for a migration', () => {
+    // The two used to be assembled separately, and a migration that added a relation
+    // forgot the foreign key's index entirely. One function answers for both now, so
+    // they cannot drift apart again.
+    expect(tableIndexSql(posts)).toEqual(
+      statements.filter(
+        (statement) => statement.startsWith('create index') && statement.includes('"posts"'),
+      ),
+    )
+    expect(tableIndexSql(posts, 'migration')).toEqual([
+      'create index "posts_author_id_fkey_idx" on "posts" ("author_id")',
+    ])
+    expect(dropTableIndexSql(posts, 'migration')).toEqual(['drop index "posts_author_id_fkey_idx"'])
   })
 
   it('drops in the reverse of nothing in particular, but cascades', () => {

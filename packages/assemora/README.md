@@ -102,14 +102,21 @@ The rest of SPEC.md §85, in one place:
   denies by default; these two are publicly authorized, so a generic endpoint would be
   a second door on to a session — one handing the token back as readable JSON, minting
   no CSRF token, and letting the caller choose the IP address recorded against it.
-- Rate limits: 600 requests a minute, and 120 MCP tool calls a minute. Both are
-  per-process counters; two instances behind a load balancer give twice the allowance.
-  The MCP ceiling is enforced inside `@assemora/mcp`; the HTTP one is passed to
-  `createHttpServer` and is **not currently enforced** — `@assemora/http` registers
-  `@fastify/rate-limit` from a promise nothing awaits before routes are added, and the
-  plugin only attaches to routes defined after it has loaded. That is a defect of the
-  package that owns Fastify, and it is the one line of this list an application cannot
-  rely on yet.
+- Rate limits: 600 requests a minute, and 120 MCP tool calls a minute, both enforced —
+  the MCP ceiling inside `@assemora/mcp`, the HTTP one by `@assemora/http`, which
+  registers `@fastify/rate-limit` ahead of every route it mounts. Both are per-process
+  counters; two instances behind a load balancer give twice the allowance, so a shared
+  limiter is still what gives a deployment one ceiling rather than one per replica.
+- `GET /api/_introspection` requires a credential. `/openapi.json` beside it describes
+  the API a caller may use, with hidden fields already gone; the snapshot is the
+  registry itself — every model, every column of the auth schema, every command and
+  query, including the ones this caller could never reach. `api: { introspection:
+  'public' }` is the deliberate opt-out.
+- The content security policy names the origin the media driver serves from, in
+  `img-src` and `media-src` and nowhere else. S3-compatible storage is mandatory in v1
+  (SPEC.md §63) and a bucket is not this origin, so without that every image in Studio
+  would be blocked. The origin is read off the configured driver rather than typed into
+  an option, which is what stops it becoming a way to open the policy generally.
 - An MCP mutation is a proposal. `mcp: { mutations: 'direct' }` is the deliberate
   opt-out, and it belongs in the project's source rather than in a default.
 
@@ -126,10 +133,16 @@ was written, with a sentence saying what to add. A module the application listed
 always wins, so `auth({ policies: [...] })` is never replaced by a bare `auth()`.
 
 A configuration that cannot work is refused by `assemora()` itself rather than at the
-first request: `media()` with nowhere to put the bytes, `media: { root }` with
-`api: false` — its URLs would point at routes nobody mounted — Studio and the frontend
-asked for at the same path, an MCP proposal with change sets switched off, and an
-origin that is not one.
+first request: a local media root with `api: false` — its URLs would point at routes
+nobody mounted — Studio and the frontend asked for at the same path, an MCP proposal
+with change sets switched off, and an origin that is not one.
+
+`media()` with nothing said about storage is *not* one of those. SPEC.md §9 lists it
+among the modules and passes no second option, so it has to work: the umbrella builds
+the local driver of §63 against the project's own `storage/media` and says so in one
+warning, because that is a disk this process happens to have and a container replaces
+it on the next deploy. `media: { root }` names a different directory; `media: { storage }`
+hands over a driver, and then the URLs are that driver's business.
 
 ## Studio is loaded, not depended on
 

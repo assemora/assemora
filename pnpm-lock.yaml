@@ -669,6 +669,9 @@ importers:
       '@assemora/database-postgres':
         specifier: workspace:*
         version: link:../../packages/database-postgres
+      '@assemora/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       '@assemora/pages':
         specifier: workspace:*
         version: link:../../packages/pages
