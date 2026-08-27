@@ -77,11 +77,31 @@ const raw = (prefix: string): Queue => {
   return queue
 }
 
+/**
+ * How long the probe waits before calling the instance unreachable.
+ *
+ * BullMQ requires `maxRetriesPerRequest: null`, so ioredis retries a dead host for
+ * ever and `waitUntilReady()` against nothing never rejects — it hangs. A suite that
+ * hangs is worse than one that fails: CI sat on this for twelve minutes before
+ * anybody looked at it, and the whole point of the probe is to answer quickly that
+ * there is nothing here.
+ */
+const PROBE_TIMEOUT_MS = 3_000
+
 const reachable = await (async () => {
   const probe = raw(namespace())
+  let timer: NodeJS.Timeout | undefined
 
   try {
-    await probe.waitUntilReady()
+    await Promise.race([
+      probe.waitUntilReady(),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`no answer within ${PROBE_TIMEOUT_MS}ms`)),
+          PROBE_TIMEOUT_MS,
+        )
+      }),
+    ])
 
     return true
   } catch (error) {
@@ -97,6 +117,8 @@ const reachable = await (async () => {
 
     return false
   } finally {
+    if (timer !== undefined) clearTimeout(timer)
+
     await probe.close().catch(() => undefined)
   }
 })()
