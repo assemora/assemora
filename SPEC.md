@@ -267,9 +267,13 @@ Plugin API
 Next.js starter
 ```
 
-## 5. Not part of v1
+## 5. Deferred past v1
 
-Do not implement before v1 is complete:
+v1 is complete, so this section is a record rather than a refusal. Each of these was
+deliberately not built while the core was being finished; each is now an ordinary
+product decision, to be argued on merit and sequenced like anything else (ADR-0025).
+
+What was deferred:
 
 ```text
 E-commerce
@@ -289,8 +293,18 @@ No-code arbitrary database designer
 Full Webflow-style CSS editor
 ```
 
-The architecture may leave room for these later, but v1 must not be complicated for
-their sake.
+The architecture was to leave room for these and not be complicated for their sake.
+It did, and it was not — which is why they can now be argued one at a time.
+
+**What is not deferred but permanent** is a different list, and a short one. A page is
+a block tree and never an HTML blob (§53). The theme is tokens and nothing anywhere
+accepts CSS (§61, §62). A resource definition is declarative data with no expression
+evaluated at runtime (§86). Every mutation goes through the Command Bus (§2, §14).
+
+Those four are the product rather than restrictions on it: an agent can be trusted
+with a site because the surface is constrained, and §1 says outright that Assemora
+must not be another headless CMS or visual page builder. Changing one of them means
+writing a new ADR that says what replaces it (ADR-0025).
 
 ## 6. Technology stack
 
@@ -1439,7 +1453,10 @@ whereJson()
 whereJsonContains()
 ```
 
-## 39. Resource fields v1
+## 39. Resource fields
+
+The kinds below are what v1 shipped, not a ceiling: the field API is extensible
+through the Plugin API, and a kind added there is a kind like any other (ADR-0025).
 
 ```text
 text
@@ -1982,11 +1999,14 @@ publish
 
 Every operation must map to a Command.
 
-## 61. Universal design controls v1
+## 61. Universal design controls
 
-Do not build a full CSS editor.
+**Do not build a full CSS editor.** That is the rule, and it is permanent: no control
+anywhere may take a length, a colour, a class name or a rule. The count below is what
+v1 shipped and may grow — a control is legitimate exactly when its value is a token
+the theme decides the meaning of (ADR-0025).
 
-Support universal settings:
+Universal settings:
 
 ```text
 spacing
@@ -2338,7 +2358,9 @@ Direct database access from standard MCP tools is forbidden.
 
 Executable: `assemora`
 
-Commands in v1:
+The commands v1 shipped. It is not a closed list — a capability that needs a command
+gets one, and does not get bent into an existing one to avoid a twenty-third
+(ADR-0025).
 
 ```bash
 assemora new
@@ -3624,3 +3646,102 @@ invalid fields rejected by TypeScript
 Until this API looks and feels right, do not move on to the CMS or Studio.
 
 The Assemora Data API is the foundation of the product.
+
+## 131. Localisation
+
+A site with two languages is most of the commercial work, and v1 has none of it:
+`AssemoraContext` has carried a `locale` since phase 1 and nothing reads it.
+
+Configured, not stored — the set of languages a deployment serves is a deployment
+fact, like the database URL:
+
+```ts
+assemora({
+  locales: ['en', 'ru', 'de'],
+  defaultLocale: 'en',
+})
+```
+
+### One row per locale
+
+A translatable model gains two columns and keeps its own shape:
+
+```ts
+export const Article = model('articles', {
+  id: uuid().primary(),
+  title: string(),
+  body: text(),
+}).translatable()
+```
+
+```text
+locale          the language this row is written in
+translationOf   the row this one translates, or null for the original
+```
+
+`article.title` stays `string`. It does not become a map keyed by language, because
+the moment it does, one declaration stops feeding the record type, the column, the
+form, the OpenAPI schema and the SDK — which is §2 and §128 abandoned for a storage
+convenience. `Article.where('locale', 'ru')` is an ordinary query, and everything
+already built keeps working.
+
+### The context decides, the query obeys
+
+A read is scoped to `context.locale` without a caller asking:
+
+```ts
+await Article.published().get()   // the locale of the request
+```
+
+A caller who means something else says so — `Article.inLocale('de')`, or every
+translation with `Article.allLocales()`. What a request's locale *is* comes from the
+address: `/ru/articles/…`, or a header where there is no path to read.
+
+### Falling back
+
+A missing translation falls back to the default locale, and the answer says which
+language it is actually in. A page that silently serves English under a Russian URL
+with nothing saying so is worse than a 404.
+
+### Every layer, or none
+
+- **Pages** are translatable the same way: a slug and a block tree per locale.
+- **Studio** switches locale, shows which translations exist and which are stale, and
+  never presents a fallback as though it were a translation.
+- **REST and the SDK** carry the locale; a resource's paths are per-locale.
+- **An agent** translates through the same commands, so a translation is a revision,
+  is audited, and is proposed and applied like any other change (SPEC.md §75). This is
+  the case AI is actually good at, and it must not need a second surface.
+- **Revisions** are per row, so a translation has its own history.
+
+### Not localised
+
+The theme (§62) — a token is not language. Media bytes; their `alt` text is.
+Permissions, agents, audit and the queue.
+
+## 132. Taxonomy
+
+Categories and tags are what people expect a CMS to have, and faking them with a
+relation is what people do instead. A taxonomy is a set of terms, and a resource
+declares that its entries carry terms from it.
+
+Terms are hierarchical, orderable, translatable (§131), and reachable by an agent
+through the same commands as everything else.
+
+## 133. Navigation
+
+A menu is content, not a template. A navigation is an ordered tree whose items point
+at a page, an entry, a taxonomy term or a URL, is translatable (§131), and is edited
+in Studio without touching source.
+
+## 134. Forms and submissions
+
+A form is a declared set of fields, and a submission is stored content. What arrives
+from an anonymous visitor is untrusted (§86, §85): validated against the declaration,
+rate limited, and never rendered as HTML anywhere.
+
+## 135. Singletons
+
+A page there is exactly one of: site settings, the footer, a contact block. The theme
+(§62) is the first singleton and the shape the rest follow — one row, edited through a
+command, revised and restorable like any other content.

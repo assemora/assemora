@@ -103,9 +103,20 @@ have already been made — do not reverse one without writing a new ADR.
   and never a value. A `where` holds whatever the caller passed, and a slow-query log
   is the file that ends up in a ticket.
 
-Every section of SPEC.md is now implemented. What is left is not a section: nothing is
-published to npm, so `create-assemora` writes a dependency range that resolves to
-nothing and a generated project runs only from a checkout.
+Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
+which of its limits are permanent and which were only a schedule, and adds five
+sections it never had — §131 localisation, §132 taxonomy, §133 navigation, §134 forms,
+§135 singletons. None of those five is built yet; localisation is next.
+
+The four permanent invariants, so nobody re-argues them: a page is a block tree and
+never an HTML blob; the theme is tokens and nothing accepts CSS; a resource definition
+is declarative data with no runtime expression; every mutation goes through the
+Command Bus. They are the product rather than restrictions on it — an agent can be
+trusted with a site because the surface is constrained.
+
+Also left, and not a section: nothing is published to npm, so `create-assemora` writes
+a dependency range that resolves to nothing and a generated project runs only from a
+checkout.
 
 Decisions phase 10 added (ADR-0021, ADR-0022):
 
