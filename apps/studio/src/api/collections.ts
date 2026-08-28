@@ -16,9 +16,16 @@ import { type UseQueryResult, useQuery } from '@tanstack/react-query'
 import { api } from './client.ts'
 import type { ResourceDescriptor } from './introspection.ts'
 
-/** One field of a stored definition. Declarative data, never anything executable. */
-export type FieldSpec = {
-  readonly name: string
+/**
+ * One field of a stored definition, minus its name.
+ *
+ * A repeater's element is a field with no name — there is nothing to key it by — and it
+ * is otherwise a field like any other. Split the way `@assemora/resources` splits it, so
+ * a group's inner field is this plus a name and an element is this on its own.
+ *
+ * Declarative data, never anything executable.
+ */
+export type FieldShapeSpec = {
   readonly kind: string
   readonly label?: string
   readonly help?: string
@@ -28,13 +35,21 @@ export type FieldSpec = {
   readonly filterable?: boolean
   readonly hidden?: boolean
   readonly readOnly?: boolean
-  /** `select` only. */
+  /** `select` and `checkboxes`: the values. `code`: the languages offered. */
   readonly options?: readonly string[]
   /** `slug` only: the field it is made from. */
   readonly source?: string
-  /** `relation` only: the resource it points at. */
+  /** `relation` and `media` only: the resource it points at. */
   readonly target?: string
+  /** `media` only: the media types its picker offers. */
+  readonly accept?: readonly string[]
+  /** `object` only: the fields it groups. */
+  readonly fields?: readonly FieldSpec[]
+  /** `array` only: the field one item is. */
+  readonly element?: FieldShapeSpec
 }
+
+export type FieldSpec = FieldShapeSpec & { readonly name: string }
 
 /** The editable form of a collection: what `collections.update` takes back. */
 export type CollectionDefinition = {

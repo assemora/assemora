@@ -22,350 +22,29 @@ import {
 import { useIntrospection } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
 import { Page } from '../app/shell.tsx'
-import { fieldNamePatternOf, kindsOf, namePatternOf, needOf } from '../collections/contract.ts'
+import {
+  fieldNamePatternOf,
+  kindsOf,
+  namePatternOf,
+  nestingDepthOf,
+} from '../collections/contract.ts'
 import {
   blankField,
   type CollectionDraft,
   draftOf,
   emptyDraft,
   type FieldChange,
-  type FieldDraft,
-  type FieldLocks,
   issuesOf,
-  locksOf,
   moved,
   nameFrom,
   patched,
   payloadOf,
   removals,
+  storedField,
   without,
 } from '../collections/draft.ts'
-import { Badge, Button, Card, Failure, Field, Input, Select, Spinner } from '../ui/index.tsx'
-
-const Flag = ({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string
-  checked: boolean
-  onChange(checked: boolean): void
-}) => (
-  <label className="flex items-center gap-1.5 text-xs text-ink-soft">
-    <input
-      type="checkbox"
-      className="size-3.5 accent-accent"
-      checked={checked}
-      onChange={(event) => onChange(event.target.checked)}
-    />
-    {label}
-  </label>
-)
-
-/**
- * The options of a select field.
- *
- * They may grow while entries exist and may not shrink: an entry can be holding one,
- * and a value the field says is impossible is worse than a choice nobody picks any
- * more. So a locked option has no way to remove it and says so instead.
- */
-const Options = ({
-  values,
-  locked,
-  onChange,
-}: {
-  values: readonly string[]
-  locked: readonly string[]
-  onChange(values: readonly string[]): void
-}) => {
-  const [adding, setAdding] = useState('')
-
-  const add = () => {
-    const option = adding.trim()
-
-    if (option === '' || values.includes(option)) return
-
-    onChange([...values, option])
-    setAdding('')
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {values.length === 0 && <span className="text-xs text-ink-faint">No options yet</span>}
-        {values.map((option) =>
-          locked.includes(option) ? (
-            <span key={option} title="An entry may hold this option, so it cannot be taken away">
-              <Badge>{option} · kept</Badge>
-            </span>
-          ) : (
-            <button
-              key={option}
-              type="button"
-              title="Remove this option"
-              onClick={() => onChange(values.filter((each) => each !== option))}
-            >
-              <Badge tone="accent">{option} ×</Badge>
-            </button>
-          ),
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <Input
-          className="max-w-48"
-          placeholder="Add an option…"
-          value={adding}
-          onChange={(event) => setAdding(event.target.value)}
-          onKeyDown={(event) => {
-            // Enter belongs to this input while it has something in it; the form's
-            // submit is a deliberate act further down the page.
-            if (event.key !== 'Enter') return
-
-            event.preventDefault()
-            add()
-          }}
-        />
-        <Button variant="secondary" size="sm" onClick={add}>
-          Add
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-/**
- * The extra a kind needs beyond its name.
- *
- * A select is its options, a slug is the field it is made from, a relation is what it
- * points at. Every other kind — including one a plugin registered that Studio has
- * never heard of — needs nothing here, and the command says so if it turns out it does.
- */
-const Extra = ({
-  field,
-  locks,
-  fields,
-  resources,
-  onChange,
-}: {
-  field: FieldDraft
-  locks: FieldLocks
-  fields: readonly FieldDraft[]
-  resources: readonly { name: string; label: string }[]
-  onChange(change: FieldChange): void
-}) => {
-  const need = needOf(field.kind)
-
-  if (need === 'options') {
-    return (
-      <Field label="Options" help="A stored entry holds one of these" required>
-        <Options
-          values={field.options}
-          locked={locks.options}
-          onChange={(options) => onChange({ options })}
-        />
-      </Field>
-    )
-  }
-
-  if (need === 'source') {
-    const others = fields.filter((each) => each.key !== field.key && each.name !== '')
-
-    return (
-      <Field label="Made from" help="Left empty on an entry, the slug comes from this" required>
-        <Select
-          className="max-w-56"
-          disabled={locks.kind}
-          value={field.source}
-          onChange={(event) => onChange({ source: event.target.value })}
-        >
-          <option value="">Choose a field…</option>
-          {/* A source that no longer names a field of this collection is still what
-              the entries were made with, so it stays offered rather than vanishing. */}
-          {others.some((each) => each.name === field.source) || field.source === '' ? null : (
-            <option value={field.source}>{field.source}</option>
-          )}
-          {others.map((each) => (
-            <option key={each.key} value={each.name}>
-              {each.label === '' ? each.name : `${each.label} (${each.name})`}
-            </option>
-          ))}
-        </Select>
-      </Field>
-    )
-  }
-
-  if (need === 'target') {
-    return (
-      <Field label="Points at" help="An entry holds the id of one of these" required>
-        <Select
-          className="max-w-56"
-          disabled={locks.kind}
-          value={field.target}
-          onChange={(event) => onChange({ target: event.target.value })}
-        >
-          <option value="">Choose a resource…</option>
-          {resources.some((resource) => resource.name === field.target) ||
-          field.target === '' ? null : (
-            <option value={field.target}>{field.target}</option>
-          )}
-          {resources.map((resource) => (
-            <option key={resource.name} value={resource.name}>
-              {resource.label} ({resource.name})
-            </option>
-          ))}
-        </Select>
-      </Field>
-    )
-  }
-
-  return null
-}
-
-const Row = ({
-  field,
-  index,
-  count,
-  kinds,
-  locks,
-  fields,
-  resources,
-  issues,
-  onChange,
-  onMove,
-  onRemove,
-}: {
-  field: FieldDraft
-  index: number
-  count: number
-  kinds: readonly string[]
-  locks: FieldLocks
-  fields: readonly FieldDraft[]
-  resources: readonly { name: string; label: string }[]
-  issues: readonly string[]
-  onChange(change: FieldChange): void
-  onMove(by: number): void
-  onRemove(): void
-}) => (
-  <div className="space-y-3 border-b border-line-soft p-4 last:border-0">
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-0.5 pb-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 px-1.5"
-          disabled={index === 0}
-          // An arrow is not a name: what a screen reader announces has to say which
-          // field is moving, and there are as many of these as there are rows.
-          aria-label={`Move ${field.name === '' ? 'this field' : field.name} up`}
-          title="Move up"
-          onClick={() => onMove(-1)}
-        >
-          ↑
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 px-1.5"
-          disabled={index === count - 1}
-          aria-label={`Move ${field.name === '' ? 'this field' : field.name} down`}
-          title="Move down"
-          onClick={() => onMove(1)}
-        >
-          ↓
-        </Button>
-      </div>
-
-      <div className="min-w-40 flex-1">
-        <Field
-          label="Name"
-          required
-          {...(locks.name
-            ? { help: 'A field’s name is where its values are stored, so it never changes' }
-            : {})}
-          {...(issues.length === 0 ? {} : { errors: issues })}
-        >
-          <Input
-            className={`font-mono text-xs${locks.name ? ' bg-surface-sunken' : ''}`}
-            placeholder="author"
-            readOnly={locks.name}
-            value={field.name}
-            onChange={(event) => onChange({ name: event.target.value })}
-          />
-        </Field>
-      </div>
-
-      <div className="min-w-40 flex-1">
-        <Field
-          label="Kind"
-          required
-          {...(locks.kind ? { help: 'Fixed: entries already hold values of this kind' } : {})}
-        >
-          <Select
-            disabled={locks.kind}
-            value={field.kind}
-            onChange={(event) => onChange({ kind: event.target.value })}
-          >
-            {/* A stored kind a plugin used to provide is still what the values are,
-                so it is offered even when the application no longer declares it. */}
-            {kinds.includes(field.kind) ? null : <option value={field.kind}>{field.kind}</option>}
-            {kinds.map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
-
-      <div className="min-w-40 flex-1">
-        <Field label="Label" help="What an editor sees. Left empty, the name is used">
-          <Input
-            placeholder={field.name === '' ? 'Author' : undefined}
-            value={field.label}
-            onChange={(event) => onChange({ label: event.target.value })}
-          />
-        </Field>
-      </div>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        className="mb-1 text-danger"
-        aria-label={`Remove ${field.name === '' ? 'this field' : field.name}`}
-        title="Remove this field"
-        onClick={onRemove}
-      >
-        Remove
-      </Button>
-    </div>
-
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <Flag
-        label="required"
-        checked={field.required}
-        onChange={(required) => onChange({ required })}
-      />
-      <Flag
-        label="searchable"
-        checked={field.searchable}
-        onChange={(searchable) => onChange({ searchable })}
-      />
-      {/* No "sortable". A collection's entries are ordered by the entry's own columns
-          and by nothing else, because a field's value lives inside one JSONB document
-          (ADR-0012) — so the checkbox could only ever have produced a 422 from the
-          listing it was meant to reorder. `src/collections/draft.ts` carries the whole
-          reason; the list screen leaves the same control out for the same one. */}
-      <Flag
-        label="filterable"
-        checked={field.filterable}
-        onChange={(filterable) => onChange({ filterable })}
-      />
-    </div>
-
-    <Extra field={field} locks={locks} fields={fields} resources={resources} onChange={onChange} />
-  </div>
-)
+import { FieldRow, type RowSetting } from '../collections/row.tsx'
+import { Button, Card, Failure, Field, Input, Spinner } from '../ui/index.tsx'
 
 /** What this save will do that cannot be undone, said while it can still be changed. */
 const Consequences = ({
@@ -553,6 +232,28 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
   const change = (key: string, patch: FieldChange) =>
     setDraft((current) => ({ ...current, fields: patched(current.fields, key, patch) }))
 
+  /**
+   * What every row in the tree shares.
+   *
+   * A row addresses itself by key and knows nothing about where it sits, so adding a
+   * field to a group four levels of components down is the same call the top-level list
+   * makes. The depth limit is read off the command's own schema rather than agreed on
+   * here: the form stops offering a group exactly where the parser starts refusing one.
+   */
+  const setting: RowSetting = {
+    kinds,
+    maxDepth: nestingDepthOf(declaration),
+    entries,
+    resources,
+    issues: forRow,
+    newKey: nextKey,
+    onChange: change,
+    onMove: (key, by) =>
+      setDraft((current) => ({ ...current, fields: moved(current.fields, key, by) })),
+    onRemove: (key) =>
+      setDraft((current) => ({ ...current, fields: without(current.fields, key) })),
+  }
+
   const submit = (event: FormEvent) => {
     event.preventDefault()
     setFailure(undefined)
@@ -730,26 +431,15 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
           ))}
 
           {draft.fields.map((field, index) => (
-            <Row
+            <FieldRow
               key={field.key}
               field={field}
+              before={storedField(stored, field)}
               index={index}
               count={draft.fields.length}
-              kinds={kinds}
-              locks={locksOf(field, stored, entries)}
-              fields={draft.fields}
-              resources={resources}
-              issues={forRow(field.key)}
-              onChange={(patch) => change(field.key, patch)}
-              onMove={(by) =>
-                setDraft((current) => ({
-                  ...current,
-                  fields: moved(current.fields, field.key, by),
-                }))
-              }
-              onRemove={() =>
-                setDraft((current) => ({ ...current, fields: without(current.fields, field.key) }))
-              }
+              depth={1}
+              siblings={draft.fields}
+              setting={setting}
             />
           ))}
 

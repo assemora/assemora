@@ -6,6 +6,12 @@
  * React losing track of it, and the name the field had when it was read, so the editor
  * knows which rows already hold values.
  *
+ * A draft is a *tree*, because a definition is: an `object` carries the fields it groups
+ * and an `array` carries the field one item is. The key is unique across the whole tree,
+ * so `patched`, `without` and `moved` take one and find the row wherever it lives —
+ * which is what lets the screen keep saying "change this row" without knowing how deep
+ * it is.
+ *
  * The rules here are not a second implementation of the command's. `collections.update`
  * refuses a silent removal, a frozen kind and a reused dropped name whatever this says
  * — what this does is let the screen say *before* somebody commits what the command
@@ -23,11 +29,11 @@
  * the flag rather than carrying it back. It belongs to whoever adds JSONB ordering to
  * `@assemora/data`, not to this form.
  */
-import type { CollectionDefinition, FieldSpec } from '../api/collections.ts'
+import type { CollectionDefinition, FieldShapeSpec, FieldSpec } from '../api/collections.ts'
 import { needOf } from './contract.ts'
 
 export type FieldDraft = {
-  /** Stable for the life of the row. Never sent anywhere. */
+  /** Stable for the life of the row, and unique across the tree. Never sent anywhere. */
   readonly key: string
   /** The name this field has in the stored definition, if it is a stored one. */
   readonly stored: string | undefined
@@ -40,6 +46,12 @@ export type FieldDraft = {
   readonly options: readonly string[]
   readonly source: string
   readonly target: string
+  /** `media`: the media types its picker offers. Empty means any file. */
+  readonly accept: readonly string[]
+  /** `object`: the fields it groups. */
+  readonly fields: readonly FieldDraft[]
+  /** `array`: the field one item is. It has no name — there is nothing to key it by. */
+  readonly element: FieldDraft | undefined
 }
 
 export type CollectionDraft = {
@@ -61,26 +73,51 @@ export const blankField = (key: string, kind = 'text'): FieldDraft => ({
   options: [],
   source: '',
   target: '',
+  accept: [],
+  fields: [],
+  element: undefined,
 })
 
-const fieldDraftOf = (spec: FieldSpec): FieldDraft => ({
-  key: `stored:${spec.name}`,
+/**
+ * A row's key, built from where it sits.
+ *
+ * A stored group's fields are `stored:author.name`, and a repeater's element is
+ * `stored:sections.element` — the same word the definition, the descriptor and a
+ * refusal use for it. Two fields cannot share a path, so the key is unique tree-wide
+ * without a counter, and it survives a reread of the same definition.
+ */
+const keyOf = (prefix: string, name: string): string => `${prefix}.${name}`
+
+const fieldDraftOf = (spec: FieldSpec, prefix: string): FieldDraft => ({
+  ...shapeDraftOf(spec, keyOf(prefix, spec.name)),
   stored: spec.name,
   name: spec.name,
-  kind: spec.kind,
-  label: spec.label ?? '',
-  required: spec.required === true,
-  searchable: spec.searchable === true,
-  filterable: spec.filterable === true,
-  options: spec.options ?? [],
-  source: spec.source ?? '',
-  target: spec.target ?? '',
 })
+
+function shapeDraftOf(spec: FieldShapeSpec, key: string): FieldDraft {
+  return {
+    key,
+    stored: undefined,
+    name: '',
+    kind: spec.kind,
+    label: spec.label ?? '',
+    required: spec.required === true,
+    searchable: spec.searchable === true,
+    filterable: spec.filterable === true,
+    options: spec.options ?? [],
+    source: spec.source ?? '',
+    target: spec.target ?? '',
+    accept: spec.accept ?? [],
+    fields: (spec.fields ?? []).map((inner) => fieldDraftOf(inner, key)),
+    element:
+      spec.element === undefined ? undefined : shapeDraftOf(spec.element, keyOf(key, 'element')),
+  }
+}
 
 export const draftOf = (definition: CollectionDefinition): CollectionDraft => ({
   name: definition.name,
   label: definition.label ?? '',
-  fields: definition.fields.map(fieldDraftOf),
+  fields: definition.fields.map((spec) => fieldDraftOf(spec, 'stored')),
 })
 
 export const emptyDraft = (key: string): CollectionDraft => ({
@@ -92,59 +129,152 @@ export const emptyDraft = (key: string): CollectionDraft => ({
 /** What a row's control may change. Neither the key nor the stored name is one. */
 export type FieldChange = Partial<Omit<FieldDraft, 'key' | 'stored'>>
 
+const changed = (field: FieldDraft, key: string, change: FieldChange): FieldDraft =>
+  field.key === key
+    ? { ...field, ...change }
+    : {
+        ...field,
+        fields: field.fields.map((inner) => changed(inner, key, change)),
+        element: field.element === undefined ? undefined : changed(field.element, key, change),
+      }
+
 export const patched = (
   fields: readonly FieldDraft[],
   key: string,
   change: FieldChange,
-): readonly FieldDraft[] =>
-  fields.map((field) => (field.key === key ? { ...field, ...change } : field))
+): readonly FieldDraft[] => fields.map((field) => changed(field, key, change))
+
+/**
+ * What a row becomes when its kind changes.
+ *
+ * A group with no fields and a repeater with no element are both a definition the
+ * command refuses, so choosing the kind makes the one thing it cannot exist without.
+ * The alternative is a form whose only possible next action is "add the thing this
+ * needs", which is a step nobody would choose not to take.
+ *
+ * What the old kind carried stays in the draft and is simply not sent — `specOf` emits
+ * `options`, `fields` and `element` only for the kind that has them — so changing a kind
+ * by accident and changing it back does not lose what was typed.
+ */
+export const shaped = (field: FieldDraft, kind: string, key: () => string): FieldChange => ({
+  kind,
+  ...(kind === 'object' && field.fields.length === 0 ? { fields: [blankField(key())] } : {}),
+  ...(kind === 'array' && field.element === undefined ? { element: blankField(key()) } : {}),
+})
+
+const dropped = (fields: readonly FieldDraft[], key: string): readonly FieldDraft[] =>
+  fields
+    .filter((field) => field.key !== key)
+    .map((field) => ({
+      ...field,
+      fields: dropped(field.fields, key),
+      element:
+        field.element === undefined
+          ? undefined
+          : { ...field.element, fields: dropped(field.element.fields, key) },
+    }))
 
 export const without = (fields: readonly FieldDraft[], key: string): readonly FieldDraft[] =>
-  fields.filter((field) => field.key !== key)
+  dropped(fields, key)
 
-/** Reorders one row. A move past either end is not a move. */
+/**
+ * Reorders one row, in whichever list holds it. A move past either end is not a move.
+ *
+ * The array is returned unchanged when nothing moved, so a no-op does not redraw the
+ * tree it walked.
+ */
 export const moved = (
   fields: readonly FieldDraft[],
   key: string,
   by: number,
 ): readonly FieldDraft[] => {
   const from = fields.findIndex((field) => field.key === key)
-  const to = from + by
 
-  if (from === -1 || to < 0 || to >= fields.length) return fields
+  if (from !== -1) {
+    const to = from + by
 
-  const reordered = [...fields]
-  const [moving] = reordered.splice(from, 1)
+    if (to < 0 || to >= fields.length) return fields
 
-  if (moving === undefined) return fields
+    const reordered = [...fields]
+    const [moving] = reordered.splice(from, 1)
 
-  reordered.splice(to, 0, moving)
+    if (moving === undefined) return fields
 
-  return reordered
+    reordered.splice(to, 0, moving)
+
+    return reordered
+  }
+
+  let touched = false
+
+  const next = fields.map((field) => {
+    const inner = moved(field.fields, key, by)
+    const element =
+      field.element === undefined
+        ? undefined
+        : ((): FieldDraft => {
+            const within = moved(field.element.fields, key, by)
+
+            return within === field.element.fields
+              ? field.element
+              : { ...field.element, fields: within }
+          })()
+
+    if (inner === field.fields && element === field.element) return field
+
+    touched = true
+
+    return { ...field, fields: inner, element }
+  })
+
+  return touched ? next : fields
 }
 
 /**
- * What the command is sent for one field.
+ * What the command is sent for one field, minus the name.
  *
- * `options`, `source` and `target` follow the *kind*: a select that was turned into a
- * text field must not carry its old options along, or the definition would remember a
- * choice nobody can see and the field would grow it back on the next edit.
+ * `options`, `source`, `target` and `accept` follow the *kind*: a select that was turned
+ * into a text field must not carry its old options along, or the definition would
+ * remember a choice nobody can see and the field would grow it back on the next edit.
+ * `fields` and `element` follow it for the same reason.
  */
-export const specOf = (field: FieldDraft): FieldSpec => {
+const shapeOf = (field: FieldDraft): FieldShapeSpec => {
   const need = needOf(field.kind)
 
   return {
-    name: field.name.trim(),
     kind: field.kind,
     ...(field.label.trim() === '' ? {} : { label: field.label.trim() }),
     ...(field.required ? { required: true } : {}),
-    ...(field.searchable ? { searchable: true } : {}),
-    ...(field.filterable ? { filterable: true } : {}),
-    ...(need === 'options' ? { options: field.options } : {}),
+    ...(need === 'options' || need === 'languages' ? { options: field.options } : {}),
     ...(need === 'source' && field.source !== '' ? { source: field.source } : {}),
     ...(need === 'target' && field.target !== '' ? { target: field.target } : {}),
+    ...(need === 'accept' && field.accept.length > 0 ? { accept: field.accept } : {}),
+    ...(need === 'fields' ? { fields: field.fields.map(insideOf) } : {}),
+    ...(need === 'element' && field.element !== undefined
+      ? { element: shapeOf(field.element) }
+      : {}),
   }
 }
+
+/**
+ * A field of a group: named, and without the flags that address a resource field.
+ *
+ * `searchable` and `filterable` reach a column or a top-level JSONB key by name and
+ * never inside a value, so `object()` and `array()` refuse them outright rather than
+ * accepting a flag that does nothing. A nested row therefore never offers them, and this
+ * is the second half of that: what a stored definition cannot carry, a draft does not
+ * send back.
+ */
+const insideOf = (field: FieldDraft): FieldSpec => ({
+  name: field.name.trim(),
+  ...shapeOf(field),
+})
+
+export const specOf = (field: FieldDraft): FieldSpec => ({
+  ...insideOf(field),
+  ...(field.searchable ? { searchable: true } : {}),
+  ...(field.filterable ? { filterable: true } : {}),
+})
 
 /**
  * The fields this edit removes.
@@ -152,6 +282,10 @@ export const specOf = (field: FieldDraft): FieldSpec => {
  * Removing a row is how somebody says they mean it, so this is exactly what `drop`
  * carries — and `collections.update` refuses a removal that is not named there, which
  * is what keeps a stale form from taking a field out by accident.
+ *
+ * Top-level fields only, because `drop` names a collection's own fields and has nothing
+ * to say about one inside a group. That is also why a stored nested field cannot be
+ * removed at all while entries exist: see `locksOf`.
  */
 export const removals = (
   stored: CollectionDefinition | undefined,
@@ -170,10 +304,29 @@ export const payloadOf = (
   return {
     name: draft.name.trim(),
     ...(draft.label.trim() === '' ? {} : { label: draft.label.trim() }),
-    fields: draft.fields.map(specOf),
+    fields: draft.fields.map((field) => specOf(field)),
     ...(drop.length === 0 ? {} : { drop }),
   }
 }
+
+/** The stored spec a row came from, matched the way the command matches it: by name. */
+export const storedInside = (
+  before: FieldShapeSpec | undefined,
+  child: FieldDraft,
+): FieldShapeSpec | undefined =>
+  child.stored === undefined
+    ? undefined
+    : before?.fields?.find((field) => field.name === child.stored)
+
+/** The stored spec a repeater's element came from. An element is matched by position. */
+export const storedElement = (before: FieldShapeSpec | undefined): FieldShapeSpec | undefined =>
+  before?.element
+
+export const storedField = (
+  stored: CollectionDefinition | undefined,
+  field: FieldDraft,
+): FieldShapeSpec | undefined =>
+  field.stored === undefined ? undefined : stored?.fields.find((each) => each.name === field.stored)
 
 /**
  * What this row may no longer change.
@@ -189,20 +342,32 @@ export type FieldLocks = {
   readonly kind: boolean
   /** Options an entry may already hold. They may be added to, never taken away. */
   readonly options: readonly string[]
+  /**
+   * Whether this row cannot be taken out at all.
+   *
+   * True of a stored field inside a group while entries exist. Removing a top-level
+   * field leaves its values behind under the old name, unreadable but there, and `drop`
+   * is how somebody says they mean it. A nested one is worse: `object()` keeps only the
+   * keys its shape mentions, so the next ordinary save of an entry would *delete* the
+   * value rather than leave it — and `drop` names a collection's own fields, with no way
+   * to name this one. So the command refuses it, and the button says so first.
+   */
+  readonly kept: boolean
 }
 
 export const locksOf = (
   field: FieldDraft,
-  stored: CollectionDefinition | undefined,
+  before: FieldShapeSpec | undefined,
   entries: number,
+  nested = false,
 ): FieldLocks => {
-  const before = stored?.fields.find((each) => each.name === field.stored)
   const frozen = before !== undefined && entries > 0
 
   return {
     name: field.stored !== undefined,
     kind: frozen,
     options: frozen && before.kind === field.kind ? (before.options ?? []) : [],
+    kept: frozen && nested,
   }
 }
 
@@ -236,6 +401,84 @@ export type DraftContext = {
 }
 
 /**
+ * What one list of fields would be refused for, at any depth.
+ *
+ * A group's fields are checked exactly as the collection's own are — a name of the right
+ * shape, no two alike, and whatever the kind cannot be built without — because that is
+ * what the command does: `fieldFromSpec` is one function and it runs the whole way down.
+ * The only rule that does not recurse is the dropped-name one, which is about values
+ * stored under a collection's own key.
+ */
+const fieldIssues = (
+  fields: readonly FieldDraft[],
+  context: DraftContext,
+  named: boolean,
+): DraftIssue[] => {
+  const issues: DraftIssue[] = []
+  const seen = new Map<string, number>()
+
+  for (const field of fields) {
+    const fieldName = field.name.trim()
+
+    if (named) {
+      seen.set(fieldName, (seen.get(fieldName) ?? 0) + 1)
+
+      if (fieldName === '') {
+        issues.push({ key: field.key, message: 'Every field needs a name.', blank: true })
+      } else if (!new RegExp(context.fieldNamePattern).test(fieldName)) {
+        issues.push({
+          key: field.key,
+          message: `“${fieldName}” is not a name a field can have. Start with a letter, then letters, numbers and underscores.`,
+        })
+      } else if ((seen.get(fieldName) ?? 0) > 1) {
+        issues.push({ key: field.key, message: `Another field is already called “${fieldName}”.` })
+      }
+    }
+
+    issues.push(...kindIssues(field, context))
+  }
+
+  return issues
+}
+
+/** What a kind cannot be built without, and what is inside it. */
+const kindIssues = (field: FieldDraft, context: DraftContext): DraftIssue[] => {
+  const need = needOf(field.kind)
+
+  if (need === 'options' && field.options.length === 0) {
+    return [
+      {
+        key: field.key,
+        message: `A ${field.kind} field needs at least one option.`,
+        blank: true,
+      },
+    ]
+  }
+
+  if (need === 'source' && field.source === '') {
+    return [{ key: field.key, message: 'A slug field needs a source field.', blank: true }]
+  }
+
+  if (need === 'target' && field.target === '') {
+    return [{ key: field.key, message: 'A relation field needs a target resource.', blank: true }]
+  }
+
+  if (need === 'fields') {
+    return field.fields.length === 0
+      ? [{ key: field.key, message: 'A group needs at least one field.', blank: true }]
+      : fieldIssues(field.fields, context, true)
+  }
+
+  if (need === 'element') {
+    return field.element === undefined
+      ? [{ key: field.key, message: 'A repeater needs to say what one item is.', blank: true }]
+      : fieldIssues([field.element], context, false)
+  }
+
+  return []
+}
+
+/**
  * Everything the command would refuse, said while it can still be fixed.
  *
  * Deliberately only the refusals that are certain: a form that guesses at the server's
@@ -265,24 +508,12 @@ export const issuesOf = (draft: CollectionDraft, context: DraftContext): readonl
     issues.push({ about: 'fields', message: 'A collection needs at least one field.', blank: true })
   }
 
-  const seen = new Map<string, number>()
-
   for (const field of draft.fields) {
     const fieldName = field.name.trim()
 
-    seen.set(fieldName, (seen.get(fieldName) ?? 0) + 1)
-
-    if (fieldName === '') {
-      issues.push({ key: field.key, message: 'Every field needs a name.', blank: true })
-    } else if (!new RegExp(context.fieldNamePattern).test(fieldName)) {
-      issues.push({
-        key: field.key,
-        message: `“${fieldName}” is not a name a field can have. Start with a letter, then letters, numbers and underscores.`,
-      })
-    } else if ((seen.get(fieldName) ?? 0) > 1) {
-      issues.push({ key: field.key, message: `Another field is already called “${fieldName}”.` })
-    } else if (
+    if (
       field.stored === undefined &&
+      fieldName !== '' &&
       context.dropped.includes(fieldName) &&
       context.entries > 0
     ) {
@@ -291,31 +522,9 @@ export const issuesOf = (draft: CollectionDraft, context: DraftContext): readonl
         message: `A field called “${fieldName}” was removed while this collection held entries, and their values are still stored under that name. Choose another name, or empty the collection first.`,
       })
     }
-
-    const need = needOf(field.kind)
-
-    if (need === 'options' && field.options.length === 0) {
-      issues.push({
-        key: field.key,
-        message: 'A select field needs at least one option.',
-        blank: true,
-      })
-    }
-
-    if (need === 'source' && field.source === '') {
-      issues.push({ key: field.key, message: 'A slug field needs a source field.', blank: true })
-    }
-
-    if (need === 'target' && field.target === '') {
-      issues.push({
-        key: field.key,
-        message: 'A relation field needs a target resource.',
-        blank: true,
-      })
-    }
   }
 
-  return issues
+  return [...issues, ...fieldIssues(draft.fields, context, true)]
 }
 
 /**

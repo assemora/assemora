@@ -10,10 +10,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   columnFields,
+  declaredValues,
   editableFields,
   type FieldDescriptor,
   type ResourceDescriptor,
   sortableFields,
+  valueAt,
 } from './introspection.ts'
 
 const field = (over: Partial<FieldDescriptor> & { name: string }): FieldDescriptor => ({
@@ -86,5 +88,53 @@ describe('the fields a screen shows', () => {
 
     expect(editableFields(mixed).map((each) => each.name)).toEqual(['title'])
     expect(columnFields(mixed).map((each) => each.name)).toEqual(['title', 'createdAt'])
+  })
+})
+
+/**
+ * A field name comes from a stored definition (SPEC.md §37, §86) and
+ * `/^[a-zA-Z][a-zA-Z0-9_]*$/` makes `constructor`, `toString`, `valueOf` and
+ * `hasOwnProperty` legal ones. An entry, a draft and a listing row are all plain
+ * objects, so every one of those names is answered by `Object.prototype` on a record
+ * that has never been given the key — a function, drawn into an input, printed into a
+ * table cell and then sent back to the application as the value.
+ *
+ * The application already reads entries this way (`dynamic.ts`, `validation.ts`).
+ * Studio has to as well, because it is the other end of the same JSON.
+ */
+describe('reading a record keyed by field names', () => {
+  const inherited = ['constructor', 'toString', 'valueOf', 'hasOwnProperty']
+
+  it('answers with nothing for a name the record does not carry', () => {
+    for (const name of inherited) {
+      expect(valueAt({ title: 'A heading' }, name), name).toBeUndefined()
+    }
+  })
+
+  it('still answers with the value when the record does carry it', () => {
+    expect(valueAt({ constructor: 'a name like any other' }, 'constructor')).toBe(
+      'a name like any other',
+    )
+    expect(valueAt({ title: 'A heading' }, 'title')).toBe('A heading')
+  })
+
+  it('sends only the keys the draft actually holds', () => {
+    const fields = [field({ name: 'title' }), ...inherited.map((name) => field({ name }))]
+
+    expect(declaredValues(fields, { title: 'A heading' })).toEqual({ title: 'A heading' })
+  })
+
+  it('sends a key the draft holds even when it is named after one of those', () => {
+    const fields = [field({ name: 'constructor' })]
+
+    expect(declaredValues(fields, { constructor: 'typed by a person' })).toEqual({
+      constructor: 'typed by a person',
+    })
+  })
+
+  it('leaves out a field the draft never touched, which is how a partial edit works', () => {
+    const fields = [field({ name: 'title' }), field({ name: 'body' })]
+
+    expect(declaredValues(fields, { title: 'A heading' })).toEqual({ title: 'A heading' })
   })
 })

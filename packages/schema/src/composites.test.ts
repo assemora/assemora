@@ -66,6 +66,43 @@ describe('object', () => {
     expect(issues(result)[0]?.path).toEqual(['owner', 'name'])
   })
 
+  /**
+   * A shape's keys are caller-chosen. A dynamic collection names its fields in stored
+   * JSON (SPEC.md §37, §86), `constructor`, `toString`, `valueOf` and `hasOwnProperty`
+   * are all legal field names, and every one of them is answered by `Object.prototype`
+   * on a plain object that has never been given the key.
+   *
+   * So a group field called `constructor` used to parse `Object` — a function — for a
+   * key nobody sent, and the whole entry was refused with "Expected a string" about it.
+   * `dynamic.ts` and `validation.ts` had already learned this at the top level; a shape
+   * is the layer below, and it is the one a stored definition now reaches.
+   */
+  it('reads a key the value has, never one it inherits', () => {
+    const Group = object({
+      title: string(),
+      constructor: string().optional(),
+      toString: string().optional(),
+      valueOf: string().optional(),
+      hasOwnProperty: string().optional(),
+    })
+
+    const parsed = value(Group.parse({ title: 'A heading' }))
+
+    // `toEqual` ignores a key whose value is `undefined`, and an inherited key that
+    // parsed to `undefined` and was then *written* is the second half of the same bug:
+    // `exactOptionalPropertyTypes` treats a present `undefined` and an absent key as
+    // two different things, and only the key list can tell them apart.
+    expect(Object.keys(parsed)).toEqual(['title'])
+  })
+
+  it('still reads such a key when the value actually carries it', () => {
+    const Group = object({ constructor: string() })
+
+    expect(value(Group.parse({ constructor: 'a name like any other' }))).toEqual({
+      constructor: 'a name like any other',
+    })
+  })
+
   it('describes itself as JSON Schema, marking only required keys', () => {
     expect(Login.toJsonSchema()).toEqual({
       type: 'object',

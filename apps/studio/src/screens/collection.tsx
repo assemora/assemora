@@ -16,6 +16,7 @@ import {
   type ResourceDescriptor,
   sortableFields,
   useIntrospection,
+  valueAt,
 } from '../api/introspection.ts'
 import { Page } from '../app/shell.tsx'
 import { Badge, Button, Card, Empty, Failure, Input, Select, Spinner } from '../ui/index.tsx'
@@ -39,6 +40,49 @@ const Cell = ({ field, value }: { field: FieldDescriptor; value: unknown }) => {
 
   if (field.kind === 'select') {
     return <Badge tone="accent">{String(value)}</Badge>
+  }
+
+  if (field.kind === 'checkboxes' && Array.isArray(value)) {
+    return (
+      <span className="flex flex-wrap gap-1">
+        {value.map((chosen) => (
+          <Badge key={String(chosen)} tone="accent">
+            {String(chosen)}
+          </Badge>
+        ))}
+      </span>
+    )
+  }
+
+  if (field.kind === 'color') {
+    return (
+      <span className="flex items-center gap-1.5 font-mono text-xs">
+        <span
+          className="size-4 shrink-0 rounded border border-line"
+          // The one place a stored value becomes a style. It is safe because the field
+          // refuses anything that is not hex: a colour that could carry a `;` carries a
+          // stylesheet (SPEC.md §62), and that is decided at the field, not here.
+          style={{ background: String(value) }}
+        />
+        {String(value)}
+      </span>
+    )
+  }
+
+  // Its own words, or the address it goes to. Never the JSON: a link is the commonest
+  // field in a CMS and a column of `{"type":"url",…}` is a column nobody reads.
+  if (field.kind === 'link' && typeof value === 'object') {
+    const link = value as { label?: unknown; url?: unknown; entry?: { resource?: unknown } }
+
+    return (
+      <span className="line-clamp-1">
+        {typeof link.label === 'string' && link.label !== ''
+          ? link.label
+          : typeof link.url === 'string'
+            ? link.url
+            : `→ ${String(link.entry?.resource ?? 'an entry')}`}
+      </span>
+    )
   }
 
   if (field.kind === 'datetime' || field.kind === 'date') {
@@ -86,7 +130,7 @@ const Table = ({ resource, listing }: { resource: ResourceDescriptor; listing: L
             >
               {columns.map((field) => (
                 <td key={field.name} className="max-w-[22rem] px-4 py-2.5">
-                  <Cell field={field} value={entry[field.name]} />
+                  <Cell field={field} value={valueAt(entry, field.name)} />
                 </td>
               ))}
               <td className="px-4 py-2.5 text-right">

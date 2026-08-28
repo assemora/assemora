@@ -14,6 +14,16 @@ export type Patch = Readonly<Record<string, { readonly from: unknown; readonly t
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/**
+ * One value out of a snapshot, read only where the snapshot has it.
+ *
+ * A snapshot is keyed by field names somebody chose (SPEC.md §37, §86), and
+ * `constructor`, `toString`, `valueOf` and `hasOwnProperty` are all legal ones —
+ * answered by `Object.prototype` on any plain object that was never given the key.
+ */
+const own = (record: Readonly<Record<string, unknown>>, key: string): unknown =>
+  Object.hasOwn(record, key) ? record[key] : undefined
+
 const same = (left: unknown, right: unknown): boolean => {
   if (left === right) return true
   if (left instanceof Date && right instanceof Date) return left.getTime() === right.getTime()
@@ -28,7 +38,13 @@ export const diff = (before: unknown, after: unknown): Patch => {
   const patch: Record<string, { from: unknown; to: unknown }> = {}
 
   for (const key of new Set([...Object.keys(from), ...Object.keys(to)])) {
-    if (!same(from[key], to[key])) patch[key] = { from: from[key], to: to[key] }
+    // Own keys only. A key is an own key of *one* side here, not of both, so the other
+    // side answers it from `Object.prototype` — a field called `constructor` that was
+    // cleared read as having changed to a function.
+    const was = own(from, key)
+    const is = own(to, key)
+
+    if (!same(was, is)) patch[key] = { from: was, to: is }
   }
 
   return patch

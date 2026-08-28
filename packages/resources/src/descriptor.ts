@@ -7,7 +7,13 @@
  */
 import type { JsonSchema } from '@assemora/schema'
 
-import type { AgentPermissions, AnyField, FieldKind, SelectOption } from './fields.js'
+import {
+  type AgentPermissions,
+  type AnyField,
+  ELEMENT_NAME,
+  type FieldKind,
+  type SelectOption,
+} from './fields.js'
 
 export type ResourceFieldDescriptor = {
   readonly name: string
@@ -24,6 +30,12 @@ export type ResourceFieldDescriptor = {
   readonly options?: readonly SelectOption[]
   readonly source?: string
   readonly target?: string
+  /** `media`: the media types its picker offers. */
+  readonly accept?: readonly string[]
+  /** `array`: the field one item is. */
+  readonly element?: ResourceFieldDescriptor
+  /** `object`: the fields it groups, in declaration order. */
+  readonly fields?: readonly ResourceFieldDescriptor[]
   readonly agent: AgentPermissions
   /** The same schema validation, OpenAPI and MCP all read. */
   readonly schema: JsonSchema
@@ -96,6 +108,18 @@ export const describeField = (name: string, field: AnyField): ResourceFieldDescr
   ...(field.options === undefined ? {} : { options: field.options }),
   ...(field.source === undefined ? {} : { source: field.source }),
   ...(field.target === undefined ? {} : { target: field.target }),
+  ...(field.accept === undefined ? {} : { accept: field.accept }),
+  // A group and a repeater describe themselves the whole way down, so Studio builds a
+  // nested form from the same data it builds a flat one from, and nobody has to read
+  // the JSON Schema to find out what a repeater repeats. There is no hidden field down
+  // there to leak: `object()` and `array()` refuse one, because nothing enforces it
+  // inside a value.
+  ...(field.element === undefined ? {} : { element: describeField(ELEMENT_NAME, field.element) }),
+  ...(field.shape === undefined
+    ? {}
+    : {
+        fields: Object.entries(field.shape).map(([inner, nested]) => describeField(inner, nested)),
+      }),
   agent: field.agent,
   schema: field.schema.toJsonSchema(),
 })

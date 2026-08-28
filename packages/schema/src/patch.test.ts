@@ -34,6 +34,20 @@ describe('what changed', () => {
     expect(changedFields(diff({ title: 'Gone' }, null))).toEqual(['title'])
   })
 
+  /**
+   * A snapshot is keyed by field names the caller chose (SPEC.md §37, §86), and
+   * `constructor`, `toString`, `valueOf` and `hasOwnProperty` are all legal ones. The
+   * side that does not carry the key answers it from `Object.prototype`, so a revision
+   * of a field by one of those names showed a function as its new value.
+   */
+  it('reads a field only from the side that has it, never from Object.prototype', () => {
+    expect(diff({ constructor: 'One' }, {})).toEqual({
+      constructor: { from: 'One', to: undefined },
+    })
+    expect(diff({}, { toString: 'Two' })).toEqual({ toString: { from: undefined, to: 'Two' } })
+    expect(diff({ valueOf: 'Same' }, { valueOf: 'Same' })).toEqual({})
+  })
+
   it('says nothing changed when nothing did', () => {
     expect(diff({ a: 1 }, { a: 1 })).toEqual({})
     expect(changedFields(diff(null, null))).toEqual([])

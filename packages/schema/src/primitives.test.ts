@@ -8,14 +8,16 @@ import {
   enumOf,
   integer,
   json,
+  nullable,
   number,
+  optional,
   string,
   timestamp,
   unknown,
   uuid,
 } from './primitives.js'
 
-import type { Issue, ParseResult } from './types.js'
+import type { Issue, ParseResult, Schema } from './types.js'
 
 const value = <T>(result: ParseResult<T>): T => {
   if (!result.ok) throw new Error('expected a successful parse')
@@ -185,5 +187,40 @@ describe('binary', () => {
   it('refuses anything that is neither', () => {
     expect(issues(binary().parse(42))[0]?.code).toBe('type')
     expect(issues(binary().parse(null))[0]?.code).toBe('type')
+  })
+})
+
+/**
+ * The same two modifiers a builder offers, for a schema that no longer has one.
+ *
+ * `@assemora/resources` builds a group's shape out of the schemas its fields carry, and
+ * by then they are `Schema<T>` and nothing more. Rebuilding the wrapper there is how
+ * two packages come to mean two different things by "optional".
+ */
+describe('optional and nullable, as combinators', () => {
+  it('adds "may be absent" to a schema whose builder is out of reach', () => {
+    const inner: Schema<string> = string()
+    const relaxed = optional(inner)
+
+    expect(relaxed.isOptional).toBe(true)
+    expect(relaxed.parse(undefined).ok).toBe(true)
+    expect(value(relaxed.parse('a'))).toBe('a')
+    expect(relaxed.parse(null).ok).toBe(false)
+  })
+
+  it('adds "may be null", and says so where every other layer reads it', () => {
+    const relaxed = nullable(string() as Schema<string>)
+
+    expect(relaxed.isNullable).toBe(true)
+    expect(value(relaxed.parse(null))).toBe(null)
+    expect(relaxed.toJsonSchema()).toMatchObject({ type: 'string', nullable: true })
+  })
+
+  it('composes, which is what an inner field that may be cleared needs', () => {
+    const relaxed = optional(nullable(string() as Schema<string>))
+
+    expect(relaxed.parse(undefined).ok).toBe(true)
+    expect(relaxed.parse(null).ok).toBe(true)
+    expect(relaxed.parse(42).ok).toBe(false)
   })
 })

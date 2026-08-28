@@ -8,7 +8,7 @@
 import type { BlockNode } from '@assemora/schema'
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
-import type { BlockDescriptor } from '../api/introspection.ts'
+import { type BlockDescriptor, valueAt } from '../api/introspection.ts'
 import { useThemeColors } from '../api/theme.ts'
 import { FieldInput } from '../screens/fields.tsx'
 import { Badge, Button, Empty } from '../ui/index.tsx'
@@ -165,7 +165,7 @@ export const Properties = ({
               <FieldInput
                 key={field.name}
                 field={field}
-                value={draft.values[field.name]}
+                value={valueAt(draft.values, field.name)}
                 onChange={(value) => commit(field.name, value)}
               />
             ))

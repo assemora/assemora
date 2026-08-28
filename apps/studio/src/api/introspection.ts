@@ -9,21 +9,37 @@ import { type UseQueryResult, useQuery } from '@tanstack/react-query'
 
 import { api } from './client.ts'
 
+/**
+ * The kinds `@assemora/resources` declares (SPEC.md §39).
+ *
+ * A closed union here and a plain string in a stored definition, which is deliberate:
+ * this is what Studio *draws*, and a plugin's kind reaches the form as a kind the switch
+ * does not know and falls back honestly. Widening this to `string` would take that
+ * exhaustiveness away from every control that reads it.
+ */
 export type FieldKind =
   | 'text'
   | 'textarea'
   | 'richText'
+  | 'markdown'
+  | 'code'
   | 'number'
+  | 'integer'
   | 'boolean'
   | 'date'
   | 'datetime'
+  | 'time'
   | 'select'
+  | 'checkboxes'
+  | 'color'
   | 'json'
   | 'slug'
   | 'url'
+  | 'link'
   | 'email'
   | 'media'
   | 'relation'
+  | 'table'
   | 'object'
   | 'array'
 
@@ -39,9 +55,22 @@ export type FieldDescriptor = {
   readonly label?: string
   readonly help?: string
   readonly placeholder?: string
+  /** `select` and `checkboxes`: the values. `code`: the languages offered. */
   readonly options?: readonly { readonly value: string; readonly label: string }[]
   readonly source?: string
   readonly target?: string
+  /** `media`: the media types its picker offers. */
+  readonly accept?: readonly string[]
+  /**
+   * `array`: the field one item is. `object`: the fields it groups.
+   *
+   * A group and a repeater describe themselves the whole way down, so a nested form is
+   * built from the same data a flat one is and nobody reads the JSON Schema to find out
+   * what a repeater repeats. There is no hidden field down there: `object()` and
+   * `array()` refuse one, because nothing enforces it inside a value.
+   */
+  readonly element?: FieldDescriptor
+  readonly fields?: readonly FieldDescriptor[]
   readonly schema?: Readonly<Record<string, unknown>>
 }
 
@@ -130,9 +159,63 @@ export const useIntrospection = (): UseQueryResult<Introspection> =>
 
 export const labelOf = (field: FieldDescriptor): string => field.label ?? field.name
 
+/**
+ * One value out of a record keyed by field names.
+ *
+ * `record[name]` is not this. A field name comes from a stored definition (SPEC.md §37,
+ * §86) and `/^[a-zA-Z][a-zA-Z0-9_]*$/` makes `constructor`, `toString`, `valueOf` and
+ * `hasOwnProperty` legal ones — every one of which a plain object answers from
+ * `Object.prototype` even though nothing ever put it there. What comes back is a
+ * function: pre-filled into an input, printed into a table cell, and saved as the
+ * sentence `function Object() { [native code] }` the moment somebody presses the button.
+ *
+ * The application reads entries the same way (`dynamic.ts`, `validation.ts`). Studio is
+ * the other end of that JSON and has to agree with it.
+ */
+export const valueAt = (record: Readonly<Record<string, unknown>>, name: string): unknown =>
+  Object.hasOwn(record, name) ? record[name] : undefined
+
+/**
+ * The fields a form sends, out of everything its draft is holding.
+ *
+ * An id or a timestamp the read returned is not the form's to write back, and a field
+ * the draft never touched is left out rather than sent as `undefined` — that is what
+ * makes an edit partial. `hasOwn` for the reason above: `'constructor' in draft` is true
+ * of every draft.
+ */
+export const declaredValues = (
+  fields: readonly FieldDescriptor[],
+  draft: Readonly<Record<string, unknown>>,
+): Record<string, unknown> => {
+  const values: Record<string, unknown> = {}
+
+  for (const field of fields) {
+    if (Object.hasOwn(draft, field.name)) values[field.name] = draft[field.name]
+  }
+
+  return values
+}
+
+/**
+ * The kinds that are not a column.
+ *
+ * A document, a program and a value with other values inside it have no one-line form:
+ * printed into a cell they are either a paragraph or the JSON somebody was escaping when
+ * they asked for a repeater. They are what the row is *opened* to read.
+ */
+const NOT_A_COLUMN: readonly FieldKind[] = [
+  'richText',
+  'markdown',
+  'code',
+  'table',
+  'object',
+  'array',
+  'json',
+]
+
 /** The fields a table shows: never a hidden one, and never the whole record. */
 export const columnFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
-  resource.fields.filter((field) => !field.hidden && field.kind !== 'richText').slice(0, 5)
+  resource.fields.filter((field) => !field.hidden && !NOT_A_COLUMN.includes(field.kind)).slice(0, 5)
 
 export const editableFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
   resource.fields.filter((field) => !field.hidden && !field.readOnly)

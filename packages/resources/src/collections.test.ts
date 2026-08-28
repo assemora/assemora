@@ -562,6 +562,101 @@ describe('changing a collection (SPEC.md §37, the questions that are actually h
 
     await expect(update(app, testimonials)).rejects.toMatchObject({ status: 404 })
   })
+
+  /**
+   * A group's values live in the entry's JSONB under the group's own name, so its inner
+   * fields decide what is stored there exactly as the outer ones do. Worse: `object()`
+   * keeps only the keys its shape mentions, so an inner field that quietly disappeared
+   * would be *deleted* by the next ordinary save rather than merely orphaned — and
+   * `drop` names a collection's own fields, with no way to name this one.
+   */
+  describe('an inner field, once entries hold values under it', () => {
+    const withGroup = (fields: readonly unknown[]) => ({
+      name: 'people',
+      fields: [{ name: 'author', kind: 'object', fields }],
+    })
+
+    const seeded = async () => {
+      const { app } = await build()
+
+      await create(
+        app,
+        withGroup([
+          { name: 'name', kind: 'text' },
+          { name: 'site', kind: 'url' },
+        ]),
+      )
+      await entry(app, 'people', { author: { name: 'Ada', site: 'https://x.io' } })
+
+      return app
+    }
+
+    it('cannot change what it stores', async () => {
+      const app = await seeded()
+
+      await expect(
+        update(
+          app,
+          withGroup([
+            { name: 'name', kind: 'number' },
+            { name: 'site', kind: 'url' },
+          ]),
+        ),
+      ).rejects.toMatchObject({
+        fields: {
+          'fields.0.fields': [
+            '"author.name" is stored as text in 1 entry, so it cannot become number. Empty the collection first, or add a new field under another name.',
+          ],
+        },
+      })
+    })
+
+    it('cannot be removed, because the next save would delete the value', async () => {
+      const app = await seeded()
+
+      await expect(update(app, withGroup([{ name: 'name', kind: 'text' }]))).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      })
+    })
+
+    it('may still be added, exactly as a top-level field may', async () => {
+      const app = await seeded()
+
+      await expect(
+        update(
+          app,
+          withGroup([
+            { name: 'name', kind: 'text' },
+            { name: 'site', kind: 'url' },
+            { name: 'role', kind: 'text' },
+          ]),
+        ),
+      ).resolves.toMatchObject({ name: 'people' })
+    })
+
+    it('may still be relabelled', async () => {
+      const app = await seeded()
+
+      await expect(
+        update(
+          app,
+          withGroup([
+            { name: 'name', kind: 'text', label: 'Full name' },
+            { name: 'site', kind: 'url' },
+          ]),
+        ),
+      ).resolves.toMatchObject({ name: 'people' })
+    })
+
+    it('leaves an empty collection alone, which is where a wrong choice is fixed', async () => {
+      const { app } = await build()
+      await create(app, withGroup([{ name: 'name', kind: 'text' }]))
+
+      await expect(
+        update(app, withGroup([{ name: 'name', kind: 'number' }])),
+      ).resolves.toMatchObject({ name: 'people' })
+    })
+  })
 })
 
 describe('deleting a collection', () => {

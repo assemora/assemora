@@ -58,7 +58,15 @@ const buildObject = <S extends Shape>(
       const parsed: Record<string, unknown> = {}
 
       for (const [key, field] of Object.entries(shape)) {
-        const result = field.parse(source[key])
+        // `hasOwn` rather than plain indexing, and rather than `in`: a shape's keys are
+        // caller-chosen — a dynamic collection names its fields in stored JSON
+        // (SPEC.md §37, §86) — and `constructor`, `toString`, `valueOf` and
+        // `hasOwnProperty` are all legal field names that `Object.prototype` answers on
+        // a value that has never been given them. Read without this, a group field
+        // called `constructor` parsed a function for a key nobody sent, and the entry
+        // could never be saved.
+        const present = Object.hasOwn(source, key)
+        const result = field.parse(present ? source[key] : undefined)
 
         if (!result.ok) {
           issues.push(...nest(key, result.issues))
@@ -67,7 +75,7 @@ const buildObject = <S extends Shape>(
 
         // An absent optional key stays absent rather than becoming `undefined`,
         // which `exactOptionalPropertyTypes` treats as two different things.
-        if (result.value === undefined && !(key in source)) continue
+        if (result.value === undefined && !present) continue
 
         parsed[key] = result.value
       }

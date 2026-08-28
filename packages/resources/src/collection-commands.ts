@@ -32,7 +32,7 @@ import {
 } from './collections.js'
 import { type ApiExposure, humanize } from './descriptor.js'
 import { type DynamicDefinition, dynamicResource, parseDynamicDefinition } from './dynamic.js'
-import { definitionSchema, type FieldSpec } from './field-registry.js'
+import { definitionSchema, type FieldShapeSpec, type FieldSpec } from './field-registry.js'
 import { hasResource, registeredResources } from './registry.js'
 import { ResourceDefinitionModel, ResourceEntryModel } from './system-models.js'
 
@@ -205,6 +205,114 @@ const removalsOf = (
  * An empty collection is where people actually fix a wrong choice, and there is nothing
  * to convert, so nothing is refused there.
  */
+const plural = (entries: number): string => `${entries} ${entries === 1 ? 'entry' : 'entries'}`
+
+/**
+ * The same rule, applied inside a group or a repeater.
+ *
+ * A group's values are stored in the entry's JSONB under the group's own name, so an
+ * inner field's kind decides what is stored there exactly as an outer field's kind
+ * decides what is stored at the top. Removing one is worse than removing a top-level
+ * field, not better: `object()` keeps only the keys its shape mentions, so the value
+ * would not merely stop being readable — the next ordinary save of the entry would
+ * delete it. `drop` names a collection's own fields and has no way to name this one, so
+ * a nested removal is refused outright while entries exist.
+ *
+ * Adding an inner field stays free, exactly as adding a top-level one is: stored values
+ * simply do not have it yet.
+ */
+const insideIssues = (
+  before: FieldShapeSpec,
+  next: FieldShapeSpec,
+  path: readonly (string | number)[],
+  where: string,
+  entries: number,
+): Issue[] => {
+  const issues: Issue[] = []
+  const kept = new Map((next.fields ?? []).map((field) => [field.name, field]))
+
+  for (const field of before.fields ?? []) {
+    const still = kept.get(field.name)
+
+    if (still === undefined) {
+      issues.push({
+        path: [...path, 'fields'],
+        code: 'nested_field_removed',
+        message: `"${field.name}" is a field of "${where}" and ${plural(entries)} hold values under it. A nested field cannot be removed while the collection holds entries — the next save of an entry would delete the value rather than leave it behind, and "drop" names a collection's own fields only. Empty the collection first.`,
+      })
+      continue
+    }
+
+    issues.push(
+      ...frozenIssues(field, still, [...path, 'fields'], `${where}.${field.name}`, entries),
+    )
+  }
+
+  return before.element === undefined || next.element === undefined
+    ? issues
+    : [
+        ...issues,
+        ...frozenIssues(
+          before.element,
+          next.element,
+          [...path, 'element'],
+          `${where}.element`,
+          entries,
+        ),
+      ]
+}
+
+/** What a nested field may not change about itself. The outer loop's rules, one level in. */
+const frozenIssues = (
+  before: FieldShapeSpec,
+  next: FieldShapeSpec,
+  path: readonly (string | number)[],
+  where: string,
+  entries: number,
+): Issue[] => {
+  if (before.kind !== next.kind) {
+    // Nothing below is worth comparing once the two are different shapes.
+    return [
+      {
+        path,
+        code: 'kind_frozen',
+        message: `"${where}" is stored as ${before.kind} in ${plural(entries)}, so it cannot become ${next.kind}. Empty the collection first, or add a new field under another name.`,
+      },
+    ]
+  }
+
+  const issues: Issue[] = []
+
+  if (before.source !== next.source) {
+    issues.push({
+      path,
+      code: 'source_frozen',
+      message: `"${where}" derives from "${before.source}" in stored entries, so its source cannot change while the collection holds entries.`,
+    })
+  }
+
+  if (before.target !== next.target) {
+    issues.push({
+      path,
+      code: 'target_frozen',
+      message: `"${where}" points at "${before.target}" in stored entries, so its target cannot change while the collection holds entries.`,
+    })
+  }
+
+  const offered = new Set(next.options ?? [])
+  const lost = (before.options ?? []).filter((option) => !offered.has(option))
+
+  if (lost.length > 0) {
+    issues.push({
+      path,
+      code: 'options_frozen',
+      message: `"${where}" can gain options while the collection holds entries, but not lose ${lost.map((option) => `"${option}"`).join(', ')} — an entry may hold one.`,
+    })
+  }
+
+  return [...issues, ...insideIssues(before, next, path, where, entries)]
+}
+
 const refuseUnsafeChanges = (
   current: DynamicDefinition,
   next: DynamicDefinition,
@@ -265,6 +373,12 @@ const refuseUnsafeChanges = (
         code: 'options_frozen',
         message: `"${field.name}" can gain options while the collection holds entries, but not lose ${lost.map((option) => `"${option}"`).join(', ')} — an entry may hold one.`,
       })
+    }
+
+    // Only once the two are the same kind: an `object` compared against an `array` has
+    // already been refused above, and comparing their insides would say so twice.
+    if (before.kind === field.kind) {
+      issues.push(...insideIssues(before, field, ['fields', index], field.name, entries))
     }
   }
 

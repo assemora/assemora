@@ -12,7 +12,13 @@ import type { Issue } from '@assemora/schema'
 
 import { readableByActor } from './agent-fields.js'
 import { describeField, humanize, type ResourceDescriptor } from './descriptor.js'
-import { definitionSchema, type FieldSpec, fieldFromSpec } from './field-registry.js'
+import {
+  countFields,
+  definitionSchema,
+  type FieldSpec,
+  fieldFromSpec,
+  MAX_FIELDS,
+} from './field-registry.js'
 import type { AnyField } from './fields.js'
 import { type AnyResource, type ListQuery, PERSISTENCE } from './resource.js'
 import { ResourceEntryModel } from './system-models.js'
@@ -69,6 +75,19 @@ export const parseDynamicDefinition = (input: unknown): DynamicDefinition => {
 
   const names = new Set<string>()
   const issues: Issue[] = []
+
+  // The schema caps the outermost list; this caps the tree. A group of a hundred fields
+  // costs a hundred fields, and the document every introspection request carries is the
+  // whole tree (see `MAX_FIELDS`).
+  const total = countFields(parsed.value.fields as readonly FieldSpec[])
+
+  if (total > MAX_FIELDS) {
+    issues.push({
+      path: ['fields'],
+      code: 'max',
+      message: `A collection declares at most ${MAX_FIELDS} fields in total, nested fields included. This one declares ${total}.`,
+    })
+  }
 
   for (const [index, spec] of parsed.value.fields.entries()) {
     if (names.has(spec.name)) {

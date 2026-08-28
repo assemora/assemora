@@ -28,6 +28,21 @@ const nullableOf = <T>(inner: Schema<T>): Schema<T | null> => ({
   toJsonSchema: () => ({ ...inner.toJsonSchema(), nullable: true }),
 })
 
+/**
+ * The two modifiers, as combinators, for a schema whose builder is out of reach.
+ *
+ * `string().optional()` is how a *declaration* says it. These are how a caller holding
+ * a `Schema<T>` says the same thing — and by the time a schema crosses a package
+ * boundary that is all it is: `@assemora/resources` builds a group's shape out of the
+ * schemas its fields carry, and those arrive already erased to the interface. Without
+ * these the only way to make one of them absent-able is to rebuild the wrapper object
+ * by hand in every package that needs one, which is how the meaning of "optional"
+ * comes to differ between two of them.
+ */
+export const optional = <T>(inner: Schema<T>): OptionalSchema<T> => optionalOf(inner)
+
+export const nullable = <T>(inner: Schema<T>): Schema<T | null> => nullableOf(inner)
+
 const applyRefinements = <T>(value: T, refinements: readonly Refinement<T>[]): Issue[] =>
   refinements.map((refine) => refine(value)).filter((issue): issue is Issue => issue !== undefined)
 

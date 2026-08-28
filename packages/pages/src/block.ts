@@ -146,8 +146,15 @@ export const validateProps = (
   const issues: Issue[] = []
   const checked: Record<string, unknown> = {}
 
+  // `hasOwn` rather than `in`, on both sides. A field name and a prop name are both
+  // keys of a plain object, `constructor`, `toString`, `valueOf` and `hasOwnProperty`
+  // are legal names for either, and `Object.prototype` answers all of them: `in` said
+  // every block has a field called `toString`, so a prop by that name passed this check
+  // and was then silently dropped, and it said every caller had sent a `constructor`,
+  // so a field of that name was never reported missing — it was parsed from a function
+  // instead. `validation.ts` in `@assemora/resources` reads an entry the same way.
   for (const key of Object.keys(source)) {
-    if (!(key in definition.fields)) {
+    if (!Object.hasOwn(definition.fields, key)) {
       issues.push({
         path: [key],
         code: 'unknown_field',
@@ -157,7 +164,7 @@ export const validateProps = (
   }
 
   for (const [name, field] of Object.entries(definition.fields)) {
-    if (!(name in source)) {
+    if (!Object.hasOwn(source, name)) {
       if (field.isRequired && mode === 'complete') {
         issues.push({ path: [name], code: 'required', message: 'This field is required' })
       }

@@ -10,7 +10,7 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { type FormEvent, useEffect, useState } from 'react'
 
 import { ApiError, api, hasMoreToSay } from '../api/client.ts'
-import { editableFields, useIntrospection } from '../api/introspection.ts'
+import { declaredValues, editableFields, useIntrospection, valueAt } from '../api/introspection.ts'
 import { Page } from '../app/shell.tsx'
 import { Button, Card, Failure, Spinner } from '../ui/index.tsx'
 import { FieldInput } from './fields.tsx'
@@ -92,14 +92,33 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
 
   const fields = editableFields(resource)
   /**
-   * The inputs this form draws, which is where a field's own message is shown.
+   * The keys the answer named that this form has an input for.
    *
-   * Everything the answer named that is not one of these — an issue about the record as
-   * a whole, one naming a read-only or hidden field, one naming a key the resource does
-   * not declare — has no input to land on. The box used to be hidden the moment
-   * `fields` held anything at all, so those were shown nowhere (SPEC.md §84).
+   * Not the field names: a refusal about a value *inside* one names the whole path —
+   * `sections.2.heading` — and the input that draws it is the repeater called
+   * `sections`, which hands the rest down to the item that owns it. So a path under a
+   * rendered field counts as rendered.
+   *
+   * Everything else — an issue about the record as a whole, one naming a read-only or
+   * hidden field, one naming a key the resource does not declare — has no input to land
+   * on and belongs in the box. It used to be hidden the moment `fields` held anything at
+   * all, so those were shown nowhere (SPEC.md §84).
    */
-  const rendered = fields.map((field) => field.name)
+  const rendered = Object.keys(failure?.fields ?? {}).filter((key) =>
+    fields.some((field) => key === field.name || key.startsWith(`${field.name}.`)),
+  )
+
+  /** What the answer said about one field, addressed from that field. */
+  const issuesFor = (name: string): Readonly<Record<string, readonly string[]>> | undefined => {
+    const under: Record<string, readonly string[]> = {}
+
+    for (const [key, messages] of Object.entries(failure?.fields ?? {})) {
+      if (key === name) under[''] = messages
+      else if (key.startsWith(`${name}.`)) under[key.slice(name.length + 1)] = messages
+    }
+
+    return Object.keys(under).length === 0 ? undefined : under
+  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -107,13 +126,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
 
     // Only what the resource declares is sent: an id or a timestamp the read
     // returned is not the form's to write back.
-    const values: Entry = {}
-
-    for (const field of fields) {
-      if (field.name in draft) values[field.name] = draft[field.name]
-    }
-
-    save.mutate(values)
+    save.mutate(declaredValues(fields, draft))
   }
 
   const singular = resource.label.replace(/s$/, '')
@@ -143,17 +156,19 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
         )}
 
         <Card className="space-y-5 p-6">
-          {fields.map((field) => (
-            <FieldInput
-              key={field.name}
-              field={field}
-              value={draft[field.name]}
-              {...(failure?.fields[field.name] === undefined
-                ? {}
-                : { errors: failure.fields[field.name] })}
-              onChange={(value) => setDraft((current) => ({ ...current, [field.name]: value }))}
-            />
-          ))}
+          {fields.map((field) => {
+            const issues = issuesFor(field.name)
+
+            return (
+              <FieldInput
+                key={field.name}
+                field={field}
+                value={valueAt(draft, field.name)}
+                {...(issues === undefined ? {} : { issues })}
+                onChange={(value) => setDraft((current) => ({ ...current, [field.name]: value }))}
+              />
+            )
+          })}
         </Card>
 
         <div className="flex items-center gap-3">
