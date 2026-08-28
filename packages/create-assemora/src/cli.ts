@@ -12,7 +12,7 @@ import { ScaffoldError } from './error.js'
 import { isUnreleased, packageVersion } from './package-json.js'
 import { ask } from './prompts.js'
 import { scaffold, shortestPath } from './scaffold.js'
-import { DEFAULT_TEMPLATE } from './template.js'
+import { DEFAULT_TEMPLATE, listTemplates, type TemplateSummary } from './template.js'
 
 /**
  * Flags that take the following token as their value.
@@ -116,7 +116,7 @@ export const answered = (args: ParsedArgs, name: string): boolean | undefined =>
   return undefined
 }
 
-export const HELP = [
+export const USAGE = [
   'create-assemora — start an Assemora project',
   '',
   'Usage',
@@ -133,9 +133,47 @@ export const HELP = [
   '  -y, --yes           take every default and ask nothing',
   '  -h, --help          this',
   '      --version       the version of create-assemora',
-  '',
-  'Nothing is installed. The three commands to run next are printed when it is done.',
-].join('\n')
+]
+
+/**
+ * One line per template: the name, padded so the descriptions line up, then the line
+ * the template says about itself.
+ *
+ * `prefix` is what turns a listing into something typeable — nothing under `Templates`
+ * in `--help`, where the column is already headed by the flag that takes it, and
+ * `--template ` after a scaffold, where the line is the whole instruction.
+ *
+ * The caller has already established that there is at least one, which is what makes
+ * `Math.max` of the widths safe.
+ */
+const column = (summaries: readonly TemplateSummary[], prefix: string): readonly string[] => {
+  const width = Math.max(...summaries.map((entry) => entry.name.length))
+
+  return summaries.map((entry) =>
+    `  ${prefix}${entry.name.padEnd(width)}  ${entry.description ?? ''}`.trimEnd(),
+  )
+}
+
+/**
+ * `--help`, with the templates this install actually carries listed by name.
+ *
+ * SPEC.md §78 fixes the five questions a project is scaffolded with, and which starter
+ * to copy is deliberately not one of them: it would ask everybody about something most
+ * people want the default of. So this is where a person finds the others — read from
+ * disk rather than written out here, because a list in this file is a list that is
+ * wrong the day somebody adds a starter.
+ */
+export const help = async (): Promise<string> => {
+  const templates = await listTemplates()
+  const section = templates.length < 2 ? [] : ['', 'Templates', ...column(templates, '')]
+
+  return [
+    ...USAGE,
+    ...section,
+    '',
+    'Nothing is installed. The three commands to run next are printed when it is done.',
+  ].join('\n')
+}
 
 export type CliSession = {
   readonly cwd: string
@@ -180,6 +218,25 @@ const nextSteps = (cwd: string, directory: string): readonly string[] => [
   '  pnpm dev',
 ]
 
+/**
+ * The starters this one is not, printed only to somebody who never chose.
+ *
+ * The default starter is deliberately empty, which is the right thing to hand a person
+ * who asked for nothing and the wrong thing to hand a person who wanted to read a
+ * worked example. This is the moment they are looking and can still act on it — one
+ * `--force` or one different directory away — and it is the reason a sixth question
+ * asking everybody the same thing is not needed.
+ *
+ * Nothing is printed when the invocation named a template: they have already chosen.
+ */
+const otherTemplates = (templates: readonly TemplateSummary[]): readonly string[] => {
+  const others = templates.filter((entry) => entry.name !== DEFAULT_TEMPLATE)
+
+  if (others.length === 0) return []
+
+  return ['', 'Other templates', ...column(others, '--template ')]
+}
+
 export const run = async (argv: readonly string[], session: CliSession): Promise<number> => {
   const args = parseArgs(argv)
   const say = (text: string): void => {
@@ -197,7 +254,7 @@ export const run = async (argv: readonly string[], session: CliSession): Promise
   }
 
   if (bool(args, 'help') || bool(args, 'h')) {
-    say(HELP)
+    say(await help())
 
     return 0
   }
@@ -250,6 +307,10 @@ export const run = async (argv: readonly string[], session: CliSession): Promise
 
     say(`Created ${answers.name.trim()} — ${count(created.files.length, 'file')}.`)
     for (const step of nextSteps(session.cwd, created.directory)) say(step)
+
+    if (template === undefined) {
+      for (const line of otherTemplates(await listTemplates())) say(line)
+    }
 
     if (isUnreleased(version)) {
       // One line, and it goes the day there is a release to install. Saying nothing

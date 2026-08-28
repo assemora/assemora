@@ -15,8 +15,10 @@ import {
   createContext,
   type ErrorReporting,
   type ErrorTrackingPort,
+  isIncident,
   type Logger,
   logErrors,
+  publishGeneratedCrud,
   type QueryBus,
   runInContext,
   type SchemaRegistry,
@@ -30,7 +32,16 @@ import Fastify from 'fastify'
 import { type AssetsOptions, findAsset } from './assets.js'
 import { isBytesResponse } from './bytes.js'
 import { commandEndpoints, commandRoutes } from './commands.js'
-import { crudResources, crudRoutes } from './crud.js'
+import {
+  type CrudBuses,
+  type CrudLookup,
+  type CrudResource,
+  crudDispatchRoutes,
+  crudResources,
+  crudRoutes,
+  publishedOperations,
+  RESOURCE_PARAM,
+} from './crud.js'
 import { registeredRoutes } from './module.js'
 import { queryEndpoints, queryRoutes } from './queries.js'
 import {
@@ -150,7 +161,20 @@ export type HttpServer = {
   mount(...routes: Route[]): HttpServer
   /** Mounts every route the application's modules registered. */
   mountRegistered(): HttpServer
-  /** Mounts generated CRUD for every resource the registry knows (SPEC.md §43). */
+  /**
+   * Mounts generated CRUD for every resource the registry knows (SPEC.md §43).
+   *
+   * Called again once more resources have been registered, it mounts what it has not
+   * mounted before and leaves the rest alone — which is what a collection read out of
+   * the database during boot needs, since the registry gains it after the server was
+   * built (SPEC.md §37).
+   *
+   * A resource registered later still than that — a collection made in Studio while
+   * this process serves — cannot have an endpoint of its own, because Fastify takes no
+   * route once it is listening. The first call therefore also mounts one parameterised
+   * pair of endpoints that dispatches by name, and keeps the Schema Registry's
+   * description of every resource's REST paths in step with the resources themselves.
+   */
   mountResources(): HttpServer
   /**
    * Publishes everything the callback mounts under `/<name>` (SPEC.md §47).
@@ -330,6 +354,12 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
   const prefix = options.prefix ?? '/api'
   const app: FastifyInstance = Fastify({ logger: false })
 
+  // This server publishes no generated REST paths until it is told to mount them, and
+  // saying so is the point: an application built with `api: { crud: false }` never calls
+  // `mountResources()`, and `collections.create` has to be able to tell that application
+  // apart from one that serves five addresses per collection (SPEC.md §43).
+  publishGeneratedCrud()
+
   const reporting: ErrorReporting = {
     errors: options.errors ?? logErrors(options.logger),
     logger: options.logger,
@@ -346,6 +376,17 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
    * is the request itself is freed with it, whatever the request did on its way out.
    */
   const state = new WeakMap<FastifyRequest, ServedRequestState>()
+
+  /**
+   * The requests whose failure was the endpoint answering rather than anything going
+   * wrong, so `onResponse` writes the line at the rung a refusal takes.
+   *
+   * A set beside the state map rather than a field in it, because the state is
+   * established on arrival and this is only known once a handler has thrown — and
+   * because a request that never fails should not carry a `false`. Keyed by the
+   * request, so it is freed with it like everything else here.
+   */
+  const answeredWithFailure = new WeakSet<FastifyRequest>()
 
   /**
    * The request's state, established on arrival and read by everything after it.
@@ -441,7 +482,8 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     app.addHook('onResponse', async (request, reply) => {
       // Fastify's own name for whatever matched, so the line cannot drift from what is
       // served and is a pattern rather than a URL. `undefined` when nothing matched.
-      const path = request.routeOptions.url
+      const matched = request.routeOptions.url
+      const path = matched === undefined ? undefined : servedPath(request, matched)
 
       const { startedAt, context } = stateOf(request)
 
@@ -450,7 +492,11 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
         ...(path === undefined ? {} : { path }),
         status: reply.statusCode,
         durationMs: performance.now() - startedAt,
-        ...(path !== undefined && assetPaths.has(path) ? { asset: true } : {}),
+        // Against what matched rather than against the reported path: an asset route is
+        // never one of the dispatching pair, so the two are the same string here, and
+        // asking the same question of both is how they come to disagree.
+        ...(matched !== undefined && assetPaths.has(matched) ? { asset: true } : {}),
+        ...(answeredWithFailure.has(request) ? { expected: true } : {}),
       }
 
       // Stepped back into rather than assumed: this hook fires once the reply has been
@@ -632,6 +678,11 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
         } catch (error) {
           const failure = failureOf(error, requestId)
 
+          // Asked of the error model rather than decided again here: `captureError`
+          // below and the access log written by `onResponse` are the two readers of one
+          // question, and the second used to answer it on its own from the status.
+          if (!isIncident(error)) answeredWithFailure.add(request)
+
           // The incident, not the request line: that one is written for every request
           // by the `onResponse` hook, whatever the outcome, and a second line about
           // the same event would only be a second opinion about it.
@@ -643,8 +694,10 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           await captureError(reporting, error, {
             kind: 'request',
             // The route, never the URL — an incident tracker groups by this, and
-            // `GET /api/articles/8f3a…` is a new issue on every request.
-            name: `${definition.method.toUpperCase()} ${url}`,
+            // `GET /api/articles/8f3a…` is a new issue on every request. The dispatching
+            // pair is named by the resource it dispatched to, for the reason `servedPath`
+            // gives: one collection must not be two issues either.
+            name: `${definition.method.toUpperCase()} ${servedPath(request, url)}`,
             // Measured here, not read off the reply: Fastify keeps no time for a server
             // whose request log is switched off, and a report is not the place to find
             // that out (SPEC.md §87).
@@ -674,6 +727,189 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
   const describesTheSame = (descriptor: RouteDescriptor, definition: Route): boolean =>
     JSON.stringify(descriptor) === JSON.stringify(describeRoute(definition, descriptor.module))
 
+  const buses: CrudBuses = { commands: options.commands, queries: options.queries }
+
+  /** Resources this server has given endpoints of their own. */
+  const resourceEndpoints = new Set<string>()
+
+  /** Whether the parameterised CRUD pair is mounted, and therefore whether it answers. */
+  let dispatching = false
+
+  /** The addresses that pair answers on, so the line can say which resource it was. */
+  const dispatchPaths = new Set<string>()
+
+  /**
+   * Every resource the registry currently describes, by name.
+   *
+   * Kept by the reconciliation below rather than read per request: a generated endpoint
+   * asks this on every call, and `registry.describe()` copies every section into fresh
+   * arrays. One `Map` lookup is what a resource that has changed since the route was
+   * generated costs (see `CrudRouteOptions.current`).
+   */
+  let liveResources: ReadonlyMap<string, CrudResource> = new Map()
+
+  const currentResource: CrudLookup = (name) => liveResources.get(name)
+
+  /**
+   * The path a request is reported under (SPEC.md §87, §88).
+   *
+   * Fastify's own name for whatever matched, except for the pair that dispatches by
+   * name: there, the address the caller asked for is the resource's own, and the route
+   * pattern says only that it was a resource. Left as the pattern, one collection
+   * reported under `/api/:resource` while this process ran and under `/api/notes` after
+   * the next restart — so per-endpoint latency depended on whether anybody had deployed
+   * since the collection was made, which is the one thing a latency signal must not
+   * depend on.
+   *
+   * Only for a name the registry actually describes. A path is a log key and an incident
+   * group, and substituting whatever arrived would let a scanner walking `/api/<word>`
+   * mint an unbounded number of both. Those keep the pattern, which is where the refusals
+   * belong anyway.
+   */
+  const servedPath = (request: FastifyRequest, url: string): string => {
+    if (!dispatchPaths.has(url)) return url
+
+    const named = (request.params as { [RESOURCE_PARAM]?: unknown })[RESOURCE_PARAM]
+
+    return typeof named === 'string' && liveResources.has(named)
+      ? url.replace(`/:${RESOURCE_PARAM}`, `/${named}`)
+      : url
+  }
+
+  /** What one resource's addresses were at the last reconciliation, and what described them. */
+  type DescribedResource = { readonly addresses: string; readonly routes: readonly string[] }
+
+  /** That, for every resource the last reconciliation described anything for. */
+  let describedForResources: ReadonlyMap<string, DescribedResource> = new Map()
+
+  /** What that reconciliation was computed from, so an unchanged registry costs a compare. */
+  let reconciledFrom: string | undefined
+
+  /**
+   * Everything about one resource that decides which addresses exist: its name and the
+   * endpoints its own `api` flags publish. A field added to a collection changes neither,
+   * and correctly costs nothing here.
+   */
+  const addressShapeOf = (resource: CrudResource): string =>
+    `${resource.name}${publishedOperations(resource).join('')}`
+
+  const shapeOf = (resources: readonly CrudResource[]): string =>
+    resources.map(addressShapeOf).join(' ')
+
+  /** Every generated endpoint of every resource the registry currently describes. */
+  const generatedForResources = (): Map<string, Route> =>
+    new Map(
+      crudRoutes(crudResources(options.registry), buses).map((definition) => [
+        routeName(definition.method, definition.path),
+        definition,
+      ]),
+    )
+
+  /**
+   * Brings the routes section level with the resources section (SPEC.md §37, §42).
+   *
+   * A resource's REST paths are generated from the resource, so the description of those
+   * paths is not an independent declaration — it is a consequence, and it has to arrive
+   * and leave with the resource it belongs to. Until collections existed nothing could
+   * change after start-up and describing at mount time was the same thing; a collection
+   * made while the process runs is registered by a command, and the document that says
+   * what this application serves has to say so without waiting for a restart.
+   *
+   * When the registry changes, because that is when the answer changes. It used to run
+   * from an `onRequest` hook, which was a full `describe()` on every request — including
+   * every `/api/health` and every 404 — to find out that nothing had happened, and which
+   * left the description a request stale for anybody who read the registry without
+   * sending one: `assemora routes`, a generated SDK written straight after
+   * `collections.create`, the API Explorer's own snapshot.
+   *
+   * Only when the parameterised pair is mounted. Without it a path described here would
+   * be a path nothing answers on — the exact lie `verifyEverythingDescribedIsServed`
+   * exists to prevent.
+   */
+  const reconcileResourceRoutes = (): void => {
+    if (!dispatching) return
+
+    const resources = crudResources(options.registry)
+
+    // Rebuilt whatever the shape says, because a resource can change without changing
+    // which addresses exist — a relabelled collection is the same five endpoints — and
+    // an endpoint that answers out of a stale description is the drift this exists to
+    // prevent. It is one map over the array that was allocated a line above.
+    liveResources = new Map(resources.map((resource) => [resource.name, resource]))
+
+    const shape = shapeOf(resources)
+
+    if (shape === reconciledFrom) return
+
+    reconciledFrom = shape
+
+    const described = new Map(describedForResources)
+
+    for (const resource of resources) {
+      const addresses = addressShapeOf(resource)
+      const before = described.get(resource.name)
+
+      /**
+       * Every resource is compared; only the one that moved is generated.
+       *
+       * This runs once per registration now rather than once per request, and
+       * regenerating every endpoint of every resource each time is quadratic in the
+       * number of them: measured, a thousand stored collections loaded at boot spent 1.5
+       * seconds building five million routes — schemas and all — to describe five at a
+       * time. Skipping one costs the string above.
+       */
+      if (before?.addresses === addresses) continue
+
+      const generated = crudRoutes([resource], buses).map((definition) => ({
+        name: routeName(definition.method, definition.path),
+        definition,
+      }))
+      const wanted = new Set(generated.map((route) => route.name))
+
+      for (const { name, definition } of generated) {
+        if (options.registry.find('routes', name) === undefined) {
+          options.registry.register('routes', describeRoute(definition))
+        }
+      }
+
+      // An operation a collection stopped publishing leaves the document at the moment
+      // it leaves service (SPEC.md §43).
+      for (const name of before?.routes ?? []) {
+        if (!wanted.has(name)) options.registry.withdraw('routes', name)
+      }
+
+      described.set(resource.name, { addresses, routes: [...wanted] })
+    }
+
+    // Deleting a collection takes its paths out of the document as well. Only what this
+    // reconciliation put there, or mounted for a resource, is ever withdrawn: a route a
+    // module declared is that module's to describe and to take back.
+    for (const [name, before] of describedForResources) {
+      if (liveResources.has(name)) continue
+
+      for (const route of before.routes) options.registry.withdraw('routes', route)
+
+      described.delete(name)
+    }
+
+    describedForResources = described
+  }
+
+  /**
+   * The resources section is what the routes above are derived from, so it is the one
+   * this listens to.
+   *
+   * Not `routes`: this reconciliation *writes* that section, and a listener that reacts
+   * to its own writes is a loop. Nothing else it reads can change.
+   *
+   * A resource can arrive at any moment a command can run — `collections.create`
+   * registers one from inside a handler, once the row is durable (SPEC.md §37) — and
+   * that is a moment this layer has no other way to notice.
+   */
+  const stopWatching = options.registry.onChange((change) => {
+    if (change.section === 'resources') reconcileResourceRoutes()
+  })
+
   /**
    * What the Schema Registry describes but this server does not serve (SPEC.md §98, §121).
    *
@@ -682,12 +918,27 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
    * generated SDK is a route somebody can call. A route described and then not mounted
    * — a module's `.routes()` with no `mountRegistered()`, or one whose only address is
    * now a version's — inverts that, and it does so silently.
+   *
+   * One route may stand for many descriptions. The parameterised CRUD pair answers at
+   * every resource's own paths, so a resource described and not separately mounted is
+   * served — but only if the description is exactly the one those endpoints would
+   * generate. A hand-written route that happens to share the address is not covered,
+   * because what would answer there is the generated listing rather than its handler.
    */
-  const undocumentedGap = (): readonly string[] =>
-    options.registry
+  const undocumentedGap = (): readonly string[] => {
+    const generated = dispatching ? generatedForResources() : undefined
+
+    return options.registry
       .section('routes')
-      .filter((descriptor) => !mounted.has(`${descriptor.method} ${prefix}${descriptor.path}`))
+      .filter((descriptor) => {
+        if (mounted.has(`${descriptor.method} ${prefix}${descriptor.path}`)) return false
+
+        const stands = generated?.get(descriptor.name)
+
+        return stands === undefined || !describesTheSame(descriptor, stands)
+      })
       .map((descriptor) => descriptor.name)
+  }
 
   const verifyEverythingDescribedIsServed = (): void => {
     const missing = undocumentedGap()
@@ -699,56 +950,77 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     )
   }
 
-  /** Everything mounted, and everything described actually mounted. */
+  /**
+   * Everything mounted, and everything described actually mounted.
+   *
+   * It reconciles once more before it checks, even though the registry announces its own
+   * changes: `mountResources()` may not be the last mount, and the check has to be made
+   * against the descriptions this server would answer for *now*.
+   */
   const settled = async (): Promise<void> => {
     await ready
+    reconcileResourceRoutes()
     verifyEverythingDescribedIsServed()
+  }
+
+  /**
+   * Serves one route, and — unless it is the mechanism rather than the endpoint —
+   * describes it.
+   *
+   * `describe: false` is for a route that answers on behalf of addresses described
+   * elsewhere. There is one: the parameterised CRUD pair. `/api/{resource}` is not an
+   * address any caller means, and documenting it would put one endpoint that says
+   * nothing in OpenAPI, the API Explorer and the SDK in place of the five per resource
+   * that say everything (SPEC.md §43, §121).
+   */
+  const add = (definition: Route, describe: boolean): void => {
+    // Describing is synchronous, so the registry is complete the moment `mount`
+    // returns; only the Fastify side waits for the plugins.
+    const url = `${prefix}${definition.path}`
+    const address = `${definition.method} ${url}`
+    const already = mounted.get(address)
+
+    if (already !== undefined) {
+      // Fastify would refuse this at `ready()` with a string naming neither the
+      // version nor the call that generated the route, and by then the registry
+      // would already be holding whichever description arrived first.
+      throw new ConfigurationError(
+        `"${definition.method.toUpperCase()} ${url}" is already served by ${publishedBy(already)}, so ${publishedBy(definition)} cannot publish it too. One address is one declaration: leave the generated endpoint out with api.resource(name, { except: [...] }) when a route of your own replaces it, or give the second route a path of its own.`,
+      )
+    }
+
+    mounted.set(address, definition)
+
+    if (describe) {
+      // A module may already have described this route. Describing is a separate
+      // act from mounting, and doing both must not be an error (SPEC.md §42).
+      const name = routeName(definition.method, definition.path)
+      const described = options.registry.find('routes', name)
+
+      if (described === undefined) {
+        options.registry.register('routes', describeRoute(definition))
+      } else if (!describesTheSame(described, definition)) {
+        // The registry cannot hold two entries under one name and keeps the first, so
+        // without this the document would describe one declaration and the server
+        // would answer with another — a lie no generated client could see through.
+        throw new ConfigurationError(
+          `"${name}" is already described in the Schema Registry by a different declaration${described.module === undefined ? '' : `, registered by module "${described.module}"`}. The document would describe that one and this server would answer with this one. Two routes cannot share an address: give one of them a path of its own.`,
+        )
+      }
+    }
+
+    ready = ready.then(() => {
+      app.route({
+        method: definition.method.toUpperCase() as 'GET',
+        url,
+        handler: handle(definition, url),
+      })
+    })
   }
 
   const server: HttpServer = {
     mount(...routes) {
-      for (const definition of routes) {
-        // Describing is synchronous, so the registry is complete the moment `mount`
-        // returns; only the Fastify side waits for the plugins.
-        const url = `${prefix}${definition.path}`
-        const address = `${definition.method} ${url}`
-        const already = mounted.get(address)
-
-        if (already !== undefined) {
-          // Fastify would refuse this at `ready()` with a string naming neither the
-          // version nor the call that generated the route, and by then the registry
-          // would already be holding whichever description arrived first.
-          throw new ConfigurationError(
-            `"${definition.method.toUpperCase()} ${url}" is already served by ${publishedBy(already)}, so ${publishedBy(definition)} cannot publish it too. One address is one declaration: leave the generated endpoint out with api.resource(name, { except: [...] }) when a route of your own replaces it, or give the second route a path of its own.`,
-          )
-        }
-
-        mounted.set(address, definition)
-
-        // A module may already have described this route. Describing is a separate
-        // act from mounting, and doing both must not be an error (SPEC.md §42).
-        const name = routeName(definition.method, definition.path)
-        const described = options.registry.find('routes', name)
-
-        if (described === undefined) {
-          options.registry.register('routes', describeRoute(definition))
-        } else if (!describesTheSame(described, definition)) {
-          // The registry cannot hold two entries under one name and keeps the first, so
-          // without this the document would describe one declaration and the server
-          // would answer with another — a lie no generated client could see through.
-          throw new ConfigurationError(
-            `"${name}" is already described in the Schema Registry by a different declaration${described.module === undefined ? '' : `, registered by module "${described.module}"`}. The document would describe that one and this server would answer with this one. Two routes cannot share an address: give one of them a path of its own.`,
-          )
-        }
-
-        ready = ready.then(() => {
-          app.route({
-            method: definition.method.toUpperCase() as 'GET',
-            url,
-            handler: handle(definition, url),
-          })
-        })
-      }
+      for (const definition of routes) add(definition, true)
 
       return server
     },
@@ -758,12 +1030,40 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     },
 
     mountResources() {
-      return server.mount(
-        ...crudRoutes(crudResources(options.registry), {
-          commands: options.commands,
-          queries: options.queries,
-        }),
+      const arrived = crudResources(options.registry).filter(
+        (resource) => !resourceEndpoints.has(resource.name),
       )
+
+      // Before the dispatching pair is armed, so a resource claiming an address this
+      // application already serves is refused by name — `mount` says which two routes
+      // collided, where the parameterised pair would simply never be reached and the
+      // resource would be quietly unreachable at its own path.
+      //
+      // `current` is what keeps these endpoints from outliving the resource that
+      // generated them: a collection mounted at boot and deleted, or narrowed, an hour
+      // later would otherwise go on answering here (SPEC.md §37, §43).
+      server.mount(...crudRoutes(arrived, buses, { current: currentResource }))
+
+      for (const resource of arrived) resourceEndpoints.add(resource.name)
+
+      if (!dispatching) {
+        for (const definition of crudDispatchRoutes(currentResource, buses)) {
+          add(definition, false)
+          dispatchPaths.add(`${prefix}${definition.path}`)
+        }
+
+        dispatching = true
+
+        // Said out loud, because a package that may not depend on this one has to know
+        // it. `collections.create` answers an agent with the addresses of the collection
+        // it just made, and the flags that decide which five they are say nothing about
+        // whether this application serves any of them (SPEC.md §43).
+        publishGeneratedCrud(prefix)
+      }
+
+      reconcileResourceRoutes()
+
+      return server
     },
 
     version(name, define) {
@@ -833,6 +1133,9 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
     },
 
     async close() {
+      // A closed server has no descriptions to keep level with anything, and the registry
+      // it was watching may well outlive it.
+      stopWatching()
       await app.close()
     },
 

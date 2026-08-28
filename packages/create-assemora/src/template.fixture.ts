@@ -45,6 +45,7 @@ export const writeTemplate = async (directory: string): Promise<string> => {
     'template.json',
     `${JSON.stringify(
       {
+        description: 'the template every test copies',
         features: {
           studio: { files: ['src/studio.ts'], dependencies: ['@assemora/studio'] },
           pages: { files: ['src/blocks'], dependencies: ['@assemora/pages'] },

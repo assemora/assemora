@@ -8,6 +8,7 @@ import {
   module,
   type Preview,
   permitAll,
+  publishGeneratedCrud,
   query,
   type RevisionEntry,
   restorerFor,
@@ -122,6 +123,10 @@ beforeEach(() => {
   clearResourceRegistry()
   clearCollections()
   clearRestorers()
+  // Nothing here serves HTTP, so nothing here publishes generated REST paths — which is
+  // the truth of this process, of a worker and of a CLI run alike (SPEC.md §43). A test
+  // about the addresses a collection gets says so itself.
+  publishGeneratedCrud()
   adapter = createMemoryAdapter()
   useAdapter(adapter)
   logs = []
@@ -139,7 +144,6 @@ describe('creating a collection (SPEC.md §37)', () => {
     const answer = (await create(app, testimonials)) as {
       id: string
       name: string
-      restPathsPending: boolean
       resource: { kind: string; fields: readonly unknown[] }
     }
 
@@ -166,14 +170,73 @@ describe('creating a collection (SPEC.md §37)', () => {
     expect(listed.total).toBe(1)
   })
 
-  it('says what is reachable now and what waits for a restart (SPEC.md §43)', async () => {
+  it('says where the collection can be reached, and promises no restart (SPEC.md §43)', async () => {
     const { app } = await build()
 
-    const answer = (await create(app, testimonials)) as { restPathsPending: boolean; note: string }
+    // What a server that mounts generated CRUD says about itself.
+    publishGeneratedCrud('/api')
 
-    expect(answer.restPathsPending).toBe(true)
+    const answer = (await create(app, testimonials)) as { note: string }
+
     expect(answer.note).toContain('entries.create')
-    expect(answer.note).toContain('next restart')
+    // Named rather than alluded to: "under this API prefix" left the reader — a person
+    // about to call it, an agent about to generate the call — to guess the prefix.
+    expect(answer.note).toContain('GET /testimonials, GET /testimonials/:id')
+    expect(answer.note).toContain('below /api')
+    expect(answer.note).toContain('No restart')
+    // The sentence this replaced promised REST paths "when the server starts", and they
+    // never came. Nothing in this answer may send a caller away to wait for one.
+    expect(answer.note).not.toContain('next restart')
+  })
+
+  /**
+   * The other half of §43, and the half the sentence used to get wrong.
+   *
+   * `api: { crud: false }` publishes no generated REST paths at all — the option
+   * recommends itself for resources that should answer only under a version, and a
+   * version carries the resources named when it was declared, so a collection can never
+   * join one. Built from the collection's own flags, the note named five addresses that
+   * answered Fastify's bare 404. It is a command, therefore an MCP tool by generation,
+   * so an agent read it and called them.
+   */
+  it('promises no REST path this application does not publish (SPEC.md §43)', async () => {
+    const { app } = await build()
+
+    const answer = (await create(app, testimonials)) as { note: string }
+
+    // Everything that does not depend on a server is unchanged and still said.
+    expect(answer.note).toContain('entries.create')
+    expect(answer.note).toContain('publishes no generated REST paths')
+    expect(answer.note).not.toContain('GET /testimonials')
+    expect(answer.note).not.toContain('No restart')
+  })
+
+  /**
+   * The `api` flags of SPEC.md §43 taken to their end, which is a collection nothing
+   * can reach.
+   *
+   * `collections.create` is a command, therefore an MCP tool by generation, and this
+   * answer is the only thing that will ever tell whoever made it. Built from the open
+   * operations alone, the sentence read "Reachable now through , so Studio, an agent
+   * over MCP and the API Explorer already have it" — a success message for a resource
+   * with no way in at all.
+   */
+  it('says so when every api flag is off and nothing can reach it (SPEC.md §43)', async () => {
+    const { app } = await build()
+
+    publishGeneratedCrud('/api')
+
+    const answer = (await create(app, {
+      ...testimonials,
+      api: { create: false, read: false, update: false, delete: false },
+    })) as { note: string }
+
+    expect(answer.note).toContain('It has no operations at all')
+    expect(answer.note).toContain('That is almost certainly not what was meant.')
+    expect(answer.note).not.toContain('Reachable now')
+    // And the REST half says the same thing rather than listing nothing: there are no
+    // published addresses to name, and all five answer 404.
+    expect(answer.note).toContain('Every /api/testimonials address answers 404.')
   })
 
   it('derives a label when none is given', async () => {
@@ -564,6 +627,52 @@ describe('changing a collection (SPEC.md §37, the questions that are actually h
   })
 
   /**
+   * A note is only worth reading if it is not printed every time (SPEC.md §43).
+   *
+   * `collections.update` is what Studio calls on every field edit, and repeating the
+   * five REST addresses after each one is how a reader learns to skip the note — which
+   * matters precisely when it is not a repeat: narrowing `api` takes an address out of
+   * the Schema Registry and out of service at the same moment, and that is the edit
+   * nobody should have to notice for themselves.
+   */
+  describe('what an edit says about the REST surface', () => {
+    beforeEach(() => {
+      publishGeneratedCrud('/api')
+    })
+
+    it('says nothing about it when the addresses are the ones it already had', async () => {
+      const { app } = await build()
+      await create(app, testimonials)
+
+      const answer = (await update(app, {
+        ...testimonials,
+        fields: [...testimonials.fields, { name: 'company', kind: 'text' }],
+      })) as { note: string }
+
+      // Still says where the collection can be reached, which is cheap and true.
+      expect(answer.note).toContain('Reachable now through')
+      // And not one address, because not one of them moved.
+      expect(answer.note).not.toContain('GET /testimonials')
+      expect(answer.note).not.toContain('No restart')
+    })
+
+    it('names them when the edit changed which of them exist', async () => {
+      const { app } = await build()
+      await create(app, testimonials)
+
+      const answer = (await update(app, {
+        ...testimonials,
+        api: { create: false, update: false, delete: false },
+      })) as { note: string }
+
+      expect(answer.note).toContain('GET /testimonials, GET /testimonials/:id')
+      expect(answer.note).toContain(
+        'It has no POST /testimonials, PATCH /testimonials/:id, DELETE /testimonials/:id',
+      )
+    })
+  })
+
+  /**
    * A group's values live in the entry's JSONB under the group's own name, so its inner
    * fields decide what is stored there exactly as the outer ones do. Worse: `object()`
    * keeps only the keys its shape mentions, so an inner field that quietly disappeared
@@ -690,6 +799,30 @@ describe('deleting a collection', () => {
     await expect(
       app.queries.execute('entries.list', { resource: 'testimonials' }),
     ).rejects.toMatchObject({ code: 'UNKNOWN_RESOURCE' })
+  })
+
+  it('does not report a document that stopped describing paths it never described', async () => {
+    const { app } = await build()
+    await create(app, testimonials)
+
+    const answer = (await remove(app, 'testimonials')) as { note: string }
+
+    // The mirror of the promise, wrong in the same way: an application publishing no
+    // generated CRUD had nothing at those addresses to withdraw.
+    expect(answer.note).toContain('It had no generated REST paths')
+    expect(answer.note).not.toContain('openapi.json')
+  })
+
+  it('names the addresses it took out of service, when there were any', async () => {
+    const { app } = await build()
+
+    publishGeneratedCrud('/api')
+    await create(app, testimonials)
+
+    const answer = (await remove(app, 'testimonials')) as { note: string }
+
+    expect(answer.note).toContain('under /api now answer 404')
+    expect(answer.note).toContain('/api/openapi.json')
   })
 
   it('counts the soft-deleted entries it orphans rather than leaving them to be found', async () => {

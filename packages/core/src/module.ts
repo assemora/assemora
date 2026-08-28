@@ -16,6 +16,20 @@ import type { Logger } from './logger.js'
 import type { AnyQuery, QueryBus } from './queries.js'
 import type { SchemaRegistry } from './registry.js'
 
+/**
+ * A module that booted and is not running, and why (SPEC.md §88).
+ *
+ * `reason` and `remedy` are sentences the module wrote, never a message it caught. A
+ * readiness answer is served to whoever can reach the probe, and a raw driver failure
+ * carries a host, a user and sometimes a query.
+ */
+export type NotStarted = {
+  readonly module: string
+  readonly reason: string
+  /** What a person should do about it, when there is one thing to do. */
+  readonly remedy?: string
+}
+
 export type ModuleContext = {
   readonly container: Container
   readonly commands: CommandBus
@@ -25,6 +39,30 @@ export type ModuleContext = {
   readonly registry: SchemaRegistry
   readonly logger: Logger
   readonly module: string
+  /**
+   * Says this module is registered but not running, and why (SPEC.md §88).
+   *
+   * For a boot hook that survived something it could not do its job without: the
+   * application goes on, because what to do next depends on why it was booted and a
+   * hook is the one place that cannot know — `assemora db:generate` boots to read a
+   * registry it can read anyway, while a server that reported ready would be handed
+   * production traffic it can only refuse. The fact reaches that decision through
+   * `Application.notStarted`.
+   *
+   * ```ts
+   * module('search').boot(async (context) => {
+   *   if (!(await index.exists())) {
+   *     context.cannotStart('The search index has not been built.', {
+   *       remedy: 'Run assemora search:reindex.',
+   *     })
+   *   }
+   * })
+   * ```
+   *
+   * A module that cannot work *and* has nothing to offer a caller who does not need
+   * it should throw instead. This is for the middle case, which is the common one.
+   */
+  cannotStart(reason: string, details?: { readonly remedy?: string }): void
 }
 
 export type LifecycleHook = (context: ModuleContext) => void | Promise<void>

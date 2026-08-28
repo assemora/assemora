@@ -251,7 +251,7 @@ export const versionRoutes = <R extends VersionDeclaration>(
         )
       }
 
-      for (const definition of crudRoutes([described], options.buses, operations)) {
+      for (const definition of crudRoutes([described], options.buses, { operations })) {
         publish(definition, `api.resource("${wanted.name}")`)
       }
 

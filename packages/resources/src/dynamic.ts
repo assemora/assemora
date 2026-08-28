@@ -11,14 +11,15 @@ import type { Page } from '@assemora/data'
 import type { Issue } from '@assemora/schema'
 
 import { readableByActor } from './agent-fields.js'
-import { describeField, humanize, type ResourceDescriptor } from './descriptor.js'
 import {
-  countFields,
-  definitionSchema,
-  type FieldSpec,
-  fieldFromSpec,
-  MAX_FIELDS,
-} from './field-registry.js'
+  type ApiSpec,
+  apiExposureOf,
+  collectionDefinitionSchema,
+  ENTRY_SORT_FIELDS,
+  refuseUnhonourableFlags,
+} from './definition.js'
+import { describeField, humanize, type ResourceDescriptor } from './descriptor.js'
+import { countFields, type FieldSpec, fieldFromSpec, MAX_FIELDS } from './field-registry.js'
 import type { AnyField } from './fields.js'
 import { type AnyResource, type ListQuery, PERSISTENCE } from './resource.js'
 import { ResourceEntryModel } from './system-models.js'
@@ -28,6 +29,15 @@ export type DynamicDefinition = {
   readonly name: string
   readonly label?: string
   readonly fields: readonly FieldSpec[]
+  /**
+   * Which CRUD operations this collection has (SPEC.md §43).
+   *
+   * Absent means all four, which is what `resource(Article, fields)` means in
+   * TypeScript. Stated, it is the same declaration a static resource makes — the point
+   * being that a collection can offer *less*, which was the last thing a resource made
+   * in Studio could not do that one written in source could.
+   */
+  readonly api?: ApiSpec
 }
 
 export type DynamicEntry = {
@@ -67,9 +77,13 @@ const RESERVED_FIELD_NAMES: ReadonlySet<string> = new Set(ENTRY_KEYS)
  * Everything a definition may say is declarative. There is no place for a function,
  * an expression or a code string, and an unknown field kind is rejected rather than
  * ignored (SPEC.md §86).
+ *
+ * This is the parser for a definition being *read back* — the boot loader's, and the
+ * one `collections.update` compares against. `parseDeclaredDefinition` is the one for a
+ * definition arriving from a caller, and it is what the commands use.
  */
 export const parseDynamicDefinition = (input: unknown): DynamicDefinition => {
-  const parsed = definitionSchema.parse(input)
+  const parsed = collectionDefinitionSchema.parse(input)
 
   if (!parsed.ok) throw new ValidationError(parsed.issues)
 
@@ -124,7 +138,22 @@ export const parseDynamicDefinition = (input: unknown): DynamicDefinition => {
   return parsed.value as DynamicDefinition
 }
 
-const ENTRY_SORT_FIELDS = new Set(['createdAt', 'updatedAt', 'publishedAt', 'status'])
+/**
+ * The same parser, plus the rules that only apply to a definition somebody is writing.
+ *
+ * There is one such rule — `refuseUnhonourableFlags` — and its comment says why it is
+ * here rather than above: a stored row written before the rule existed has to keep
+ * loading, or a collection with entries in it disappears at the next boot over a flag
+ * that never did anything. Two entry points rather than a boolean parameter, so every
+ * call site says which of the two it is.
+ */
+export const parseDeclaredDefinition = (input: unknown): DynamicDefinition => {
+  const definition = parseDynamicDefinition(input)
+
+  refuseUnhonourableFlags(definition.fields)
+
+  return definition
+}
 
 /**
  * The whole stored row, hidden fields and all.
@@ -200,7 +229,13 @@ export const dynamicResource = (
     model: ResourceEntryModel.table,
     primaryKey: 'id',
     fields: [...fields].map(([name, field]) => describeField(name, field)),
-    api: { create: true, read: true, update: true, delete: true },
+    // The definition's own answer, defaulted the same way `resource()` defaults it:
+    // everything the definition does not switch off (SPEC.md §43). This descriptor is
+    // what `entries.*` checks, what generates the REST paths, and what the OpenAPI
+    // document, the API Explorer and the SDK are built from — so saying it once here is
+    // the whole of a collection being able to offer less, and it was hard-coded to all
+    // four until now.
+    api: apiExposureOf(definition.api),
     perPage,
   }
 

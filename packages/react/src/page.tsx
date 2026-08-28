@@ -107,6 +107,33 @@ const LABEL: CSSProperties = {
  */
 const NOTHING: CSSProperties = { minHeight: '4rem' }
 
+/**
+ * And the same treatment at page scale, for the one thing only this end knows.
+ *
+ * A block is *declared* on the server and *drawn* here, and the two lists can differ:
+ * an editor's palette is built from the declarations, so it will happily offer a block
+ * whose view was never registered in the bundle it is looking at. Adding one then
+ * changes nothing anybody can see — which is the picture a broken build makes.
+ *
+ * Shown only when this registry can draw nothing at all, and only for a page with
+ * nothing on it. A page that *has* blocks already says `type — no view` on each of
+ * them, and an empty page is explained by the editor, over the frame, in words that
+ * can offer the blocks it knows about. Two explanations of one blank rectangle is
+ * worse than either alone.
+ */
+const NO_VIEWS: CSSProperties = {
+  ...UNWRITTEN,
+  boxSizing: 'border-box',
+  minHeight: '8rem',
+  padding: '1rem 1.25rem',
+  color: '#64748b',
+  font: '400 13px/1.5 ui-sans-serif, system-ui, sans-serif',
+}
+
+/** Whether anything at all could be drawn here: a view of its own, or a fallback. */
+const drawsNothing = (blocks: BlockRegistry): boolean =>
+  blocks.types.length === 0 && blocks.fallback === undefined
+
 const styleFor = (labelled: boolean, hidden: boolean): CSSProperties => {
   if (labelled) return UNWRITTEN
 
@@ -209,6 +236,21 @@ export const AssemoraPage = ({
   blocks,
   editing = false,
   mediaUrl,
-}: AssemoraPageProps): ReactNode => (
-  <>{treeOf(page).blocks.map((node) => renderNode(node, blocks, editing, mediaUrl))}</>
-)
+}: AssemoraPageProps): ReactNode => {
+  const tree = treeOf(page)
+
+  // A visitor is never shown this. An empty page on a live site *is* an empty page,
+  // and what to say about it belongs to the site, which knows whether it is new or
+  // broken; the framework saying it would be a caption nobody can delete.
+  if (editing && tree.blocks.length === 0 && drawsNothing(blocks)) {
+    return (
+      <div style={NO_VIEWS}>
+        Nothing put on this page could be drawn: no block views are registered in this build. A
+        block is declared in TypeScript and rendered by a React view — write the view and add it to
+        the registry this page is rendered with.
+      </div>
+    )
+  }
+
+  return <>{tree.blocks.map((node) => renderNode(node, blocks, editing, mediaUrl))}</>
+}

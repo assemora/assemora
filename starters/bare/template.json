@@ -1,4 +1,5 @@
 {
+  "description": "an empty project: authentication, Studio and nothing declared yet",
   "features": {
     "studio": {
       "dependencies": ["@assemora/studio"]

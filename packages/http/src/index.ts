@@ -29,8 +29,10 @@ export { type CommandEndpoint, commandEndpoints, commandRoutes } from './command
 export {
   CRUD_OPERATIONS,
   type CrudBuses,
+  type CrudLookup,
   type CrudOperation,
   type CrudResource,
+  type CrudRouteOptions,
   crudResources,
   crudRoutes,
   publishedOperations,

@@ -172,13 +172,20 @@ never reach either.
 
 ```text
 GET /api/health   liveness: this process is answering
-GET /api/ready    readiness: 503 until the application has booted
+GET /api/ready    readiness: 503 until it has booted and its modules are running
 ```
 
 They are two different questions, and a deployment that cannot tell them apart restarts
 a process that was only still starting. `/ready` does **not** probe the database: the
 adapter contract has no portable ping, and a readiness check that lies about what it
 verified is worse than one that says what it means.
+
+A module that booted and could not start is not a probe either — it is something the
+boot already established. An application whose tables have not been migrated yet
+listens, serves Studio, and answers `/ready` with 503 naming the module and what to do
+about it, so nothing routes traffic at it. That refusal is never sent to your error
+tracker, however often the probe asks: it is what the endpoint exists to say, and the
+condition lasts until you fix it and restart.
 
 ## Logging and observability
 

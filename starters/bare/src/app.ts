@@ -6,6 +6,10 @@
  * the audit log and change sets are not options at all, because an application
  * without them silently throws its history away.
  *
+ * Nothing is declared yet — no model, no resource, no block. That is the starting
+ * state on purpose: everything above is machinery, and what a project is about is the
+ * first thing you add to `src/modules/content.ts`.
+ *
  * `createApp()` hands back an application that has **not** been booted, because two
  * callers need one and neither should get the other's: `src/server.ts`, which serves
  * it, and `assemora.config.ts`, through which the `assemora` command boots it to
@@ -21,13 +25,10 @@ import { postgres } from '@assemora/database-postgres'
 // assemora:if pages
 import { pages } from '@assemora/pages'
 // assemora:end
+import { collections } from '@assemora/resources'
 import { type AssemoraApplication, assemora } from 'assemora'
 
 import manifest from '../package.json' with { type: 'json' }
-// assemora:if pages
-import { Hero } from './blocks/hero.ts'
-import { RichText } from './blocks/rich-text.ts'
-// assemora:end
 import { ENV_FILE } from './env.ts'
 import { content } from './modules/content.ts'
 
@@ -91,9 +92,16 @@ export const createApp = (): AssemoraApplication =>
       // default, so without this nobody — including you — could do anything at all.
       auth(),
       // assemora:if pages
-      // A block reaches the builder by being listed here, and by nothing else.
-      pages({ blocks: [Hero, RichText] }),
+      // The page builder. A block type reaches its palette by being listed here, and
+      // by nothing else — `blocks: [Hero]` once `assemora make:block hero` has written
+      // one. Until then the palette is empty, which is the truth about this project.
+      pages(),
       // assemora:end
+      // A collection is a resource made in Studio rather than in TypeScript, stored as
+      // a definition and registered while the application boots (SPEC.md §37). It is
+      // what makes the first thing in an empty project something a person can make
+      // without opening an editor.
+      collections(),
       content(),
     ],
     // Read from package.json so the three places that ask agree: the OpenAPI title,

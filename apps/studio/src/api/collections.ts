@@ -98,9 +98,11 @@ export type CollectionWritten = {
   readonly dropped?: readonly string[]
   readonly entries?: number
   /**
-   * What the application says has just become true — including which half of the API
-   * carries the collection now and which half waits for a restart. Shown verbatim:
-   * the difference is the application's to explain, not Studio's to restate.
+   * What the application says has just become true — the commands, the queries and the
+   * generated REST paths this collection answers on from here, and what it answers on
+   * instead where the application publishes less. Shown verbatim: what a collection is
+   * reachable through is the application's to state, and Studio would be guessing at
+   * half of it.
    */
   readonly note: string
 }

@@ -7,13 +7,14 @@
  * is applied by a person (SPEC.md §75), and the definition they store is checked by
  * `parseDynamicDefinition` — declarative JSON, registered field kinds, nothing else.
  *
- * What arrives instantly and what waits for a restart is spelled out in every answer
- * they give, because the difference is not something anybody should have to discover.
+ * Every answer says where the collection can be reached, because "made in Studio" and
+ * "written in TypeScript" have to produce the same resource for §37 to mean anything.
  */
 import {
   AssemoraError,
   type CommandContext,
   command,
+  generatedCrudPrefix,
   NotFoundError,
   query,
   ValidationError,
@@ -30,9 +31,15 @@ import {
   registeredCollections,
   withdrawCollection,
 } from './collections.js'
+import { apiExposureOf, collectionDefinitionSchema } from './definition.js'
 import { type ApiExposure, humanize } from './descriptor.js'
-import { type DynamicDefinition, dynamicResource, parseDynamicDefinition } from './dynamic.js'
-import { definitionSchema, type FieldShapeSpec, type FieldSpec } from './field-registry.js'
+import {
+  type DynamicDefinition,
+  dynamicResource,
+  parseDeclaredDefinition,
+  parseDynamicDefinition,
+} from './dynamic.js'
+import type { FieldShapeSpec, FieldSpec } from './field-registry.js'
 import { hasResource, registeredResources } from './registry.js'
 import { ResourceDefinitionModel, ResourceEntryModel } from './system-models.js'
 
@@ -61,24 +68,122 @@ declare module '@assemora/core' {
 const SUBJECT = 'collections'
 
 /**
- * What a collection can be reached through the moment it is made, and what it cannot.
+ * The `entries.*` operations a resource's `api` flags leave open (SPEC.md §43).
+ *
+ * The flags are enforced in `entries.*` themselves and not only where the REST paths
+ * are generated, exactly as they are for a resource declared in source: a collection
+ * with `create: false` has no create operation, wherever it is asked for. So this list
+ * is the whole of what can be done to its entries, through any door.
+ */
+const operationsOf = (api: ApiExposure): readonly string[] => [
+  ...(api.create ? ['entries.create'] : []),
+  ...(api.update ? ['entries.update'] : []),
+  ...(api.delete ? ['entries.delete'] : []),
+  ...(api.read ? ['entries.list', 'entries.get'] : []),
+]
+
+/**
+ * What a collection can be reached through the moment it is made.
  *
  * CRUD is addressed by resource name rather than by route (ADR-0012), so the commands,
  * the queries, Studio and the MCP tools — which are one generic set, not one per
  * resource — carry a new collection immediately, and so does the API Explorer, which
  * hands back the registry as it stands.
  *
- * The generated REST paths of SPEC.md §43 are Fastify routes, mounted before the server
- * listens, and a route cannot be added to a started server. `/api/openapi.json` is split
- * by the same line, and the split is easy to mistake for a bug: its `components.schemas`
- * are built from the resources section and gain the collection at once, while its
- * `paths` are built from the routes section and do not.
+ * So do the generated REST paths of SPEC.md §43, which used to be the one thing that
+ * did not: they are Fastify routes, a started server takes no new route, and
+ * `/api/<name>` therefore answered 404 for the life of the process. `@assemora/http`
+ * now serves them through one parameterised pair of endpoints that dispatches by name,
+ * and keeps the routes section of the Schema Registry level with the resources section
+ * — so `/api/openapi.json` carries this collection as a path as well as a component
+ * schema, and the generated SDK does too.
  */
-const LIVE_NOW =
-  'Reachable now through entries.create, entries.update, entries.delete, entries.list and entries.get, so Studio, an agent over MCP and the API Explorer already have it.'
+const liveNow = (api: ApiExposure): string => {
+  const open = operationsOf(api)
 
-const REST_PENDING =
-  'Its own REST paths are mounted when the server starts, so /api/<name> answers 404, and /api/openapi.json carries this collection as a component schema but not as a path, until the next restart.'
+  return open.length === 0
+    ? 'It has no operations at all: its api option switches every one off (SPEC.md §43), so nothing can read or write its entries — not Studio, not an agent over MCP, not a REST caller. That is almost certainly not what was meant.'
+    : `Reachable now through ${open.join(', ')}, so Studio, an agent over MCP and the API Explorer already have it.`
+}
+
+/** The five addresses a resource's `api` flags publish, written the way a caller reads them. */
+const addressesOf = (name: string, api: ApiExposure): readonly string[] => [
+  ...(api.read ? [`GET /${name}`, `GET /${name}/:id`] : []),
+  ...(api.create ? [`POST /${name}`] : []),
+  ...(api.update ? [`PATCH /${name}/:id`] : []),
+  ...(api.delete ? [`DELETE /${name}/:id`] : []),
+]
+
+/** The addresses a definition publishes, as one string, so "did they change" is one ===. */
+const exposureOf = (definition: DynamicDefinition): string =>
+  addressesOf(definition.name, apiExposureOf(definition.api)).join(' ')
+
+/**
+ * What an application that publishes no generated CRUD has to say instead.
+ *
+ * Both halves are worth saying. The reader is being told that the addresses they might
+ * reasonably go looking for do not exist, and that the obvious workaround is not one:
+ * a version publishes the resources named in the callback that declared it, and a
+ * collection made afterwards was never in that callback (SPEC.md §47).
+ */
+const NO_GENERATED_REST =
+  'This application publishes no generated REST paths at all — it was built with api: { crud: false }, or this process serves no HTTP (SPEC.md §43) — so the collection has none of its own, and no version can give it one: a version carries the resources named when it was declared (SPEC.md §47).'
+
+/**
+ * Which REST paths this collection has, and which it deliberately has not.
+ *
+ * Written out rather than promised in general, because the `api` flags are the answer
+ * to "what did I just publish" and a sentence that describes the default would be wrong
+ * for exactly the collection that said something else (SPEC.md §43).
+ *
+ * The flags decide *which* of the five addresses exist. Whether any of them exist is a
+ * different question and not this package's to answer: it is the server that publishes
+ * generated CRUD, and an application is allowed to publish none. Built from the flags
+ * alone, this sentence promised five addresses that answered Fastify's bare 404 in every
+ * application built with `api: { crud: false }` — and it is a command, so an MCP tool, so
+ * an agent read it and called them.
+ */
+const restNow = (name: string, api: ApiExposure): string => {
+  const prefix = generatedCrudPrefix()
+
+  if (prefix === undefined) return NO_GENERATED_REST
+
+  const published = addressesOf(name, api)
+  const withheld = addressesOf(name, {
+    create: !api.create,
+    read: !api.read,
+    update: !api.update,
+    delete: !api.delete,
+  })
+
+  if (published.length === 0) return `Every ${prefix}/${name} address answers 404.`
+
+  // The prefix is named rather than alluded to — "under this API prefix" told a caller
+  // nothing it could act on — and the description is credited to the Schema Registry
+  // rather than to `/api/openapi.json`, because an application may serve no document at
+  // all (`documentation: false`) and the description is there either way. It is what all
+  // three of them are generated from.
+  return `Its generated REST paths answer straight away as well — ${published.join(', ')}, below ${prefix} — and they are described in the Schema Registry, which ${prefix}/openapi.json, the API Explorer and the generated SDK are generated from. No restart.${
+    withheld.length === 0
+      ? ''
+      : ` It has no ${withheld.join(', ')}: those addresses answer 404 and are in no document, for a collection exactly as for a resource written in TypeScript (SPEC.md §43).`
+  }`
+}
+
+/**
+ * What deleting took away over REST, which is nothing at all in some applications.
+ *
+ * The mirror of `restNow`, and wrong in the same way before this: an application that
+ * publishes no generated CRUD had nothing to withdraw, and a note saying its addresses
+ * "are no longer described" named a document that never described them.
+ */
+const restGone = (): string => {
+  const prefix = generatedCrudPrefix()
+
+  return prefix === undefined
+    ? ' It had no generated REST paths: this application publishes none.'
+    : ` Its generated REST paths under ${prefix} now answer 404, and the Schema Registry no longer describes them, so neither does ${prefix}/openapi.json, the API Explorer or the generated SDK.`
+}
 
 const DROPPED_VALUES =
   'A dropped field keeps its values in every entry, under the name it had. They are no longer readable, and a later field of that name is refused while the collection holds entries.'
@@ -200,7 +305,8 @@ const removalsOf = (
  * makes the declared kind a lie — so while the collection holds entries a field's kind,
  * its select options, its slug source and its relation target are frozen. Everything
  * presentational, and every flag that only decides how a value is offered — required,
- * searchable, sortable, filterable, hidden, read-only, agent access — changes freely.
+ * searchable, filterable, hidden, read-only, agent access — changes freely. So does the
+ * collection's `api`: which endpoints exist says nothing about what is stored.
  *
  * An empty collection is where people actually fix a wrong choice, and there is nothing
  * to convert, so nothing is refused there.
@@ -404,15 +510,24 @@ const SKIPPED =
 export const CreateCollection = command('collections.create', {
   description: 'Creates a collection: a resource whose schema is stored, not written in TypeScript',
   input: {
-    name: definitionSchema.shape.name,
-    label: definitionSchema.shape.label,
-    fields: definitionSchema.shape.fields,
+    name: collectionDefinitionSchema.shape.name,
+    label: collectionDefinitionSchema.shape.label,
+    fields: collectionDefinitionSchema.shape.fields,
+    /**
+     * Which CRUD operations this collection has (SPEC.md §43).
+     *
+     * Untrusted data like everything else here: four booleans, parsed. Left out, it has
+     * all four — the same default `resource(Article, fields)` has. This is the half of
+     * equal rights that was missing: a collection could already do everything a static
+     * resource could, and could not do less.
+     */
+    api: collectionDefinitionSchema.shape.api,
   },
-  handle: async ({ name, label, fields }, context) => {
+  handle: async ({ name, label, fields, api }, context) => {
     // Everything goes through the parser, whatever the bus already checked. It is the
     // one place that knows a field kind has to be registered, and the one place §86 is
     // enforced — a second door into a stored definition is a second door round it.
-    const definition = named(parseDynamicDefinition({ name, label, fields }))
+    const definition = named(parseDeclaredDefinition({ name, label, fields, api }))
 
     refuseTakenName(definition.name)
 
@@ -436,13 +551,13 @@ export const CreateCollection = command('collections.create', {
     context.revise({ entityType: SUBJECT, entityId: row.id, before: null, after: definition })
     context.emit('collection.created', { name: definition.name })
 
+    const descriptor = dynamicResource(definition, { id: row.id }).descriptor
+
     return {
       id: row.id,
       name: definition.name,
-      resource: dynamicResource(definition, { id: row.id }).descriptor,
-      /** No generated REST paths in this process, and none until the next start. */
-      restPathsPending: true,
-      note: `${LIVE_NOW} ${REST_PENDING}`,
+      resource: descriptor,
+      note: `${liveNow(descriptor.api)} ${restNow(definition.name, descriptor.api)}`,
     }
   },
 })
@@ -450,16 +565,26 @@ export const CreateCollection = command('collections.create', {
 export const UpdateCollection = command('collections.update', {
   description: 'Changes a collection: its label, and the fields it declares',
   input: {
-    name: definitionSchema.shape.name,
-    label: definitionSchema.shape.label,
-    fields: definitionSchema.shape.fields,
+    name: collectionDefinitionSchema.shape.name,
+    label: collectionDefinitionSchema.shape.label,
+    fields: collectionDefinitionSchema.shape.fields,
+    /**
+     * Which CRUD operations this collection has (SPEC.md §43).
+     *
+     * Left out it keeps whatever is stored, the way `label` does — and for a stronger
+     * reason than symmetry. Studio's editor does not send this in v1, so an absent
+     * `api` meaning "all four" would have every save of a restricted collection quietly
+     * hand it back the operations somebody deliberately took away. Widening is a thing
+     * a caller has to say.
+     */
+    api: collectionDefinitionSchema.shape.api,
     /**
      * Every field this update removes, named. Anything removed and not named here is
      * refused, because the values stay behind in every entry.
      */
     drop: array(string()).optional(),
   },
-  handle: async ({ name, label, fields, drop }, context) => {
+  handle: async ({ name, label, fields, api, drop }, context) => {
     const row = await storedByName(name)
 
     if (row === null) throw new NotFoundError('collection', name)
@@ -476,8 +601,18 @@ export const UpdateCollection = command('collections.update', {
       throw new AssemoraError('COLLECTION_NOT_REGISTERED', `"${name}" ${SKIPPED}`, { status: 409 })
     }
 
+    // The stored side with the parser that reads rows back, the caller's side with the
+    // one that judges a declaration. A row written before a declaration rule existed
+    // still has to load, or an edit could never be the thing that fixes it.
     const current = parseDynamicDefinition(row.schema)
-    const next = named(parseDynamicDefinition({ name, label: label ?? row.label, fields }))
+    const next = named(
+      parseDeclaredDefinition({
+        name,
+        label: label ?? row.label,
+        fields,
+        api: api ?? current.api,
+      }),
+    )
 
     const entries = await liveEntries(row.id)
     const dropped = droppedFieldsOf(row.settings)
@@ -494,8 +629,9 @@ export const UpdateCollection = command('collections.update', {
     )
 
     // Merged, not replaced. `settings` is one JSON column that this command writes one
-    // key of, and an unrelated field edit must not take out whatever else is in there —
-    // §43's per-collection API exposure is the value that will arrive next.
+    // key of, and an unrelated field edit must not take out whatever else is in there.
+    // §43's API exposure is part of the definition rather than a setting, because it is
+    // something the caller declares and not something this command remembers for them.
     await row.update({
       label: next.label,
       schema: next,
@@ -510,20 +646,27 @@ export const UpdateCollection = command('collections.update', {
     context.revise({ entityType: SUBJECT, entityId: row.id, before: current, after: next })
     context.emit('collection.updated', { name: next.name })
 
+    const descriptor = dynamicResource(next, { id: row.id }).descriptor
+    // Only when it changed. A note that repeats the REST surface on every field edit is
+    // a note nobody finishes reading, and this one is worth reading: a narrowed
+    // exposure takes an address out of /api/openapi.json and out of service at once.
+    const exposure =
+      exposureOf(current) === exposureOf(next) ? '' : ` ${restNow(next.name, descriptor.api)}`
+
     return {
       id: row.id,
       name: next.name,
-      resource: dynamicResource(next, { id: row.id }).descriptor,
+      resource: descriptor,
       dropped: removed,
       entries,
-      note: removed.length > 0 ? DROPPED_VALUES : LIVE_NOW,
+      note: `${removed.length > 0 ? DROPPED_VALUES : liveNow(descriptor.api)}${exposure}`,
     }
   },
 })
 
 export const DeleteCollection = command('collections.delete', {
   description: 'Deletes an empty collection',
-  input: { name: definitionSchema.shape.name },
+  input: { name: collectionDefinitionSchema.shape.name },
   // Deliberately the one command that acts on a stored definition without needing it
   // to be registered: it is how a collection the parser refuses at boot is got rid of.
   handle: async ({ name }, context) => {
@@ -582,7 +725,7 @@ export const DeleteCollection = command('collections.delete', {
       orphanedEntries: orphaned,
       note: `${
         registered
-          ? 'Gone from Studio, from what an agent can address and from the API Explorer. If this collection was loaded when the server started, its generated REST paths are still mounted and now answer 404.'
+          ? `Gone from Studio, from what an agent can address and from the API Explorer.${restGone()}`
           : `The definition row is gone. It was not registered when this application started, so nothing was withdrawn — whatever answers to "${name}" now is not this collection and is untouched.`
       }${orphaned > 0 ? ` ${orphaned} soft-deleted ${orphaned === 1 ? 'entry' : 'entries'} can no longer be restored.` : ''}`,
     }

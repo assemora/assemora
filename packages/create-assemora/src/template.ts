@@ -49,9 +49,30 @@ export type FeatureManifest = {
   readonly scripts: readonly string[]
 }
 
-export type TemplateManifest = Readonly<Record<Feature, FeatureManifest>>
+export type TemplateManifest = {
+  /**
+   * One line saying what this template is, or nothing when it does not say.
+   *
+   * It is what `--help` prints beside the name, and what a person who has never read
+   * this repository has to decide on. Lower case and no full stop: it is read as the
+   * tail of a line rather than as a sentence of its own.
+   */
+  readonly description: string | undefined
+  readonly features: Readonly<Record<Feature, FeatureManifest>>
+}
+
+/** A template as `--help` lists it: enough to choose one by. */
+export type TemplateSummary = {
+  readonly name: string
+  readonly description: string | undefined
+}
 
 const EMPTY: FeatureManifest = { files: [], dependencies: [], scripts: [] }
+
+const NOTHING_OPTIONAL: TemplateManifest = {
+  description: undefined,
+  features: { studio: EMPTY, pages: EMPTY, mcp: EMPTY },
+}
 
 export type ResolveTemplateOptions = {
   /**
@@ -151,8 +172,17 @@ export const resolveTemplate = async (
       ? reachable
       : [join(roots[0] ?? from, PACKED, name), join(roots[0] ?? from, WORKSPACE, name)]
 
+  // The names first, because a misspelling is the overwhelmingly likely cause and one
+  // line answers it. The paths stay, for the other case: an install that carries no
+  // templates at all, where knowing where it looked is the whole of the diagnosis.
+  const available = await listTemplates({ from })
+  const names =
+    available.length === 0
+      ? ''
+      : `The templates here are: ${available.map((entry) => entry.name).join(', ')}.\n`
+
   throw new ScaffoldError(
-    `There is no template called "${name}". Looked for it in:\n` +
+    `There is no template called "${name}". ${names}Looked for it in:\n` +
       looked.map((path) => `  ${path}`).join('\n') +
       `\nand in every "${PACKED}" and "${WORKSPACE}" directory above them. A template is a ` +
       `directory under "${WORKSPACE}" in the framework repository; a published install carries ` +
@@ -187,7 +217,7 @@ export const readManifest = async (directory: string): Promise<TemplateManifest>
   try {
     text = await readFile(file, 'utf8')
   } catch {
-    return { studio: EMPTY, pages: EMPTY, mcp: EMPTY }
+    return NOTHING_OPTIONAL
   }
 
   let parsed: unknown
@@ -199,6 +229,10 @@ export const readManifest = async (directory: string): Promise<TemplateManifest>
   }
 
   if (!isRecord(parsed)) throw new ScaffoldError(`${file} must hold an object.`)
+
+  if (parsed.description !== undefined && typeof parsed.description !== 'string') {
+    throw new ScaffoldError(`${file}: "description" must be a string.`)
+  }
 
   const declared = parsed.features
 
@@ -230,7 +264,52 @@ export const readManifest = async (directory: string): Promise<TemplateManifest>
     }
   }
 
-  return { studio: read('studio'), pages: read('pages'), mcp: read('mcp') }
+  return {
+    description: parsed.description,
+    features: { studio: read('studio'), pages: read('pages'), mcp: read('mcp') },
+  }
+}
+
+/**
+ * Every template this install can copy, with the line each one says about itself.
+ *
+ * `--help` prints it, and so does the failure for a name that is not one of them —
+ * because "there is no template called blogg" is only half an answer, and the other
+ * half is three words long.
+ *
+ * The same two places `resolveTemplate` searches, in the same order, merged by name so
+ * that whichever a checkout or an install happens to have is listed. It never throws:
+ * a broken manifest in a sibling template is a reason for that template to have no
+ * description here, not a reason `--help` should fail.
+ */
+export const listTemplates = async (
+  options: ResolveTemplateOptions = {},
+): Promise<readonly TemplateSummary[]> => {
+  const from = options.from ?? dirname(fileURLToPath(import.meta.url))
+  const found = new Map<string, TemplateSummary>()
+
+  for (const place of [PACKED, WORKSPACE]) {
+    for (const root of ancestors(from)) {
+      const directory = join(root, place)
+      let entries: readonly string[]
+
+      try {
+        entries = await readdir(directory)
+      } catch {
+        continue
+      }
+
+      for (const name of entries) {
+        if (found.has(name) || !(await isFile(join(directory, name, 'package.json')))) continue
+
+        const described = await readManifest(join(directory, name)).catch(() => NOTHING_OPTIONAL)
+
+        found.set(name, { name, description: described.description })
+      }
+    }
+  }
+
+  return [...found.values()].sort((left, right) => left.name.localeCompare(right.name))
 }
 
 /** Whether a directory holds anything at all. A missing one holds nothing. */

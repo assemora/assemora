@@ -12,9 +12,11 @@ Assemora is the application layer and the API. Next.js is the frontend. They are
 processes, and neither is embedded in the other: your pages, your routing and your
 components stay yours, and the CMS is something they read over HTTP.
 
-The other starter, `bare`, serves its own frontend with Vite and no framework. Pick
-`bare` if you have no site yet and want the smallest possible one. Pick this if you
-have Next.js already, or want server components, streaming, ISR and Next's routing.
+Pick this starter if you have Next.js already, or want server components, streaming,
+ISR and Next's routing. The other two serve their own frontend with Vite and no
+framework: `bare` is the default and starts empty — the whole application working with
+nothing declared in it — while `blog` starts from the same worked example this one
+does, an `Article` and two block types.
 
 ## The arrangement
 

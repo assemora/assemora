@@ -38,14 +38,7 @@ import {
   type ModuleBuilder,
 } from '@assemora/core'
 import { clearSlowQueryLog, dataTransactions, useAdapter, useSlowQueryLog } from '@assemora/data'
-import {
-  commandEndpoints,
-  commandRoutes,
-  createHttpServer,
-  crudResources,
-  crudRoutes,
-  type HttpServer,
-} from '@assemora/http'
+import { commandEndpoints, commandRoutes, createHttpServer, type HttpServer } from '@assemora/http'
 import { mcp } from '@assemora/mcp'
 import { currentStorage, localStorage, type StorageDriver, useStorage } from '@assemora/media'
 import { introspectionRoute, openApiRoute } from '@assemora/openapi'
@@ -53,7 +46,7 @@ import { revisions, revisionsModule } from '@assemora/revisions'
 import { theme } from '@assemora/theme'
 
 import { authRoutes, CSRF_COOKIE } from './auth-routes.js'
-import { healthRoutes } from './health-routes.js'
+import { healthRoutes, type Readiness } from './health-routes.js'
 import { type MountedMcp, mcpRoutes } from './mcp-routes.js'
 import { mediaRoutes } from './media-routes.js'
 import {
@@ -382,18 +375,19 @@ type Served = {
   /**
    * REST CRUD for the resources that were not there when this server was built.
    *
-   * `mountResources()` takes one snapshot of the registry's `resources` section at the
-   * moment it is called, and a module's boot hook may add to that section *afterwards*:
-   * a collection is a row in `assemora_resource_definitions`, read and registered while
-   * the resources module boots (SPEC.md §37). So the snapshot taken during construction
-   * held every resource declared in TypeScript and no collection at all, and
-   * `/api/testimonials` answered 404 after the restart that was supposed to bring it
-   * back — and after every restart after that.
+   * The registry's `resources` section is complete for everything a source file
+   * declares by the time `assemora()` returns, and a module's boot hook adds to it
+   * *afterwards*: a collection is a row in `assemora_resource_definitions`, read and
+   * registered while the resources module boots (SPEC.md §37). The first
+   * `mountResources()` therefore knew every resource declared in TypeScript and no
+   * collection at all.
    *
-   * Called by `boot()`, once the hooks have run. A second pass rather than moving the
-   * first one, because everything else about the server is settled before `assemora()`
-   * returns: a version that collides with an address already served is a configuration
-   * mistake, and it is worth refusing where it was written rather than one boot later.
+   * Called by `boot()`, once the hooks have run — a second pass rather than a boot
+   * moved in front of the mount, because everything else about the server is settled
+   * before `assemora()` returns: a version that collides with an address already served
+   * is a configuration mistake, and it is worth refusing where it was written rather
+   * than one boot later. Fastify has taken no route yet, so a collection restored from
+   * the database gets endpoints of its own, exactly as a static resource does.
    */
   mountArrivals(): void
 }
@@ -411,7 +405,7 @@ const serve = (
   settings: Settings,
   api: ResolvedApi,
   modules: ReadonlySet<string>,
-  isReady: () => boolean,
+  readiness: () => Readiness,
   errors: ErrorTrackingPort,
 ): Served => {
   // Read off the driver this application actually configured, so a bucket or a CDN is
@@ -481,7 +475,7 @@ const serve = (
   server.mountQueries()
 
   server.mount(
-    ...healthRoutes(isReady),
+    ...healthRoutes(readiness),
     ...(modules.has('auth') ? authRoutes(app.commands, settings.session) : []),
     ...(modules.has('media') ? mediaRoutes(app.queries) : []),
     // Unconditional, and asked about the module rather than about the option: a site
@@ -511,27 +505,16 @@ const serve = (
       : []),
   )
 
-  // Read after everything above has mounted, so it is exactly "what this server was
-  // built knowing about". Anything the registry gains later is an arrival.
-  const served = new Set(crudResources(app.registry).map((resource) => resource.name))
-
   return {
     server,
     mcp: endpoint,
 
     mountArrivals() {
-      if (!api.crud) return
-
-      const arrived = crudResources(app.registry).filter((resource) => !served.has(resource.name))
-
-      if (arrived.length === 0) return
-
       // Not published under a version: `api.resource(name)` names what a version
       // carries, and a collection nobody wrote into that callback is not in it
-      // (SPEC.md §47).
-      server.mount(...crudRoutes(arrived, { commands: app.commands, queries: app.queries }))
-
-      for (const resource of arrived) served.add(resource.name)
+      // (SPEC.md §47). `mountResources()` mounts what it has not mounted before, so
+      // this is the same call as the one above and not a second kind of mounting.
+      if (api.crud) server.mountResources()
     },
   }
 }
@@ -637,7 +620,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   let working: Promise<void> | undefined
   let worker: JobWorker | undefined
   let stopped = false
-  let ready = false
+  let booted = false
 
   // `app.modules` rather than what was passed: it is the list after the umbrella added
   // what a developer should not have to list.
@@ -645,7 +628,18 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   const served =
     settings.api === undefined
       ? undefined
-      : serve(app, settings, settings.api, registered, () => ready, errors)
+      : serve(
+          app,
+          settings,
+          settings.api,
+          registered,
+          // Booting is one half of being ready and the modules are the other, and this
+          // is the only place that can see both: `booted` covers what this file mounts
+          // after the hooks have run, and `notStarted` is what core collected while
+          // they did (SPEC.md §88).
+          () => ({ booted, notStarted: app.notStarted }),
+          errors,
+        )
 
   /**
    * One boot, whichever half of the handle asks for it.
@@ -678,7 +672,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
         }
       }
 
-      ready = true
+      booted = true
 
       return facade
     })()
@@ -795,6 +789,11 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     registry: app.registry,
     logger: app.logger,
     modules: app.modules,
+    // A getter, like core's: it is written while the modules boot, and this facade is
+    // built before they do.
+    get notStarted() {
+      return app.notStarted
+    },
     boot,
     shutdown,
     run: (init, operation) => app.run(init, operation),
@@ -816,6 +815,18 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
       }
 
       await boot()
+
+      // The one caller that knows what a module which did not start means. Core warns
+      // that it happened, because it cannot tell `db:generate` from a deployment; this
+      // is the process that was started to serve, and for it the answer is that it
+      // never will — `/ready` refuses from here on, so the process listens and stays
+      // out of the load balancer until somebody fixes it (SPEC.md §88).
+      if (app.notStarted.length > 0) {
+        logger.error('This application is serving but will not report ready', {
+          notStarted: app.notStarted,
+          endpoint: `${settings.api?.prefix ?? ''}/ready`,
+        })
+      }
 
       return served.server.listen(port, host)
     },

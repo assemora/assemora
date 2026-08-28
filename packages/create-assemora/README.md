@@ -93,10 +93,11 @@ and `private` is left exactly as the starter declared it. A `package.json` below
 root keeps its own name and still loses its workspace ranges.
 
 **A file or a dependency that only exists for one answer is named in
-`template.json`.**
+`template.json`, and so is the line the template says about itself.**
 
 ```json
 {
+  "description": "an empty project: authentication, Studio and nothing declared yet",
   "features": {
     "studio": { "files": ["src/studio.ts"], "dependencies": ["@assemora/studio"] },
     "pages": { "files": ["src/blocks"], "dependencies": ["@assemora/pages"] },
@@ -108,6 +109,15 @@ root keeps its own name and still loses its workspace ranges.
 Paths are template-relative and a directory counts. `template.json` is never copied
 into a project. A feature name it does not recognise is a failed scaffold, not a
 silently ignored line.
+
+`description` is one line, lower case, no full stop — it is read as the tail of a line
+rather than as a sentence. `--help` prints it beside the name, and so does the block
+after a scaffold that took the default template, which is how somebody who wanted the
+worked example rather than the empty default finds out it exists. Which starter to copy
+is deliberately *not* a sixth question: SPEC.md §78 fixes the five, and asking everybody
+about something most people want the default of buys nothing that a printed line does
+not. `listTemplates()` reads the list off disk, so a starter added to `starters/` is
+listed the day it lands.
 
 **The template's own `.gitignore` says what its tooling writes.** A starter carries it
 as `_gitignore`, and everything it names is excluded from the project — `.next/`,
@@ -125,6 +135,13 @@ accumulates (`node_modules/`, `dist/`, `.turbo/`, `coverage/`, `*.tsbuildinfo`,
 those four, so no `.gitignore` can exclude them — and a project that inherited them
 would begin life with a migration it did not generate, whose first `db:generate`
 writes every table a second time.
+
+It also names the third kind, which points the other way: `*.test.ts`, `*.test.tsx`
+and their `*.test-d.*` siblings. A starter's tests belong to this repository rather
+than to the project made from it — they are how CI proves the template still works,
+and they import a test runner a scaffolded project has no dependency on, so a project
+that inherited one would not typecheck. A `.gitignore` cannot say this: a real project
+commits its tests.
 
 **Anything smaller than a file is fenced with a marker comment.** A marker is
 recognised by its text rather than by its comment syntax, and the whole line goes — so
@@ -166,7 +183,9 @@ compile: no import of a file that was left out, no dependency on a package that 
 left out. `src/scaffold.test.ts` asserts all eight against a synthetic template, and
 `src/starters.test.ts` asserts all eight against every real starter in `starters/`, in
 whatever state this checkout has left it — built, installed, or run. `--template
-nextjs` shipped unable to scaffold at all because nothing did the second one.
+nextjs` shipped unable to scaffold at all because nothing did the second one. That
+second list is read off disk rather than written out, so a starter added to `starters/`
+is covered by all eight the day it lands.
 
 ## What a generated project can install today
 

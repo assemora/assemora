@@ -54,6 +54,16 @@ export type ServedRequest = {
   readonly durationMs: number
   /** A file from `mountAssets`, rather than an endpoint. */
   readonly asset?: boolean
+  /**
+   * The status is 5xx and nothing failed: the endpoint answered with it.
+   *
+   * Read from `isIncident`, so the question of whose failure a status is stays decided
+   * in one place — the error model — rather than here and there. `/api/ready` is the
+   * case that exists: it refuses with a 503 because that is what a load balancer reads,
+   * and a readiness probe answering "not yet" every few seconds for as long as a
+   * deployment is unfinished is the endpoint working, not an incident.
+   */
+  readonly expected?: boolean
 }
 
 /**
@@ -62,10 +72,14 @@ export type ServedRequest = {
  * The rungs are the ones every access log already uses, so nobody has to learn a new
  * convention: a failure the server owns is an error, a request the caller was refused
  * is a warning, and everything else is information — raised to a warning when it took
- * too long.
+ * too long. A 5xx the endpoint meant to answer with is a refusal rather than a failure,
+ * and is written as one (see `ServedRequest.expected`).
  */
 export const requestLogLevel = (served: ServedRequest, slowMs: number): LogLevel | undefined => {
-  if (served.status >= 500) return 'error'
+  // An expected 5xx is a refusal, so it takes the rung refusals take. Not silence: a
+  // permanently unready application is worth seeing in the access log, and a rolling
+  // deploy's handful of lines is worth seeing too.
+  if (served.status >= 500) return served.expected === true ? 'warn' : 'error'
   if (served.status >= 400) return 'warn'
 
   // A single-page application is dozens of files per page load, and timing each one

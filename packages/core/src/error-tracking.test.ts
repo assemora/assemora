@@ -122,6 +122,43 @@ describe('where the line falls (SPEC.md §88)', () => {
 
     expect(errors.reports.map((report) => report.error.message)).toEqual(['boom'])
   })
+
+  it('lets a 5xx that is an answer withdraw the claim its status makes', () => {
+    // `/ready` refuses with 503 because that is what a load balancer must read, not
+    // because anything failed — and the condition behind it can be permanent, so a
+    // probe every five seconds is seventeen thousand identical reports a day about
+    // something `listen()` logged once.
+    const refusal = new AssemoraError('NOT_READY', 'It did not start', {
+      status: 503,
+      expected: true,
+    })
+
+    expect(isIncident(refusal)).toBe(false)
+    // Withdrawn one throw at a time, never for a status: the same code and the same
+    // 503 without the bit is an incident, and so is every other 503 in the framework.
+    expect(isIncident(new AssemoraError('NOT_READY', 'It did not start', { status: 503 }))).toBe(
+      true,
+    )
+  })
+
+  it('goes on reporting the defect beside it, so one claim is withdrawn and not the port', async () => {
+    const errors = collectErrors()
+    const reporting = { errors, logger: createLogger(silentWriter) }
+    const operation = { kind: 'request', name: 'GET /api/ready' } as const
+
+    await captureError(
+      reporting,
+      new AssemoraError('NOT_READY', 'It did not start', { status: 503, expected: true }),
+      operation,
+    )
+    await captureError(
+      reporting,
+      new AssemoraError('DATABASE_ERROR', 'The connection pool is exhausted', { status: 503 }),
+      operation,
+    )
+
+    expect(errors.reports.map((report) => report.code)).toEqual(['DATABASE_ERROR'])
+  })
 })
 
 describe('the command pipeline reports what it could not blame the caller for', () => {

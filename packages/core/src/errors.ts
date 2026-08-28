@@ -18,17 +18,50 @@ export class AssemoraError extends Error {
   readonly code: string
   readonly status: number
   readonly details: unknown
+  /**
+   * Whether this 5xx is the answer rather than a failure (SPEC.md §88).
+   *
+   * A status of 500 or more says "nobody has claimed this was the caller's fault", and
+   * that is exactly what `isIncident` reads as a defect worth a report (SPEC.md §88).
+   * One kind of refusal is neither the caller's fault nor a defect: an endpoint whose
+   * whole job is to report a state answers 5xx because that is what its reader must
+   * act on, not because anything failed. `/ready` is the one this exists for — a
+   * Kubernetes probe every five seconds against a condition that is permanent by
+   * construction is seventeen thousand identical reports a day, for something the boot
+   * reported once, and a tracker fed those hides the 500 that mattered.
+   *
+   * It only ever withdraws the claim, never makes one: below 500 nothing is an incident
+   * to begin with, and an error that wants reporting says so with its status.
+   */
+  readonly expected: boolean
 
   constructor(
     code: string,
     message: string,
-    options: { status?: number; details?: unknown; cause?: unknown } = {},
+    options: {
+      status?: number
+      details?: unknown
+      cause?: unknown
+      /**
+       * Set on a 5xx that is an answer rather than a failure, so it is not reported as
+       * an incident (SPEC.md §88).
+       *
+       * ```ts
+       * throw new AssemoraError('NOT_READY', 'This application is still starting', {
+       *   status: 503,
+       *   expected: true,
+       * })
+       * ```
+       */
+      expected?: boolean
+    } = {},
   ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause })
     this.name = new.target.name
     this.code = code
     this.status = options.status ?? 500
     this.details = options.details
+    this.expected = options.expected ?? false
   }
 
   toPayload(requestId?: string): ErrorPayload {

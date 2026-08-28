@@ -8,7 +8,8 @@ import { type FormEvent, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
 import { type PageSummary, usePages } from '../api/pages.ts'
 import { Page } from '../app/shell.tsx'
-import { Badge, Button, Card, Empty, Failure, Field, Input, Select, Spinner } from '../ui/index.tsx'
+import { NoPages } from '../ui/blank.tsx'
+import { Badge, Button, Card, Failure, Field, Input, Select, Spinner } from '../ui/index.tsx'
 
 const TONE = {
   published: 'positive',
@@ -125,37 +126,52 @@ export const Pages = () => {
     page,
   })
 
+  const filtered = search !== '' || status !== ''
+  /**
+   * Whether there is anything at all here, as opposed to nothing matching.
+   *
+   * A search box and a status filter over an empty application are two controls that
+   * can only ever return what is already on screen, and they crowd out the one
+   * sentence that is worth reading. They come back the moment a page exists — a filter
+   * that found nothing keeps them, or there would be no way to undo it.
+   */
+  const blank = listing.data !== undefined && listing.data.data.length === 0 && !filtered
+
   return (
     <Page
       title="Pages"
-      description={listing.data === undefined ? undefined : `${listing.data.total} pages`}
-      actions={<Button onClick={() => setCreating(true)}>New page</Button>}
+      description={listing.data === undefined || blank ? undefined : `${listing.data.total} pages`}
+      // Not beside the title while the empty state is offering the same button under
+      // the sentence that explains it.
+      actions={!blank && <Button onClick={() => setCreating(true)}>New page</Button>}
     >
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Input
-          type="search"
-          placeholder="Search…"
-          className="max-w-xs"
-          value={search}
-          onChange={(event) => {
-            setPage(1)
-            setSearch(event.target.value)
-          }}
-        />
-        <Select
-          className="max-w-40"
-          value={status}
-          onChange={(event) => {
-            setPage(1)
-            setStatus(event.target.value)
-          }}
-        >
-          <option value="">Any status</option>
-          <option value="draft">Draft</option>
-          <option value="published">Published</option>
-          <option value="archived">Archived</option>
-        </Select>
-      </div>
+      {!blank && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Input
+            type="search"
+            placeholder="Search…"
+            className="max-w-xs"
+            value={search}
+            onChange={(event) => {
+              setPage(1)
+              setSearch(event.target.value)
+            }}
+          />
+          <Select
+            className="max-w-40"
+            value={status}
+            onChange={(event) => {
+              setPage(1)
+              setStatus(event.target.value)
+            }}
+          >
+            <option value="">Any status</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="archived">Archived</option>
+          </Select>
+        </div>
+      )}
 
       {listing.isError && <Failure error={listing.error} />}
 
@@ -168,7 +184,7 @@ export const Pages = () => {
 
         {listing.data !== undefined &&
           (listing.data.data.length === 0 ? (
-            <Empty title="No pages yet">A page is a tree of blocks, not a document.</Empty>
+            <NoPages filtered={filtered} onCreate={() => setCreating(true)} />
           ) : (
             <table className="w-full text-left text-sm">
               <thead>

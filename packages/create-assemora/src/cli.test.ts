@@ -109,6 +109,41 @@ describe('run', () => {
     expect(out).toContain('pnpm create assemora <name>')
   })
 
+  /*
+   * Which starter to copy is not one of SPEC.md §78's five questions, so `--help` is
+   * where somebody who wants the worked example rather than the empty default finds
+   * out that it exists. The list is read from `starters/` in this checkout, which is
+   * the same list a published install carries under `templates/`.
+   */
+  it('lists the templates this install carries, by name', async () => {
+    const { code, out } = await drive(['--help'])
+
+    expect(code).toBe(0)
+    expect(out).toContain('Templates')
+    expect(out).toContain('bare')
+    expect(out).toContain('blog')
+  })
+
+  it('names the other templates to somebody who never chose, and not to somebody who did', async () => {
+    const root = await temporary()
+
+    const chose = await drive(
+      ['chosen', `--template=${await writeTemplate(root)}`, `--directory=${join(root, 'chosen')}`],
+      { cwd: root },
+    )
+
+    expect(chose.out).not.toContain('Other templates')
+
+    // No `--template`, so this copies the real default starter and is the invocation
+    // the line exists for: an empty project, and one sentence saying what else there is.
+    const took = await drive(['took', `--directory=${join(root, 'took')}`], { cwd: root })
+
+    expect(took.code).toBe(0)
+    expect(took.out).toContain('Other templates')
+    expect(took.out).toContain('--template blog')
+    expect(took.out).not.toContain('--template bare')
+  })
+
   it('says the invocation was wrong when nobody named the project', async () => {
     const { code, err } = await drive([])
 

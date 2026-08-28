@@ -8,7 +8,8 @@
 import type { BlockNode, BlockTree } from '@assemora/schema'
 
 import type { BlockDescriptor, Introspection } from '../api/introspection.ts'
-import { Badge, Button, Empty } from '../ui/index.tsx'
+import { NoBlocks } from '../ui/blank.tsx'
+import { Badge, Button } from '../ui/index.tsx'
 
 const Outline = ({
   nodes,
@@ -134,7 +135,7 @@ export const Palette = ({
       <section className="space-y-1.5">
         <p className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">Blocks</p>
 
-        {blocks.length === 0 && <Empty title="No blocks declared" />}
+        {blocks.length === 0 && <NoBlocks />}
 
         {blocks.map((block) => {
           // A block goes inside the selection when the selection can still hold it,
@@ -159,27 +160,32 @@ export const Palette = ({
         })}
       </section>
 
-      <section className="space-y-1.5">
-        <p className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
-          This page
-        </p>
-
-        {tree.blocks.length === 0 ? (
-          <p className="px-1 text-sm text-ink-faint">
-            No blocks yet. Choose one above, or use a + on the page.
+      {/* Nothing declared means nothing can be on the page either, and an outline of
+          an empty page under an empty palette is the second half of one fact. The
+          panel above has already said it, and said what to do about it. */}
+      {blocks.length > 0 && (
+        <section className="space-y-1.5">
+          <p className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+            This page
           </p>
-        ) : (
-          <Outline
-            nodes={tree.blocks}
-            depth={0}
-            selected={selected}
-            busy={busy}
-            nameOf={nameOf}
-            onSelect={onSelect}
-            onMove={onMove}
-          />
-        )}
-      </section>
+
+          {tree.blocks.length === 0 ? (
+            <p className="px-1 text-sm text-ink-faint">
+              No blocks yet. Choose one above, or use a + on the page.
+            </p>
+          ) : (
+            <Outline
+              nodes={tree.blocks}
+              depth={0}
+              selected={selected}
+              busy={busy}
+              nameOf={nameOf}
+              onSelect={onSelect}
+              onMove={onMove}
+            />
+          )}
+        </section>
+      )}
     </aside>
   )
 }

@@ -161,12 +161,52 @@ describe('a block nobody has filled in', () => {
   })
 })
 
+describe('a page with nothing on it', () => {
+  const nothing: BlockTree = { blocks: [] }
+  const nobody = createBlockRegistry({})
+
+  it('is nothing at all to a visitor', () => {
+    expect(renderToStaticMarkup(<AssemoraPage page={nothing} blocks={registry} />)).toBe('')
+    expect(renderToStaticMarkup(<AssemoraPage page={nothing} blocks={nobody} />)).toBe('')
+  })
+
+  it('is nothing to an editor either, whose own screen explains an empty page', () => {
+    // Studio draws that over the frame, and the site owns what a visitor is told. A
+    // third sentence here would be the one nobody can select and nobody can delete.
+    expect(renderToStaticMarkup(<AssemoraPage page={nothing} blocks={registry} editing />)).toBe('')
+  })
+
+  it('says what only this end knows: that nothing here could draw a block', () => {
+    const markup = renderToStaticMarkup(<AssemoraPage page={nothing} blocks={nobody} editing />)
+
+    // An editor's palette is built from what the *server* declares, so it offers
+    // blocks this bundle may have no view for. Adding one would then change nothing
+    // on screen, which is the picture a broken build makes.
+    expect(markup).toContain('no block views are registered in this build')
+  })
+
+  it('counts a fallback as something it can draw', () => {
+    const catchAll = createBlockRegistry({}, { fallback: Missing })
+
+    expect(renderToStaticMarkup(<AssemoraPage page={nothing} blocks={catchAll} editing />)).toBe('')
+  })
+
+  it('never says it to a visitor, however little this build can draw', () => {
+    expect(renderToStaticMarkup(<AssemoraPage page={nothing} blocks={nobody} />)).toBe('')
+  })
+})
+
 describe('the registry', () => {
   it('knows what it was given', () => {
     expect(registry.types).toEqual(['hero', 'section'])
     expect(registry.has('hero')).toBe(true)
     expect(registry.has('nowhere')).toBe(false)
     expect(registry.viewFor('nowhere')).toBeUndefined()
+    expect(registry.fallback).toBeUndefined()
+  })
+
+  it('keeps the fallback it was given, so "draws nothing" can be asked', () => {
+    expect(createBlockRegistry({}, { fallback: Missing }).fallback).toBe(Missing)
   })
 })
 

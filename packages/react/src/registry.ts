@@ -58,6 +58,15 @@ export type BlockRegistry = {
   viewFor(type: string): BlockView | undefined
   has(type: string): boolean
   readonly types: readonly string[]
+  /**
+   * What an unknown type is drawn as, if anything. The option, kept.
+   *
+   * Exposed because "can this registry draw anything at all?" is a real question with
+   * a wrong obvious answer: an empty `types` still draws every block when a fallback
+   * was given. The renderer has to ask it to tell a page with nothing on it apart from
+   * a build with no views in it, and those two need different words (SPEC.md §59).
+   */
+  readonly fallback: BlockView | undefined
 }
 
 export const createBlockRegistry = (
@@ -71,5 +80,6 @@ export const createBlockRegistry = (
     viewFor: (type) => known.get(type) ?? options.fallback,
     has: (type) => known.has(type),
     types: [...known.keys()],
+    fallback: options.fallback,
   }
 }

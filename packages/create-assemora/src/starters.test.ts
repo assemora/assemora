@@ -11,6 +11,7 @@
  * has left it — built or not, installed or not — because that is the state a
  * developer's `pnpm create assemora` meets.
  */
+import { existsSync, readdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -100,9 +101,34 @@ const FORBIDDEN: Readonly<Record<string, (file: string) => boolean>> = {
     file.startsWith('database/migrations/') && file.endsWith('.sql'),
   'a generated OpenAPI document': (file) => file === 'openapi.json',
   'a generated SDK': (file) => file.startsWith('src/generated/'),
+  // The repository's proof that the template works, which imports a test runner the
+  // project has no dependency on. `starters/bare/app/main.test.tsx` is the one that
+  // exists today, and it is why this entry does.
+  "one of the repository's own tests": (file) => /\.test(?:-d)?\.tsx?$/.test(file),
 }
 
-describe.each(['bare', 'nextjs'])('starters/%s', (name: string) => {
+/**
+ * Every starter a checkout carries, so that adding one to `starters/` and forgetting
+ * it here is not possible: the list is read from disk rather than written out.
+ *
+ * `bare` is the default and `blog` is the worked example it used to be; `nextjs` is the
+ * frontend-framework one. All three answer SPEC.md §78's three questions, and all three
+ * have to survive all eight answers to them.
+ */
+const STARTERS: readonly string[] = readdirSync(join(here, '..', '..', '..', 'starters'), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory() && existsSync(join(starter(entry.name), 'package.json')))
+  .map((entry) => entry.name)
+  .sort()
+
+describe('starters/', () => {
+  it('holds the three this repository ships', () => {
+    expect(STARTERS).toStrictEqual(['bare', 'blog', 'nextjs'])
+  })
+})
+
+describe.each(STARTERS)('starters/%s', (name: string) => {
   it.each(combinations())(
     'scaffolds with studio=$studio pages=$pages mcp=$mcp',
     async (features: Features) => {
@@ -158,7 +184,7 @@ describe.each(['bare', 'nextjs'])('starters/%s', (name: string) => {
 })
 
 describe('every feature of every starter', () => {
-  it.each(['bare', 'nextjs'])('is one this scaffolder asks about (%s)', async (name: string) => {
+  it.each(STARTERS)('is one this scaffolder asks about (%s)', async (name: string) => {
     const manifest = JSON.parse(await readFile(join(starter(name), 'template.json'), 'utf8')) as {
       readonly features?: Record<string, unknown>
     }
@@ -166,5 +192,22 @@ describe('every feature of every starter', () => {
     for (const feature of Object.keys(manifest.features ?? {})) {
       expect(FEATURES).toContain(feature)
     }
+  })
+})
+
+/**
+ * A template nobody can tell apart from the others is a template nobody chooses.
+ *
+ * `--help` and the line printed after a scaffold both list what a checkout carries, and
+ * both read the description out of `template.json`. A starter that declares none is
+ * listed as a bare name, which is exactly the state this asserts nobody leaves it in.
+ */
+describe('every starter', () => {
+  it.each(STARTERS)('says in one line what it is (%s)', async (name: string) => {
+    const manifest = JSON.parse(await readFile(join(starter(name), 'template.json'), 'utf8')) as {
+      readonly description?: unknown
+    }
+
+    expect({ [name]: typeof manifest.description }).toStrictEqual({ [name]: 'string' })
   })
 })

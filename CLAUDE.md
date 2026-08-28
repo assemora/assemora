@@ -103,6 +103,53 @@ have already been made — do not reverse one without writing a new ADR.
   and never a value. A `where` holds whatever the caller passed, and a slow-query log
   is the file that ends up in a ticket.
 
+- **A blank slate, and a collection with equal rights — done.** `pnpm create assemora`
+  gave everybody a blog. SPEC.md §124 describes the walk as *"the developer adds:
+  `export const Article = model(…)`"*, so the spec already assumed a fresh project has
+  none — the starter disagreed with it. `starters/bare` is now an application with
+  nothing in it, the worked example is `--template blog`, and §79's directories stay,
+  empty, with a `.gitkeep`: a blank project needs the layout more than a populated one,
+  because that is how a person learns where a model goes and it is where
+  `assemora make:model` writes. The §124 test now *does* the adding rather than
+  asserting the scaffold ships it.
+- The deeper half was that the two ways to make a resource were not equal: a collection
+  made in Studio answered 404 at its own address, and one declared in TypeScript did
+  not. That is what "the CMS limits me" actually meant. `mountResources()` is idempotent
+  now, so a collection loaded at boot gets endpoints of its own; a collection made while
+  the process runs is served by one parameterised pair, because Fastify cannot add a
+  route after `listen()`; and the route descriptions are reconciled when the Schema
+  Registry *changes*, which is what lets `collections.create` answer with the addresses
+  it really published instead of a promise. `settled()` still refuses to start when the
+  registry describes an address nobody serves — the invariant was widened, not switched
+  off, and a test proves it.
+- A collection can restrict its CRUD (SPEC.md §43). The flags live in the definition and
+  go through the parser like every other value, so a read-only collection is read-only
+  in Studio, over MCP and in the generated SDK — not only at `/api`. Equal in rights was
+  one-directional until then: a collection got everything a static resource got except
+  the ability to publish *less*.
+- **An application must boot against a database whose schema is not applied**, because
+  that is exactly what `assemora db:generate` does — it boots the real application to
+  read its registry (ADR-0021). `collections()` read its own table in a boot hook, so
+  the command that writes the first migration needed the table that migration creates,
+  and no project registering `collections()` could ever generate one. The adapter now
+  tells five failures apart that all arrived as one 500 — `SCHEMA_NOT_APPLIED`,
+  `DATABASE_NOT_FOUND`, `DATABASE_UNAUTHORIZED`, `DATABASE_FORBIDDEN`,
+  `DATABASE_UNREACHABLE` — and only the first is survivable. `ECONNREFUSED` is eleven
+  characters, so the `^[0-9A-Z]{5}$` SQLSTATE test never saw it and a refused connection
+  used to report that the database had *rejected* the operation.
+- A module that booted and could not start says so — `context.cannotStart(reason,
+  { remedy })`, `application.notStarted`, and `/api/ready` answers 503 naming it
+  (ADR-0026). Before that a process listened, served Studio, answered `/ready` with 200
+  and refused every data request with 503, and a readiness probe routed production
+  traffic at it. Core only warns, because throwing would take `db:generate` down with
+  it; `listen()` errors, because it is the one caller that knows the state is fatal
+  rather than routine.
+- `AssemoraError` takes `expected`, and both `isIncident` and the access log read it.
+  A permanent 503 on a probe is the endpoint answering, not a defect: at `periodSeconds:
+  5` it was seventeen thousand reports a day, and `ports.ts` states the harm in its own
+  words — a tracker fed a page of refusals hides the one 500 that mattered. The bit only
+  ever *withdraws* the claim, so the harmful direction is not expressible.
+
 Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
 which of its limits are permanent and which were only a schedule, and adds five
 sections it never had — §131 localisation, §132 taxonomy, §133 navigation, §134 forms,
@@ -290,7 +337,9 @@ Carried into phase 3 deliberately, do not mistake them for oversights:
   behind a symbol so bypassing the mutation path is deliberate.
 - Optimistic concurrency (§66) is stored but not enforced; it lands with pages in
   phase 7.
-- Dynamic entries sort by their own columns only, not by a key inside the JSONB.
+- Dynamic entries sort by their own columns only, not by a key inside the JSONB — so a
+  definition asking for a sortable field is refused at the parser rather than accepted
+  and ignored.
 - A resource read is projected to its declared, non-hidden fields; the model row
   behind it is reachable through `Resource.model`, never through `list()`.
 - Every adapter must agree on what a `Condition` means, and

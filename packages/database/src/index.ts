@@ -19,6 +19,11 @@ export type {
   TableDescriptor,
 } from './adapter.js'
 export {
+  isSchemaNotApplied,
+  SCHEMA_NOT_APPLIED,
+  schemaNotApplied,
+} from './errors.js'
+export {
   joinTableDescriptor,
   type PivotAddress,
   pivotAddress,

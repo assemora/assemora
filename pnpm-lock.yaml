@@ -770,6 +770,76 @@ importers:
         specifier: 8.2.2
         version: 8.2.2(@types/node@24.13.3)(jiti@2.7.0)
 
+  starters/blog:
+    dependencies:
+      '@assemora/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@assemora/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@assemora/data':
+        specifier: workspace:*
+        version: link:../../packages/data
+      '@assemora/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@assemora/database-postgres':
+        specifier: workspace:*
+        version: link:../../packages/database-postgres
+      '@assemora/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@assemora/pages':
+        specifier: workspace:*
+        version: link:../../packages/pages
+      '@assemora/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@assemora/resources':
+        specifier: workspace:*
+        version: link:../../packages/resources
+      '@assemora/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@assemora/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@assemora/studio':
+        specifier: workspace:*
+        version: link:../../apps/studio
+      assemora:
+        specifier: workspace:*
+        version: link:../../packages/assemora
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@assemora/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.5
+        version: 19.2.5(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 6.1.0
+        version: 6.1.0(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0))
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 8.2.2
+        version: 8.2.2(@types/node@24.13.3)(jiti@2.7.0)
+
   starters/nextjs:
     dependencies:
       '@assemora/auth':

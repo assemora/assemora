@@ -3,7 +3,12 @@ import { useAdapter } from '@assemora/data'
 import { createMemoryAdapter, type MemoryAdapter } from '@assemora/database'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { type DynamicDefinition, dynamicResource, parseDynamicDefinition } from './dynamic.js'
+import {
+  type DynamicDefinition,
+  dynamicResource,
+  parseDeclaredDefinition,
+  parseDynamicDefinition,
+} from './dynamic.js'
 import { registeredFieldKinds } from './field-registry.js'
 import { clearResourceRegistry } from './registry.js'
 import './module.js'
@@ -109,6 +114,117 @@ describe('parsing a stored definition (SPEC.md §37, §86)', () => {
   it('lists the kinds a definition may use', () => {
     expect(registeredFieldKinds()).toContain('richText')
     expect(registeredFieldKinds()).not.toContain('summonDemon')
+  })
+})
+
+/**
+ * A collection can publish less, which is the last thing only source could do
+ * (SPEC.md §43).
+ *
+ * The flags were accepted by the command, dropped by the input schema and hard-coded to
+ * `true` here — so a definition that asked for a read-only collection got all five
+ * endpoints and no word about it.
+ */
+describe('the endpoints a definition publishes', () => {
+  const exposed = (definition: unknown) =>
+    dynamicResource(parseDynamicDefinition(definition), { id: RESOURCE_ID }).descriptor.api
+
+  it('is all five when the definition says nothing, as it is in TypeScript', () => {
+    expect(exposed(testimonials)).toEqual({
+      create: true,
+      read: true,
+      update: true,
+      delete: true,
+    })
+  })
+
+  it('carries what the definition declared, flag by flag', () => {
+    expect(exposed({ ...testimonials, api: { create: false, delete: false } })).toEqual({
+      create: false,
+      read: true,
+      update: true,
+      delete: false,
+    })
+  })
+
+  it('is untrusted data like everything else in a definition', () => {
+    expect(() => parseDynamicDefinition({ ...testimonials, api: { create: 'yes' } })).toThrowError(
+      ValidationError,
+    )
+
+    // And nothing but the four flags survives, so `api` is no more a way in than
+    // `fields` is (SPEC.md §86).
+    expect(
+      parseDynamicDefinition({
+        ...testimonials,
+        api: { read: true, onRequest: 'require("node:fs").rmSync("/")' },
+      }).api,
+    ).toEqual({ read: true })
+  })
+})
+
+/**
+ * A flag nothing could honour is refused where it is written (SPEC.md §38).
+ *
+ * `sortable` was accepted, stored and then answered with a 422 by `entries.list` for
+ * ever: a collection's entries are ordered by the entry's own columns, because the
+ * values live in one JSONB document and the Query AST has no ordering term for one.
+ */
+describe('a claim a collection cannot honour', () => {
+  const declaring = (fields: readonly unknown[]) => () =>
+    parseDeclaredDefinition({ name: 'reviews', fields })
+
+  it('refuses it, and says why', () => {
+    const failure = (() => {
+      try {
+        declaring([{ name: 'score', kind: 'number', sortable: true }])()
+      } catch (error) {
+        return error as ValidationError
+      }
+      return undefined
+    })()
+
+    expect(failure).toBeInstanceOf(ValidationError)
+    expect(failure?.fields['fields.0.sortable']?.[0]).toContain('"score" cannot be sortable')
+    expect(failure?.fields['fields.0.sortable']?.[0]).toContain('createdAt')
+  })
+
+  it('is refused inside a group and inside a repeater too, a layer earlier', () => {
+    const inside = (() => {
+      try {
+        declaring([
+          {
+            name: 'meta',
+            kind: 'object',
+            fields: [{ name: 'author', kind: 'text', sortable: true }],
+          },
+          { name: 'gallery', kind: 'array', element: { kind: 'text', sortable: true } },
+        ])()
+      } catch (error) {
+        return error as ValidationError
+      }
+      return undefined
+    })()
+
+    // Not this rule's doing: `object()` and `array()` refuse a nested `sortable` for a
+    // static resource as well, because sorting addresses a resource field by name. The
+    // outcome is what matters, and it is the same at every depth.
+    expect(Object.keys(inside?.fields ?? {})).toEqual([
+      'fields.0.fields.0.sortable',
+      'fields.1.element.sortable',
+    ])
+  })
+
+  it('still loads a row written before the rule, so a collection is not lost to it', () => {
+    // The boot loader's parser. Refusing here would skip the collection at the next
+    // boot — content out of a running application, and out of reach of the very update
+    // that would remove the flag, over a value that never did anything.
+    expect(
+      parseDynamicDefinition({
+        name: 'reviews',
+        fields: [{ name: 'score', kind: 'number', sortable: true }],
+      }).fields[0],
+    ).toMatchObject({ sortable: true })
   })
 })
 

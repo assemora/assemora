@@ -12,7 +12,8 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { type CollectionSummary, useCollections } from '../api/collections.ts'
 import { useSession } from '../api/session.tsx'
 import { Page } from '../app/shell.tsx'
-import { Badge, Button, Card, Empty, Failure, Spinner } from '../ui/index.tsx'
+import { NoCollections } from '../ui/blank.tsx'
+import { Badge, Button, Card, Failure, Spinner } from '../ui/index.tsx'
 
 /** Which of the generated CRUD operations a resource answers to (SPEC.md §43). */
 const OPERATIONS = [
@@ -31,15 +32,17 @@ export const Collections = () => {
   const declared = (collections.data?.taken ?? []).filter(
     (name) => !made.some((collection) => collection.name === name),
   )
+  const create = () => void navigate({ to: '/collections/new' })
 
   return (
     <Page
       title="Collections"
       description="Resources made here rather than written in TypeScript"
+      // The empty state carries this button itself, where the sentence explaining it
+      // is. Two identical primary buttons on one screen is one of them being ignored.
       actions={
-        can('collections.create') && (
-          <Button onClick={() => void navigate({ to: '/collections/new' })}>New collection</Button>
-        )
+        made.length > 0 &&
+        can('collections.create') && <Button onClick={create}>New collection</Button>
       }
     >
       {collections.isError && <Failure error={collections.error} />}
@@ -52,10 +55,7 @@ export const Collections = () => {
         )}
 
         {made.length === 0 && collections.isSuccess && (
-          <Empty title="No collections yet">
-            A collection is a resource you make here — a name, and the fields it holds.
-            {can('collections.create') && ' Its entries can be written the moment it exists.'}
-          </Empty>
+          <NoCollections canCreate={can('collections.create')} onCreate={create} />
         )}
 
         {made.length > 0 && (

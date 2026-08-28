@@ -9,13 +9,20 @@
  *
  * It has two halves, and they are different kinds of claim.
  *
- * The **scaffold half** asserts what was *written*. A scaffolded project cannot be
- * imported from here: its `workspace:*` specifiers were rewritten to published
- * ranges on the way out, and nothing has been installed into the temporary directory
- * — so `import('…/demo/src/app.ts')` would fail on the first bare specifier it met.
- * What can be checked is the thing `scaffold()` is responsible for: the layout of
- * SPEC.md §79, the project's own name, the dotfiles npm cannot carry, and that no
- * feature marker survived into the source a developer opens.
+ * The **scaffold half** asserts what was *written*, and then what §124's developer
+ * does with it. `scaffold()` is responsible for the layout of SPEC.md §79, the
+ * project's own name, the dotfiles npm cannot carry, and that no feature marker
+ * survived into the source a developer opens. Then the generators run — inside that
+ * project, as a person runs them — and the project is started by the very file
+ * `assemora start` starts, so the REST paths, the OpenAPI document and the SDK are
+ * read off a live process rather than predicted from a registry this test built.
+ *
+ * Nothing is installed into the temporary directory and nothing can be: the
+ * project's `workspace:*` specifiers were rewritten to published ranges on the way
+ * out, and those ranges resolve to nothing until there is a release. The starter's
+ * own `node_modules` is linked in instead — it is what this checkout resolves those
+ * same package names to, and linking it is the difference between asserting that a
+ * generator wrote a file and asserting that what it wrote works.
  *
  * The **application half** builds what that project would have built once installed:
  * `assemora()` with a model, a resource and a block declared here the way §124's
@@ -32,7 +39,10 @@
  * would run, which is the step between the model and the table.
  */
 
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { type ChildProcess, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,7 +65,7 @@ import { createTableSql } from '@assemora/database-postgres'
 import { clearRouteRegistry, type HttpServer, type InjectedResponse } from '@assemora/http'
 import { block, clearBlockRegistry, pages } from '@assemora/pages'
 import { clearResourceRegistry, resource, text, toggle } from '@assemora/resources'
-import { generateSdk } from '@assemora/sdk'
+import { generateSdk, type RegistrySnapshot } from '@assemora/sdk'
 import { type AssemoraApplication, assemora } from 'assemora'
 import { scaffold } from 'create-assemora'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -272,6 +282,15 @@ const LAYOUT = [
 const holds = (files: readonly string[], entry: string): boolean =>
   entry.endsWith('/') ? files.some((file) => file.startsWith(entry)) : files.includes(entry)
 
+/**
+ * The starter this repository ships, by path rather than by name.
+ *
+ * A name would be resolved by walking up for a `starters/` or a `templates/`
+ * directory, which is the right rule for a person and the wrong one for a test: this
+ * asserts what *this* checkout scaffolds.
+ */
+const BARE = fileURLToPath(new URL('../../starters/bare', import.meta.url))
+
 describe('pnpm create assemora demo (SPEC.md §124, §78, §79)', () => {
   let root: string
   let files: readonly string[]
@@ -281,11 +300,11 @@ describe('pnpm create assemora demo (SPEC.md §124, §78, §79)', () => {
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'assemora-v1-'))
 
-    // The starter this repository ships, by path rather than by name, so the test
-    // scaffolds the directory it names rather than whatever a resolver finds.
-    const template = fileURLToPath(new URL('../../starters/bare', import.meta.url))
-
-    const written = await scaffold({ name: 'demo', directory: join(root, 'demo'), template })
+    const written = await scaffold({
+      name: 'demo',
+      directory: join(root, 'demo'),
+      template: BARE,
+    })
 
     files = written.files
   })
@@ -330,12 +349,316 @@ describe('pnpm create assemora demo (SPEC.md §124, §78, §79)', () => {
     }
   })
 
-  it('already carries the model, the resource and the block §124 goes on to add', async () => {
-    // The declarations at the top of this file are not invented for the test: they
-    // are the ones the scaffolded project starts life with.
-    expect(await read('src/models/article.ts')).toMatch(/model\('articles'/)
-    expect(await read('src/resources/articles.ts')).toMatch(/resource\(\s*Article/)
+  it('declares nothing of its own for the developer to work around', async () => {
+    // §124 opens with "the developer adds", so a starter that already held an
+    // Article was answering the question the section asks. The four directories are
+    // still there — SPEC.md §79 fixes them and the generators write into them — and
+    // every one of them is empty but for the file git needs to track it at all.
+    expect(files.filter((file) => file.startsWith('src/models/'))).toEqual(['src/models/.gitkeep'])
+    expect(files.filter((file) => file.startsWith('src/resources/'))).toEqual([
+      'src/resources/.gitkeep',
+    ])
+    expect(files.filter((file) => file.startsWith('src/blocks/'))).toEqual(['src/blocks/.gitkeep'])
+    expect(files.filter((file) => file.startsWith('app/blocks/'))).toEqual(['app/blocks/.gitkeep'])
+  })
+})
+
+/*
+ * ---------------------------------------------------------------------------------
+ * "The developer adds:" — the three generators, in the project step 1 just made,
+ * and then everything §124 says follows from having added them.
+ * ---------------------------------------------------------------------------------
+ */
+
+/** A port the operating system has just confirmed is free. */
+const freePort = (): Promise<number> =>
+  new Promise((settle, refuse) => {
+    const probe = createServer()
+
+    probe.once('error', refuse)
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address()
+
+      if (address === null || typeof address === 'string') {
+        probe.close()
+        refuse(new Error('the probe did not report a port'))
+        return
+      }
+
+      probe.close(() => settle(address.port))
+    })
+  })
+
+const isDirectory = async (path: string): Promise<boolean> => {
+  try {
+    return (await stat(path)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/** One command, inside the project, the way a person types it. */
+const inProject = (project: string, bin: string, args: readonly string[]): Promise<string> =>
+  new Promise((settle, refuse) => {
+    const child = spawn(bin, [...args], { cwd: project, stdio: ['ignore', 'pipe', 'pipe'] })
+    let output = ''
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+    child.once('error', refuse)
+    child.once('close', (code) => {
+      if (code === 0) settle(output)
+      else refuse(new Error(`\`assemora ${args.join(' ')}\` exited ${String(code)}:\n${output}`))
+    })
+  })
+
+/**
+ * The one step no generator can take for you.
+ *
+ * Each `make:*` ends by naming the call that registers what it wrote, and this is
+ * those three sentences carried out: `.models(Post)` and `.resources(Posts)` on the
+ * module `src/app.ts` already lists, and `pages({ blocks: [Hero] })` where the
+ * palette is decided. They are edits to the starter's own text rather than two files
+ * pasted over it, so a starter that stops offering somewhere to put them fails here
+ * loudly instead of quietly proving nothing.
+ */
+const register = async (project: string): Promise<void> => {
+  const edit = async (file: string, changes: readonly (readonly [string, string])[]) => {
+    const path = join(project, ...file.split('/'))
+    let source = await readFile(path, 'utf8')
+
+    for (const [from, to] of changes) {
+      if (!source.includes(from)) throw new Error(`${file} no longer contains "${from}"`)
+
+      source = source.replace(from, to)
+    }
+
+    await writeFile(path, source, 'utf8')
+  }
+
+  await edit('src/modules/content.ts', [
+    [
+      "import { readPage } from '../routes.ts'",
+      [
+        "import { Post } from '../models/post.ts'",
+        "import { Posts } from '../resources/posts.ts'",
+        "import { readPage } from '../routes.ts'",
+      ].join('\n'),
+    ],
+    ["module('content')\n", "module('content')\n    .models(Post)\n    .resources(Posts)\n"],
+  ])
+
+  await edit('src/app.ts', [
+    [
+      "import { content } from './modules/content.ts'",
+      "import { Hero } from './blocks/hero.ts'\nimport { content } from './modules/content.ts'",
+    ],
+    ['pages(),', 'pages({ blocks: [Hero] }),'],
+  ])
+}
+
+/**
+ * What the seeded administrator's password will be, decided here.
+ *
+ * `ASSEMORA_SEED_PASSWORD` is how a real deployment seeds one, and setting it is what
+ * keeps this test out of the starter's `.env` — which is generated, gitignored, and
+ * absent entirely when the environment running the suite already set the variable.
+ * Fresh per run, because a constant in a test file is still a published credential
+ * (`tests/integration/starters.test.ts` is the one that proves nobody ships one).
+ */
+const SEED_PASSWORD = randomBytes(18).toString('base64url')
+
+describe('the developer adds a model, a resource and a block (SPEC.md §124, §77)', () => {
+  let root: string
+  let project: string
+  let port: number
+  /** What a signed-in browser holds, as one header. */
+  let cookie: string
+  let csrf: string
+  let child: ChildProcess
+  let output = ''
+
+  const read = (path: string): Promise<string> =>
+    readFile(join(project, ...path.split('/')), 'utf8')
+
+  const api = (path: string, init: RequestInit = {}): Promise<Response> =>
+    fetch(`http://127.0.0.1:${port}/api${path}`, init)
+
+  const bodyOf = async <T>(response: Response): Promise<T> => (await response.json()) as T
+
+  /** A mutation, with the session and the header CSRF asks a browser for (SPEC.md §85). */
+  const write = (path: string, method: string, payload?: unknown): Promise<Response> =>
+    api(path, {
+      method,
+      headers: {
+        cookie,
+        'x-csrf-token': csrf,
+        ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+    })
+
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), 'assemora-adds-'))
+    project = join(root, 'demo')
+
+    await scaffold({ name: 'demo', directory: project, template: BARE })
+
+    // Linked rather than installed: see the note at the top of this file. A checkout
+    // that has never been installed has nothing to link, and saying so is kinder than
+    // a dangling symlink reported three steps later as a missing module.
+    const installed = join(BARE, 'node_modules')
+
+    if (!(await isDirectory(installed))) {
+      throw new Error(`${installed} does not exist. Run \`pnpm install\` first.`)
+    }
+
+    await symlink(installed, join(project, 'node_modules'), 'dir')
+
+    // → "The developer adds:" — through the generators of SPEC.md §77, run in the
+    //   project, by the binary that project's own `package.json` puts on the path.
+    const assemora = join(project, 'node_modules', '.bin', 'assemora')
+
+    await inProject(project, assemora, ['make:model', 'Post'])
+    await inProject(project, assemora, ['make:resource', 'Post'])
+    await inProject(project, assemora, ['make:block', 'hero'])
+    await register(project)
+
+    // → and started by the file `assemora start` starts, on the in-memory database a
+    //   project with no DATABASE_URL falls back to, which is also the one database
+    //   `src/server.ts` will seed an administrator into.
+    port = await freePort()
+    child = spawn(process.execPath, [join(project, 'src', 'server.ts')], {
+      cwd: project,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        DATABASE_URL: '',
+        ASSEMORA_SEED_PASSWORD: SEED_PASSWORD,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+
+    const deadline = Date.now() + 90_000
+
+    for (;;) {
+      if (child.exitCode !== null) throw new Error(`the project exited early:\n${output}`)
+
+      try {
+        await fetch(`http://127.0.0.1:${port}/api/health`)
+        break
+      } catch {
+        if (Date.now() > deadline) throw new Error(`the project never listened:\n${output}`)
+
+        await new Promise((settle) => setTimeout(settle, 200))
+      }
+    }
+
+    // The seed says *whom* it made and never what its password is, so the address is
+    // read from the log and the credential is the one handed to it above.
+    const seeded = /seeded (\S+@\S+)/.exec(output)?.[1]
+
+    if (seeded === undefined) throw new Error(`the project seeded nobody:\n${output}`)
+
+    const login = await api('/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: seeded, password: SEED_PASSWORD }),
+    })
+
+    expect(login.status).toBe(200)
+
+    const jar = Object.fromEntries(
+      login.headers.getSetCookie().map((line) => {
+        const [name, ...rest] = (line.split(';')[0] ?? '').split('=')
+
+        return [name ?? '', rest.join('=')]
+      }),
+    )
+
+    cookie = `assemora_session=${jar.assemora_session}; assemora_csrf=${jar.assemora_csrf}`
+    csrf = jar.assemora_csrf ?? ''
+  }, 180_000)
+
+  afterAll(async () => {
+    child?.kill('SIGKILL')
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('writes each declaration into the directory SPEC.md §79 keeps for it', async () => {
+    expect(await read('src/models/post.ts')).toMatch(/model\('posts'/)
+    expect(await read('src/resources/posts.ts')).toMatch(/resource\(\s*Post/)
     expect(await read('src/blocks/hero.ts')).toMatch(/block\(\s*'hero'/)
+  })
+
+  it('REST CRUD', async () => {
+    const created = await write('/posts', 'POST', { title: 'Ada writes' })
+
+    expect(created.status).toBe(201)
+
+    const { id } = await bodyOf<{ id: string }>(created)
+
+    const listed = await bodyOf<{ data: { title: string }[] }>(
+      await api('/posts', { headers: { cookie } }),
+    )
+
+    expect(listed.data.map((entry) => entry.title)).toEqual(['Ada writes'])
+
+    const patched = await write(`/posts/${id}`, 'PATCH', { title: 'Ada wrote' })
+
+    expect(patched.status).toBe(200)
+    expect((await bodyOf<{ entry: { title: string } }>(patched)).entry.title).toBe('Ada wrote')
+
+    expect((await write(`/posts/${id}`, 'DELETE')).status).toBe(200)
+    expect(
+      (await bodyOf<{ total: number }>(await api('/posts', { headers: { cookie } }))).total,
+    ).toBe(0)
+  })
+
+  it('OpenAPI documentation, and the API Explorer', async () => {
+    const document = await bodyOf<{
+      paths: Record<string, unknown>
+      components: { schemas: Record<string, { properties: Record<string, unknown> }> }
+    }>(await api('/openapi.json'))
+
+    expect(Object.keys(document.paths)).toEqual(
+      expect.arrayContaining(['/api/posts', '/api/posts/{id}']),
+    )
+    expect(Object.keys(document.components.schemas.posts?.properties ?? {})).toContain('title')
+
+    const snapshot = await bodyOf<Record<string, { name: string }[]>>(
+      await api('/_introspection', { headers: { cookie } }),
+    )
+    const names = (section: string) => (snapshot[section] ?? []).map((entry) => entry.name)
+
+    expect(names('resources')).toContain('posts')
+    expect(names('routes')).toEqual(expect.arrayContaining(['get /posts', 'post /posts']))
+    // A block reaches the palette by being listed in `pages({ blocks })` and by
+    // nothing else, which is exactly what the generator's last line told us to do.
+    expect(names('blocks')).toContain('hero')
+  })
+
+  it('a TypeScript SDK', async () => {
+    // Generated from the snapshot that project serves, rather than from a registry
+    // this test assembled — so it is the SDK a developer would actually get.
+    const snapshot = await bodyOf<RegistrySnapshot>(
+      await api('/_introspection', { headers: { cookie } }),
+    )
+    const source = generateSdk(snapshot)
+
+    expect(source).toContain('readonly posts: ResourceClient<Posts>')
+    expect(source).toContain('readonly title: string')
   })
 })
 

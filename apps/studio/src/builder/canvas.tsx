@@ -162,6 +162,60 @@ export const InsertionGap = ({
   )
 }
 
+/**
+ * A page nobody has put anything on, over the frame that is drawing nothing.
+ *
+ * Two states, and the second is the one a fresh install lands in: an application whose
+ * source declares no `block()` has nothing that could go on a page, and "put the first
+ * one in" over a row of no buttons reads as software that has lost its palette. It
+ * points left rather than repeating the instructions — the Blocks panel is where they
+ * belong, because it is also where somebody looks on a page that already has blocks.
+ */
+export const EmptyPage = ({
+  options,
+  busy,
+  onInsert,
+}: {
+  /** What may go at the top level. Empty when the application declares no blocks. */
+  options: readonly Insertable[]
+  busy: boolean
+  onInsert(type: string): void
+}) => (
+  <div className="absolute inset-0 grid place-items-center p-8">
+    <div className="pointer-events-auto max-w-sm rounded-xl border border-dashed border-line bg-surface px-6 py-7 text-center">
+      {options.length === 0 ? (
+        <>
+          <p className="text-sm font-medium text-ink">Nothing can go on this page yet</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            This application declares no block types. A block is a TypeScript declaration, so Studio
+            cannot make one — the Blocks panel on the left has the command that can.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-ink">This page has nothing on it yet</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            Every page is a tree of blocks. Put the first one in.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+            {options.map((option) => (
+              <button
+                key={option.name}
+                type="button"
+                disabled={busy}
+                className="rounded-lg border border-line px-2.5 py-1 text-sm text-ink transition hover:border-accent hover:text-accent disabled:opacity-60"
+                onClick={() => onInsert(option.name)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  </div>
+)
+
 export const Canvas = ({
   pageId,
   tree,
@@ -370,27 +424,11 @@ export const Canvas = ({
           ))}
 
           {tree.blocks.length === 0 && (
-            <div className="absolute inset-0 grid place-items-center p-8">
-              <div className="pointer-events-auto max-w-sm rounded-xl border border-dashed border-line bg-surface px-6 py-7 text-center">
-                <p className="text-sm font-medium text-ink">This page has nothing on it yet</p>
-                <p className="mt-1 text-sm text-ink-soft">
-                  Every page is a tree of blocks. Put the first one in.
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-                  {insertable(null).map((option) => (
-                    <button
-                      key={option.name}
-                      type="button"
-                      disabled={busy}
-                      className="rounded-lg border border-line px-2.5 py-1 text-sm text-ink transition hover:border-accent hover:text-accent disabled:opacity-60"
-                      onClick={() => onInsert(option.name, { index: 0 })}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <EmptyPage
+              options={insertable(null)}
+              busy={busy}
+              onInsert={(type) => onInsert(type, { index: 0 })}
+            />
           )}
         </div>
       </div>

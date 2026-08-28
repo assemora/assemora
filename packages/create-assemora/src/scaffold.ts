@@ -127,7 +127,7 @@ const isUnder = (path: string, entry: string): boolean =>
   path === entry || path.startsWith(`${entry}/`)
 
 const declined = (manifest: TemplateManifest, features: Features): readonly FeatureManifest[] =>
-  FEATURES.filter((feature) => !features[feature]).map((feature) => manifest[feature])
+  FEATURES.filter((feature) => !features[feature]).map((feature) => manifest.features[feature])
 
 /** Text is anything without a NUL in it: an image is copied, a template is rewritten. */
 const isText = (contents: Buffer): boolean => !contents.includes(0)

@@ -6,7 +6,7 @@ import { command } from './commands.js'
 import { currentContext } from './context.js'
 import { ConfigurationError, ForbiddenError } from './errors.js'
 import { createLogger, type LogRecord } from './logger.js'
-import { module } from './module.js'
+import { module, type NotStarted } from './module.js'
 import { collectAudit, permitAll } from './ports.js'
 
 const Rename = command('blog.rename', {
@@ -92,6 +92,117 @@ describe('application lifecycle', () => {
     expect(() => createApplication({ modules: [module('blog'), module('blog')] })).toThrowError(
       'Module "blog" is registered twice',
     )
+  })
+})
+
+describe('a module that did not start (SPEC.md §88)', () => {
+  it('says nothing when every module started', async () => {
+    const app = await createApplication({ modules: [module('blog').boot(() => {})] }).boot()
+
+    expect(app.notStarted).toEqual([])
+  })
+
+  it('carries the reason, the remedy and the module that reported them', async () => {
+    const app = await createApplication({
+      modules: [
+        module('collections').boot((context) => {
+          context.cannotStart('Its table does not exist yet.', {
+            remedy: 'Run assemora db:migrate.',
+          })
+        }),
+      ],
+    }).boot()
+
+    expect(app.notStarted).toEqual([
+      {
+        module: 'collections',
+        reason: 'Its table does not exist yet.',
+        remedy: 'Run assemora db:migrate.',
+      },
+    ])
+  })
+
+  it('boots anyway, because db:generate boots against a schema that is not applied', async () => {
+    const trace: string[] = []
+
+    const app = await createApplication({
+      modules: [
+        module('collections').boot((context) => {
+          context.cannotStart('Its table does not exist yet.')
+        }),
+        module('blog').boot(() => {
+          trace.push('blog')
+        }),
+      ],
+    }).boot()
+
+    // The module behind it still booted, and the registry is readable — which is the
+    // whole reason this is a report rather than a throw (ADR-0021).
+    expect(trace).toEqual(['blog'])
+    expect(app.notStarted).toEqual([
+      { module: 'collections', reason: 'Its table does not exist yet.' },
+    ])
+  })
+
+  it('keeps every reason, from every module and every hook', async () => {
+    const app = await createApplication({
+      modules: [
+        module('collections')
+          .boot((context) => {
+            context.cannotStart('Its table does not exist yet.')
+          })
+          .ready((context) => {
+            context.cannotStart('And nothing rebuilt the index.')
+          }),
+        module('search').boot((context) => {
+          context.cannotStart('No index has been built.')
+        }),
+      ],
+    }).boot()
+
+    expect(app.notStarted.map((entry) => `${entry.module}: ${entry.reason}`)).toEqual([
+      'collections: Its table does not exist yet.',
+      'search: No index has been built.',
+      'collections: And nothing rebuilt the index.',
+    ])
+  })
+
+  it('is not the list a caller can edit', async () => {
+    const app = await createApplication({
+      modules: [
+        module('collections').boot((context) => {
+          context.cannotStart('Its table does not exist yet.')
+        }),
+      ],
+    }).boot()
+
+    const taken = app.notStarted as NotStarted[]
+    taken.length = 0
+
+    expect(app.notStarted).toHaveLength(1)
+  })
+
+  it('does not log the line an operator greps for', async () => {
+    const records: LogRecord[] = []
+
+    await createApplication({
+      logger: createLogger((record) => records.push(record)),
+      modules: [
+        module('collections').boot((context) => {
+          context.cannotStart('Its table does not exist yet.', {
+            remedy: 'Run assemora db:migrate.',
+          })
+        }),
+      ],
+    }).boot()
+
+    expect(records.map((record) => record.message)).toEqual([
+      'Application booted without every module running',
+    ])
+    expect(records[0]).toMatchObject({
+      level: 'warn',
+      notStarted: [{ module: 'collections', remedy: 'Run assemora db:migrate.' }],
+    })
   })
 })
 

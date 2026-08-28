@@ -19,6 +19,7 @@ import {
   valueAt,
 } from '../api/introspection.ts'
 import { Page } from '../app/shell.tsx'
+import { NoEntries } from '../ui/blank.tsx'
 import { Badge, Button, Card, Empty, Failure, Input, Select, Spinner } from '../ui/index.tsx'
 
 type Listing = {
@@ -163,11 +164,12 @@ export const Collection = () => {
   /**
    * `entries.list`, not `GET /api/<resource>`.
    *
-   * The two run the same handler — the generated REST route dispatches this very query
-   * — but only one of them exists for a resource that arrived after the server started.
-   * Routes are mounted before it listens, so a collection made in Studio has no REST
-   * path of its own until the next restart, while the bus addresses it by name the
-   * moment it is registered (ADR-0012, ADR-0014, SPEC.md §37).
+   * Both are there for either kind of resource — the generated REST route dispatches
+   * this very query, and a collection gets its paths the moment it is made rather than
+   * at the next restart. So the choice is not about which one exists. It is that CRUD
+   * is addressed by resource *name* and not by route (ADR-0012), which is what lets one
+   * screen serve every resource this application has without ever building a path or
+   * knowing the API prefix it would be under (ADR-0014, SPEC.md §37).
    */
   const listing = useQuery({
     queryKey: ['collection', name, { search, sort, page }],
@@ -201,62 +203,62 @@ export const Collection = () => {
   // columns and by nothing else, so an option built from `sortable` could only have
   // replaced this list with a refusal (ADR-0012).
   const sortable = sortableFields(resource)
+  const singular = resource.label.replace(/s$/, '')
+  const create = () => void navigate({ to: '/content/$resource/new', params: { resource: name } })
+  /** Nothing here at all, as opposed to nothing matching — see `pages.tsx`. */
+  const blank = listing.data !== undefined && listing.data.data.length === 0 && search === ''
 
   return (
     <Page
       title={resource.label}
       description={
-        listing.data === undefined
+        listing.data === undefined || blank
           ? undefined
           : `${listing.data.total} ${listing.data.total === 1 ? 'entry' : 'entries'}`
       }
-      actions={
-        resource.api.create && (
-          <Button
-            onClick={() =>
-              void navigate({ to: '/content/$resource/new', params: { resource: name } })
-            }
-          >
-            New {resource.label.replace(/s$/, '')}
-          </Button>
-        )
-      }
+      actions={!blank && resource.api.create && <Button onClick={create}>New {singular}</Button>}
     >
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        {searchable && (
-          <Input
-            type="search"
-            placeholder="Search…"
-            className="max-w-xs"
-            value={search}
-            onChange={(event) => {
-              setPage(1)
-              setSearch(event.target.value)
-            }}
-          />
-        )}
+      {/* A search box and a sort order over nothing are two controls that can only
+          return what is already on screen, and they crowd out the one sentence worth
+          reading. A search that found nothing keeps them, or there would be no way to
+          undo it. */}
+      {!blank && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {searchable && (
+            <Input
+              type="search"
+              placeholder="Search…"
+              className="max-w-xs"
+              value={search}
+              onChange={(event) => {
+                setPage(1)
+                setSearch(event.target.value)
+              }}
+            />
+          )}
 
-        {sortable.length > 0 && (
-          <Select
-            className="max-w-48"
-            value={sort}
-            onChange={(event) => {
-              setPage(1)
-              setSort(event.target.value)
-            }}
-          >
-            <option value="">Default order</option>
-            {sortable.flatMap((field) => [
-              <option key={field.name} value={field.name}>
-                {field.label ?? field.name} ↑
-              </option>,
-              <option key={`-${field.name}`} value={`-${field.name}`}>
-                {field.label ?? field.name} ↓
-              </option>,
-            ])}
-          </Select>
-        )}
-      </div>
+          {sortable.length > 0 && (
+            <Select
+              className="max-w-48"
+              value={sort}
+              onChange={(event) => {
+                setPage(1)
+                setSort(event.target.value)
+              }}
+            >
+              <option value="">Default order</option>
+              {sortable.flatMap((field) => [
+                <option key={field.name} value={field.name}>
+                  {field.label ?? field.name} ↑
+                </option>,
+                <option key={`-${field.name}`} value={`-${field.name}`}>
+                  {field.label ?? field.name} ↓
+                </option>,
+              ])}
+            </Select>
+          )}
+        </div>
+      )}
 
       {listing.isError && <Failure error={listing.error} />}
 
@@ -269,9 +271,15 @@ export const Collection = () => {
 
         {listing.data !== undefined &&
           (listing.data.data.length === 0 ? (
-            <Empty title="Nothing here yet">
-              {search === '' ? 'Create the first entry.' : 'No entry matches that search.'}
-            </Empty>
+            blank ? (
+              <NoEntries
+                singular={singular}
+                editable={resource.kind === 'dynamic'}
+                {...(resource.api.create ? { onCreate: create } : {})}
+              />
+            ) : (
+              <Empty title="No entry matches that">Try another word.</Empty>
+            )
           ) : (
             <Table resource={resource} listing={listing.data} />
           ))}

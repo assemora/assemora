@@ -271,9 +271,10 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
     return (
       <Page title={created.resource.label} description={`Collection “${created.name}” was created`}>
         <Card className="space-y-4 p-6">
-          {/* The application's own sentence, not a restatement of it: which half of the
-              API carries a collection made at runtime, and which half waits for a
-              restart, is the application's to say. */}
+          {/* The application's own sentence, not a restatement of it: what a collection
+              made at runtime is reachable through — down to the paths, which Studio
+              knows neither the prefix nor the published operations of — is the
+              application's to say. */}
           <p className="text-sm text-ink-soft">{created.note}</p>
 
           <div className="flex flex-wrap gap-2">

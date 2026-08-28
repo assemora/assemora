@@ -139,11 +139,44 @@ export const Spinner = ({ label = 'Loading' }: { label?: string }) => (
   </div>
 )
 
-export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => (
+/**
+ * A list with nothing in it.
+ *
+ * `action` rather than a button somewhere else on the screen: an empty list is the
+ * one moment when what to do next is the only thing on the page, and a person reading
+ * the sentence that explains it should not then have to go looking for the control it
+ * describes. The measure keeps a paragraph to a readable line, because these say more
+ * than "Nothing yet."
+ */
+export const Empty = ({
+  title,
+  action,
+  children,
+}: {
+  title: string
+  action?: ReactNode
+  children?: ReactNode
+}) => (
   <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
     <p className="text-sm font-medium text-ink">{title}</p>
-    {children !== undefined && <div className="text-sm text-ink-soft">{children}</div>}
+    {children !== undefined && (
+      <div className="max-w-prose space-y-2 text-sm text-ink-soft">{children}</div>
+    )}
+    {action !== undefined && <div className="mt-2">{action}</div>}
   </div>
+)
+
+/**
+ * A line to type at a terminal.
+ *
+ * Selectable text and deliberately not a button: Studio is a client of the running
+ * application and cannot reach the machine the project is checked out on. Offering to
+ * run it would be a promise nothing here can keep.
+ */
+export const Snippet = ({ children }: { children: string }) => (
+  <code className="block select-all rounded-lg bg-surface-sunken px-3 py-2 text-left font-mono text-xs text-ink">
+    {children}
+  </code>
 )
 
 /**

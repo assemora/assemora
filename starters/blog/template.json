@@ -1,0 +1,23 @@
+{
+  "description": "a worked example: a model, a resource and two block types",
+  "features": {
+    "studio": {
+      "dependencies": ["@assemora/studio"]
+    },
+    "pages": {
+      "files": ["src/blocks", "src/routes.ts", "app"],
+      "dependencies": [
+        "@assemora/pages",
+        "@assemora/react",
+        "@assemora/schema",
+        "@types/react",
+        "@types/react-dom",
+        "@vitejs/plugin-react",
+        "react",
+        "react-dom",
+        "vite"
+      ],
+      "scripts": ["build"]
+    }
+  }
+}

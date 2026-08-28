@@ -94,6 +94,17 @@ export type DatabaseContext = {
 }
 
 export type DatabaseAdapter = {
+  /**
+   * Runs a query.
+   *
+   * One failure is part of the contract rather than left to the engine: a query
+   * against a table that has not been created yet must reject with
+   * `schemaNotApplied()` from `./errors.js`, distinct from every other refusal. An
+   * application has to be able to boot against an unapplied schema — that is what
+   * `assemora db:generate` does to read the registry (ADR-0021) — and the boot hook
+   * that survives it may not depend on this package, let alone on an engine, to tell
+   * a missing table from a database that refused it.
+   */
   execute<T>(query: QueryAst, context: DatabaseContext): Promise<T>
   transaction<T>(callback: () => Promise<T>): Promise<T>
   introspect(): Promise<DatabaseSchema>

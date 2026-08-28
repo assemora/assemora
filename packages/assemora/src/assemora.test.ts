@@ -25,13 +25,32 @@ import {
   User,
   UserRole,
 } from '@assemora/auth'
-import { clearRestorers, createLogger, type Logger, module, silentWriter } from '@assemora/core'
+import {
+  clearRestorers,
+  createLogger,
+  type Logger,
+  type LogRecord,
+  module,
+  silentWriter,
+} from '@assemora/core'
 import { model, string, uuid } from '@assemora/data'
-import { createMemoryAdapter, type DatabaseAdapter, type DatabaseContext } from '@assemora/database'
+import {
+  createMemoryAdapter,
+  type DatabaseAdapter,
+  type DatabaseContext,
+  schemaNotApplied,
+} from '@assemora/database'
 import { clearRouteRegistry, type HttpServer, type InjectedResponse } from '@assemora/http'
 import { clearStorage, localStorage, media, s3Storage, useStorage } from '@assemora/media'
 import { block, clearBlockRegistry, pages } from '@assemora/pages'
-import { clearResourceRegistry, resource, select, text } from '@assemora/resources'
+import {
+  clearResourceRegistry,
+  collections,
+  ResourceDefinitionModel,
+  resource,
+  select,
+  text,
+} from '@assemora/resources'
 import { Revision } from '@assemora/revisions'
 import { Theme } from '@assemora/theme'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -54,6 +73,18 @@ const notes = () =>
   module('notes')
     .models(Note as never)
     .resources(Notes as never)
+
+/**
+ * A module that boots and does not start (SPEC.md §88).
+ *
+ * The mechanism on its own, with no database in it: what `collections()` does against
+ * a schema that has not been applied, and what any later module that has to survive
+ * something it cannot work without will do.
+ */
+const stalled = () =>
+  module('stalled').boot((context) => {
+    context.cannotStart('Its table does not exist yet.', { remedy: 'Run assemora db:migrate.' })
+  })
 
 /** One block type, which is all SPEC.md §124 asks a developer to declare. */
 const Hero = block('hero', {
@@ -912,6 +943,142 @@ describe('liveness and readiness (SPEC.md §88)', () => {
 
     expect(ready.statusCode).toBe(200)
     expect(ready.json()).toMatchObject({ status: 'ready' })
+  })
+
+  it('never reports ready when a module did not start, and says which and why', async () => {
+    const built = build({ modules: [notes(), stalled()] })
+    const server = serverOf(built)
+
+    await built.boot()
+
+    // The process is up: it listens, it serves Studio, it answers OpenAPI. That is
+    // liveness, and restarting it would fix nothing.
+    expect((await server.inject({ method: 'GET', url: '/api/health' })).statusCode).toBe(200)
+
+    const response = await server.inject({ method: 'GET', url: '/api/ready' })
+
+    // And it is not ready, which is the half that used to answer 200 while every data
+    // request answered 503 — so a probe routed production traffic at it.
+    expect(response.statusCode).toBe(503)
+    expect(response.json()).toMatchObject({
+      error: {
+        code: 'NOT_READY',
+        message: 'This application booted, but stalled did not start, so it is not ready to serve.',
+        details: {
+          notStarted: [
+            {
+              module: 'stalled',
+              reason: 'Its table does not exist yet.',
+              remedy: 'Run assemora db:migrate.',
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  it('names every module that did not start, in a sentence', async () => {
+    const also = (name: string) =>
+      module(name).boot((context) => {
+        context.cannotStart('It has nothing to read yet.')
+      })
+
+    const built = build({ modules: [stalled(), also('search'), also('sitemap')] })
+
+    await built.boot()
+
+    const response = await serverOf(built).inject({ method: 'GET', url: '/api/ready' })
+
+    // Three of them, and a person still reads one sentence. The details carry the rest.
+    expect(response.json()).toMatchObject({
+      error: {
+        message:
+          'This application booted, but stalled, search and sitemap did not start, so it is not ready to serve.',
+      },
+    })
+  })
+
+  it('names a module once however many times it reported', async () => {
+    // Core keeps a reason from every hook on purpose, and a module may fail at two
+    // different things — but the sentence is about the application, not about how many
+    // times it said so.
+    const twice = module('archive')
+      .boot((context) => {
+        context.cannotStart('Its table does not exist yet.')
+      })
+      .ready((context) => {
+        context.cannotStart('Its index was never built.')
+      })
+
+    const built = build({ modules: [twice] })
+
+    await built.boot()
+
+    const response = await serverOf(built).inject({ method: 'GET', url: '/api/ready' })
+    const body = response.json() as {
+      error: { message: string; details: { notStarted: readonly unknown[] } }
+    }
+
+    expect(body.error.message).toBe(
+      'This application booted, but archive did not start, so it is not ready to serve.',
+    )
+    // Both reasons survive: the sentence is deduplicated, the account is not.
+    expect(body.error.details.notStarted).toHaveLength(2)
+  })
+
+  it('is the answer an unmigrated database gets, end to end', async () => {
+    const definitions = ResourceDefinitionModel.table
+    const base = createMemoryAdapter()
+
+    // A database that has been created and never migrated: the tables are not there,
+    // and `assemora db:migrate` is what puts them there (ADR-0021).
+    const unmigrated: DatabaseAdapter = {
+      execute: (query, context) =>
+        query.model === definitions
+          ? Promise.reject(schemaNotApplied(definitions))
+          : base.execute(query, context),
+      transaction: (callback) => base.transaction(callback),
+      introspect: () => base.introspect(),
+    }
+
+    const built = build({ modules: [collections()] }, unmigrated)
+
+    await built.boot()
+
+    const response = await serverOf(built).inject({ method: 'GET', url: '/api/ready' })
+
+    expect(response.statusCode).toBe(503)
+    expect(response.json()).toMatchObject({
+      error: {
+        code: 'NOT_READY',
+        details: { notStarted: [{ module: 'collections', remedy: 'Run assemora db:migrate.' }] },
+      },
+    })
+  })
+
+  it('says so in the log of the one process for which it is fatal', async () => {
+    const records: LogRecord[] = []
+    const built = assemora({
+      modules: [stalled()],
+      database: createMemoryAdapter(),
+      logger: createLogger((record) => records.push(record)),
+    })
+
+    running.push(built)
+
+    await built.listen(0, '127.0.0.1')
+
+    // Core warns that a module did not start, because it cannot tell `db:generate`
+    // from a deployment. `listen()` is the caller that can, and for it the consequence
+    // is a process that serves and is never routed traffic — which nobody should have
+    // to discover from a load balancer.
+    expect(records).toContainEqual(
+      expect.objectContaining({
+        level: 'error',
+        message: 'This application is serving but will not report ready',
+        endpoint: '/api/ready',
+      }),
+    )
   })
 })
 

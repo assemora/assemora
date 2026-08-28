@@ -8,6 +8,7 @@
 import type { JsonSchema } from '@assemora/schema'
 
 import { ConfigurationError } from './errors.js'
+import type { Unsubscribe } from './events.js'
 
 export type RegistryEntry = {
   readonly name: string
@@ -60,6 +61,69 @@ export interface RegistrySections {
 
 export type SectionName = keyof RegistrySections & string
 
+/**
+ * What moved, for a listener that keeps something derived from the registry.
+ *
+ * `section` is a `string` and not a `SectionName`, for the reason `describe()` hands
+ * back a `Record<string, …>`: a section is declared by whichever package owns it
+ * (SPEC.md §8), so `keyof RegistrySections` means something different in every package,
+ * and the packages that most need to watch a section are exactly the ones that may not
+ * depend on its owner. `@assemora/http` derives a resource's REST paths without being
+ * allowed to know what a resource is.
+ */
+export type RegistryChange = {
+  readonly section: string
+  readonly name: string
+  readonly change: 'registered' | 'withdrawn'
+}
+
+export type RegistryListener = (change: RegistryChange) => void
+
+/**
+ * Where this process publishes the generated REST paths of SPEC.md §43, or `undefined`
+ * when it publishes none.
+ *
+ * Not every section of the registry is served the same way, and one of them is not
+ * always served at all. `createApplication({ api: { crud: false } })` is a supported
+ * answer — the option even recommends itself for resources that should answer only
+ * under a version — and in such an application the whole `resources` section has no
+ * generated address. So does a worker, a CLI run and a test: an application is not a
+ * server.
+ *
+ * It lives beside `CommandReach`, which answers the same question for the `commands`
+ * section, and for the same reason: what a declaration is reachable through is decided
+ * above core and read below it, and core is the only package both ends can see.
+ */
+let generatedCrudAt: string | undefined
+
+/**
+ * Says where generated CRUD answers. Called by whatever serves it.
+ *
+ * ```ts
+ * publishGeneratedCrud('/api') // this server answers GET /api/articles
+ * publishGeneratedCrud() // this process publishes no generated REST paths at all
+ * ```
+ *
+ * Process state, like the routes a module declares, and re-declared by every server as
+ * it is built: the most recently built server speaks for the process, and a process
+ * that builds one and never mounts resources says so by never calling this with a
+ * prefix.
+ */
+export const publishGeneratedCrud = (prefix?: string): void => {
+  generatedCrudAt = prefix
+}
+
+/**
+ * The prefix generated CRUD answers below, or `undefined` when nothing publishes it.
+ *
+ * Read by whoever has to tell somebody what they just made. `collections.create` is the
+ * caller that matters: it answers a person in Studio and an agent over MCP with the
+ * addresses of a collection that did not exist a moment ago, and a sentence generated
+ * from the collection's own `api` flags cannot know whether this application serves any
+ * of them. It promised five addresses that answered 404.
+ */
+export const generatedCrudPrefix = (): string | undefined => generatedCrudAt
+
 export type SchemaRegistry = {
   register<K extends SectionName>(section: K, entry: RegistrySections[K]): void
   /**
@@ -84,6 +148,31 @@ export type SchemaRegistry = {
   sections(): readonly SectionName[]
   /** The whole registry as plain data — the seed of `assemora.describe` (SPEC.md §71). */
   describe(): Readonly<Record<string, readonly RegistryEntry[]>>
+  /**
+   * Watches the registry, and answers with the way to stop watching.
+   *
+   * ```ts
+   * const stop = registry.onChange((change) => {
+   *   if (change.section === 'resources') describeTheirRestPaths()
+   * })
+   * ```
+   *
+   * Some sections are not declarations but *consequences*: a resource's generated REST
+   * paths are generated from the resource, so their description has to arrive and leave
+   * with it (SPEC.md §37, §42). While nothing could change after start-up, deriving once
+   * at mount time was the same thing. A collection is registered by a command in the
+   * middle of a running process, and whatever was derived is then a section behind.
+   *
+   * The registry is the only thing that sees the change, so it is the only thing that
+   * can say so. `@assemora/http` used to go looking on every request instead — a full
+   * `describe()` per request to find out that nothing had happened, and a description
+   * that was still one request stale for anybody reading the registry directly.
+   *
+   * Listeners are called after the change is applied, so a listener sees the registry it
+   * was told about. A listener that registers is therefore calling itself back: react to
+   * the section you derive *from*, never to the one you write.
+   */
+  onChange(listener: RegistryListener): Unsubscribe
 }
 
 /** Any entry the registry can hold — the union over every declared section. */
@@ -91,6 +180,18 @@ type AnyEntry = RegistrySections[SectionName]
 
 export const createSchemaRegistry = (): SchemaRegistry => {
   const sections = new Map<string, Map<string, AnyEntry>>()
+  const listeners = new Set<RegistryListener>()
+
+  /**
+   * Told after the change, and over a copy of the set.
+   *
+   * A listener that reacts by registering something is the ordinary case — that is what
+   * a derived section is — so the set is free to grow and shrink while it is being
+   * walked, and iterating it directly would either miss a listener or visit one twice.
+   */
+  const announce = (change: RegistryChange): void => {
+    for (const listener of [...listeners]) listener(change)
+  }
 
   const bucket = (section: string): Map<string, AnyEntry> => {
     const existing = sections.get(section)
@@ -110,10 +211,18 @@ export const createSchemaRegistry = (): SchemaRegistry => {
       }
 
       entries.set(entry.name, entry)
+      announce({ section, name: entry.name, change: 'registered' })
     },
 
     withdraw(section, name) {
-      return bucket(section).delete(name)
+      // Only a name that was there. "Nothing happened" is not a change, and a listener
+      // that rebuilt a derived section on every failed withdrawal would do the work of
+      // the registry's whole contents for a call that did nothing.
+      if (!bucket(section).delete(name)) return false
+
+      announce({ section, name, change: 'withdrawn' })
+
+      return true
     },
 
     section<K extends SectionName>(section: K): readonly RegistrySections[K][] {
@@ -138,6 +247,14 @@ export const createSchemaRegistry = (): SchemaRegistry => {
       }
 
       return snapshot
+    },
+
+    onChange(listener) {
+      listeners.add(listener)
+
+      return () => {
+        listeners.delete(listener)
+      }
     },
   }
 }

@@ -11,6 +11,11 @@ export default defineConfig({
       // mechanism and are tested like anything else.
       'apps/*/src/**/*.test.ts',
       'apps/*/src/**/*.test.tsx',
+      // A starter is a template, so its frontend is the one place in this repository
+      // where "what a project with nothing in it shows a visitor" is decided. The
+      // test belongs to this repository rather than to the template: `create-assemora`
+      // leaves it behind, because a scaffolded project depends on no test runner.
+      'starters/*/app/**/*.test.tsx',
       'scripts/**/*.test.ts',
       'tests/**/*.test.ts',
     ],

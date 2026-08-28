@@ -20,12 +20,13 @@
  * packed. Reading it means a new starter is excluded correctly on the day it lands,
  * with nothing to remember.
  *
- * **`NEVER_COPIED` covers what no `.gitignore` can be asked to name.** Two kinds:
+ * **`NEVER_COPIED` covers what no `.gitignore` can be asked to name.** Three kinds:
  * what a checkout of a *workspace package* accumulates whether or not this particular
- * starter thought to ignore it, and what running an Assemora project writes. The
- * second kind is not guesswork — Assemora writes those four paths itself, so this
- * package is entitled to know them, and a project that inherited them would begin
- * life with a migration it did not generate and a snapshot that disagrees with it.
+ * starter thought to ignore it, what running an Assemora project writes, and the
+ * tests this repository keeps *about* the template. The second kind is not guesswork
+ * — Assemora writes those four paths itself, so this package is entitled to know
+ * them, and a project that inherited them would begin life with a migration it did
+ * not generate and a snapshot that disagrees with it.
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -62,6 +63,17 @@ export const NEVER_COPIED: readonly string[] = [
   '/database/migrations/*.sql',
   '/openapi.json',
   '/src/generated/',
+  // A starter's tests belong to this repository, not to the project made from it.
+  // They are how CI proves the template still works — `starters/bare/app/main.tsx`
+  // decides what a visitor sees before anything is published, and that is a claim
+  // worth a test — and they import a test runner a scaffolded project has no
+  // dependency on, so a project that inherited one would not typecheck. It is a
+  // template's own `.gitignore` that carries what a *project* should not commit;
+  // this is the other direction, and only this list can say it.
+  '*.test.ts',
+  '*.test.tsx',
+  '*.test-d.ts',
+  '*.test-d.tsx',
 ]
 
 /**

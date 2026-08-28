@@ -70,6 +70,16 @@ const leak = route.get('/leak', {
 
 const notes = () => module('notes').commands(Explode, Vanish).routes(leak)
 
+/**
+ * A module that boots and does not start, so `/ready` refuses for as long as the
+ * process lives (ADR-0026). Nothing revokes the report, which is what makes the
+ * readiness 503 permanent rather than a boot window.
+ */
+const stalled = () =>
+  module('stalled').boot((context) => {
+    context.cannotStart('Its table does not exist yet.', { remedy: 'Run assemora db:migrate.' })
+  })
+
 let running: AssemoraApplication[] = []
 let written: LogRecord[]
 
@@ -216,6 +226,69 @@ describe('an incident reaches the reporter the application named (SPEC.md §88)'
     expect((await send(built, 'notes.vanish')).statusCode).toBe(404)
 
     expect(errors.reports).toEqual([])
+  })
+
+  /**
+   * The endpoint whose 503 is the answer rather than the failure (SPEC.md §88).
+   *
+   * ADR-0026 made `/api/ready` refuse for as long as a module could not start, and a
+   * `readinessProbe` at `periodSeconds: 5` asks about seventeen thousand times a day.
+   * Every one of them was an incident: 503 is at or above the line `isIncident` draws,
+   * and a tracker fed that page of them hides the 500 that mattered. The condition is
+   * permanent by construction and `listen()` already reported it once.
+   */
+  it('says nothing about a readiness refusal, however often the probe asks', async () => {
+    const errors = collectErrors()
+    const built = build({ modules: [auth(), notes(), stalled()], observability: { errors } })
+
+    await built.boot()
+
+    const server = serverOf(built)
+
+    for (let probe = 0; probe < 3; probe += 1) {
+      const response = await server.inject({ method: 'GET', url: '/api/ready' })
+
+      // Unchanged, which is the other half: it is still a 503 in the envelope of
+      // §46, still carrying which module did not start and what to do about it.
+      expect(response.statusCode).toBe(503)
+      expect(response.json()).toMatchObject({
+        error: {
+          code: 'NOT_READY',
+          message:
+            'This application booted, but stalled did not start, so it is not ready to serve.',
+          details: {
+            notStarted: [
+              {
+                module: 'stalled',
+                reason: 'Its table does not exist yet.',
+                remedy: 'Run assemora db:migrate.',
+              },
+            ],
+          },
+        },
+      })
+    }
+
+    expect(errors.reports).toEqual([])
+  })
+
+  it('goes on reporting a real 5xx from the application that answers those probes', async () => {
+    const errors = collectErrors()
+    const built = build({ modules: [auth(), notes(), stalled()], observability: { errors } })
+
+    await built.boot()
+
+    const server = serverOf(built)
+
+    expect((await server.inject({ method: 'GET', url: '/api/ready' })).statusCode).toBe(503)
+    expect((await server.inject({ method: 'GET', url: '/api/leak' })).statusCode).toBe(500)
+
+    // One application, two 5xx answers, one incident. What tells them apart is a bit on
+    // the error rather than anything switched off here — a route that documents a 502
+    // upstream is still a defect, and still reported.
+    expect(errors.reports.map((report) => report.operation)).toEqual([
+      expect.objectContaining({ kind: 'request', name: 'GET /api/leak' }),
+    ])
   })
 
   it('writes the incident to the application’s own log when nothing was named', async () => {

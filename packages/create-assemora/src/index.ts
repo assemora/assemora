@@ -22,8 +22,10 @@ export {
 export {
   DEFAULT_TEMPLATE,
   type FeatureManifest,
+  listTemplates,
   type ResolveTemplateOptions,
   readManifest,
   resolveTemplate,
   type TemplateManifest,
+  type TemplateSummary,
 } from './template.js'

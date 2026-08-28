@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  AssemoraError,
   collectErrors,
   createApplication,
   createLogger,
@@ -29,6 +30,19 @@ const readArticle = route.get('/articles/:id', {
 const failing = route.get('/failing', {
   handler: async () => {
     throw new Error('the connection string is postgres://ada:hunter2@db/app')
+  },
+})
+
+/**
+ * A 5xx the endpoint means, which is what `/api/ready` answers with while a module
+ * that could not start keeps traffic away (ADR-0026).
+ */
+const unready = route.get('/unready', {
+  handler: async () => {
+    throw new AssemoraError('NOT_READY', 'This application is not serving', {
+      status: 503,
+      expected: true,
+    })
   },
 })
 
@@ -293,6 +307,19 @@ describe('the level follows the outcome', () => {
     })
   })
 
+  it('writes a 5xx the endpoint meant at the rung a refusal takes, and reports it to nobody', async () => {
+    server.mount(unready)
+
+    // Three, because the point of this is a readiness probe: one line is a rolling
+    // deploy, and the same line every five seconds for a day is what an `error` rung
+    // would bury the real one under.
+    for (const _ of [1, 2, 3]) await server.inject({ method: 'GET', url: '/api/unready' })
+
+    expect(lines()).toHaveLength(3)
+    for (const line of lines()) expect(line).toMatchObject({ level: 'warn', status: 503 })
+    expect(errors.reports).toHaveLength(0)
+  })
+
   it('sends the reporter the route and not the URL, and no connection string', async () => {
     server.mount(failing)
 
@@ -346,6 +373,15 @@ describe('the level rule itself', () => {
     ['a file served', { method: 'GET', status: 200, durationMs: 9_999, asset: true }, undefined],
     ['a file refused', { method: 'GET', status: 404, durationMs: 1, asset: true }, 'warn'],
     ['a file that failed', { method: 'GET', status: 500, durationMs: 1, asset: true }, 'error'],
+    // A readiness probe against an application that will never be ready answers this
+    // one every few seconds for as long as the deployment is unfinished. At `error` it
+    // is the loudest thing in the log and none of it is a failure.
+    [
+      'a 5xx the endpoint meant',
+      { method: 'GET', status: 503, durationMs: 1, expected: true },
+      'warn',
+    ],
+    ['a 5xx nobody meant', { method: 'GET', status: 503, durationMs: 1 }, 'error'],
   ]
 
   for (const [what, served, expected] of cases) {

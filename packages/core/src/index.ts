@@ -93,6 +93,7 @@ export {
   type ModuleFacet,
   type ModuleInternals,
   module,
+  type NotStarted,
 } from './module.js'
 export {
   type AuditEntry,
@@ -144,7 +145,11 @@ export {
   type CommandDescriptor,
   type CommandReach,
   createSchemaRegistry,
+  generatedCrudPrefix,
+  publishGeneratedCrud,
+  type RegistryChange,
   type RegistryEntry,
+  type RegistryListener,
   type RegistrySections,
   type SchemaRegistry,
   type SectionName,

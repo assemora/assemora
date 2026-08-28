@@ -2,6 +2,7 @@ import { describe, expectTypeOf, it } from 'vitest'
 
 import { createApplication } from './application.js'
 import type { AssemoraContext } from './context.js'
+import { AssemoraError } from './errors.js'
 import {
   captureError,
   collectErrors,
@@ -105,5 +106,47 @@ describe('what the port refuses', () => {
   it('will not accept an application reporter of the wrong shape', () => {
     // @ts-expect-error the port is a capture method, not a bare function
     createApplication({ errors: (error: unknown) => console.error(error) })
+  })
+})
+
+describe('a 5xx that is an answer rather than a failure (SPEC.md §88)', () => {
+  /** The one throw in the framework that makes this claim, written as it is written. */
+  const refusal = new AssemoraError('NOT_READY', 'This application is still starting', {
+    status: 503,
+    expected: true,
+  })
+
+  it('carries the bit on the error, which is where whose failure it is already lives', () => {
+    expectTypeOf(refusal.expected).toEqualTypeOf<boolean>()
+    expectTypeOf(refusal.status).toEqualTypeOf<number>()
+    expectTypeOf(isIncident(refusal)).toEqualTypeOf<boolean>()
+  })
+
+  it('leaves it off, and false, for every error that does not ask', () => {
+    expectTypeOf(new AssemoraError('DATABASE_ERROR', 'boom').expected).toEqualTypeOf<boolean>()
+  })
+})
+
+describe('what the bit refuses', () => {
+  it('will not take a reason where a decision belongs', () => {
+    const refusal = new AssemoraError('NOT_READY', 'This application is still starting', {
+      status: 503,
+      // @ts-expect-error it withdraws an incident claim; the reason goes in the message
+      expected: 'a readiness probe asks this every five seconds',
+    })
+
+    expectTypeOf(refusal).toEqualTypeOf<AssemoraError>()
+  })
+
+  it('will not let a layer change its mind after the throw', () => {
+    const raised = new AssemoraError('NOT_READY', 'This application is still starting', {
+      status: 503,
+      expected: true,
+    })
+
+    // @ts-expect-error the error decides this once, where it is raised
+    raised.expected = false
+
+    expectTypeOf(raised.expected).toEqualTypeOf<boolean>()
   })
 })

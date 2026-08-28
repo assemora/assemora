@@ -1,9 +1,11 @@
 /**
  * The entry document, for both audiences (SPEC.md §57, §59).
  *
- * `/preview` on its own is the site: it takes `?slug=` — or `home`, which is what the
- * seed publishes — and reads the published tree from the public route in
- * `src/routes.ts`. No session, no query parameter to remember, nothing to configure.
+ * `/preview` on its own is the site: it takes `?slug=` — or `home`, the slug a site's
+ * front page conventionally has — and reads the published tree from the public route
+ * in `src/routes.ts`. No session, no query parameter to remember, nothing to
+ * configure. A project this new has published nothing at all, and `main.tsx` says so
+ * rather than drawing a blank page.
  *
  * `/preview?page=<id>&editing=1&editor=<origin>` is the other audience: Studio's
  * builder canvas, which names a page by id and reads the *draft* as the signed-in
@@ -27,7 +29,7 @@ import { readPublished, readTree, Site } from './main.tsx'
 
 const parameters = new URLSearchParams(location.search)
 const pageId = parameters.get('page') ?? ''
-/** The page a visitor gets when the URL names none. The seed publishes this one. */
+/** The page a visitor gets when the URL names none. Publish one at this slug first. */
 const slug = parameters.get('slug') ?? 'home'
 const mode = parameters.get('mode') === 'draft' ? 'draft' : 'published'
 const editing = parameters.get('editing') === '1'

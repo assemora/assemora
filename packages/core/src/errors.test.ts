@@ -114,3 +114,42 @@ describe('a field path that is also a name on Object.prototype (SPEC.md §84)', 
     })
   })
 })
+
+/**
+ * The one thing a status cannot say (SPEC.md §88).
+ *
+ * 500 and above means nobody has claimed the failure was the caller's, which is what
+ * makes it an incident worth reporting. An endpoint whose whole job is to report a
+ * state answers 5xx for a different reason — its reader has to act on it — and
+ * `/ready` is the one that does. The bit that says so belongs to the error, because
+ * that is where whose-failure-is-it is already decided.
+ */
+describe('a 5xx that is an answer rather than a failure', () => {
+  const refusal = () =>
+    new AssemoraError('NOT_READY', 'This application is still starting', {
+      status: 503,
+      expected: true,
+    })
+
+  it('is not expected unless the throw said so', () => {
+    expect(new AssemoraError('DATABASE_ERROR', 'The database rejected it').expected).toBe(false)
+    expect(new NotFoundError('Article', 'a-1').expected).toBe(false)
+  })
+
+  it('carries the bit beside the status, rather than instead of it', () => {
+    // The status is still 503, because that is what a load balancer reads and what
+    // `errors: [{ code: 'NOT_READY', status: 503 }]` documents (SPEC.md §46).
+    expect(refusal().status).toBe(503)
+    expect(refusal().expected).toBe(true)
+  })
+
+  it('keeps it out of the body, which is bookkeeping the caller was never owed', () => {
+    expect(refusal().toPayload('req-1')).toEqual({
+      error: {
+        code: 'NOT_READY',
+        message: 'This application is still starting',
+        requestId: 'req-1',
+      },
+    })
+  })
+})

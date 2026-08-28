@@ -8,12 +8,20 @@
  * that makes the failure actionable.
  */
 import { AssemoraError } from '@assemora/core'
+import { schemaNotApplied } from '@assemora/database'
 
 type DriverError = {
   readonly code?: string
   readonly constraint?: string
   readonly table?: string
   readonly column?: string
+  /**
+   * The server's own sentence, which for the two failures below is the only place the
+   * identifier appears — PostgreSQL sets `table` on a constraint violation and on
+   * nothing else. It is never the statement and never a parameter: the wrapper that
+   * carries those is a level up, and `redact` is what deals with it.
+   */
+  readonly message?: string
 }
 
 /**
@@ -52,6 +60,47 @@ const redact = (error: unknown): Error | undefined => {
   return new Error(statement ?? error.message)
 }
 
+/**
+ * The identifier out of `relation "x" does not exist` and `database "x" does not exist`.
+ *
+ * PostgreSQL puts it nowhere else on those two errors, and it is the whole difference
+ * between a message somebody can act on and "The database rejected the operation". It
+ * is safe to repeat: a table name is a schema identifier, the same class as the
+ * constraint and column names `detailsOf` already carries, and never user data.
+ */
+const quotedIdentifier = (message: string | undefined): string | undefined =>
+  /"([^"]+)"/.exec(message ?? '')?.[1]
+
+/**
+ * Node's own errno codes for a database that never answered at all.
+ *
+ * No server replied, so there is no SQLSTATE and `driverErrorOf` cannot see them —
+ * which left a refused connection arriving as "The database rejected the operation",
+ * the one thing it did not do. A five-character SQLSTATE and an errno are told apart
+ * by shape, so the two lookups cannot collide.
+ */
+const UNREACHABLE: ReadonlySet<string> = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+])
+
+const unreachableCode = (error: unknown): string | undefined => {
+  for (let candidate: unknown = error; candidate !== undefined && candidate !== null; ) {
+    const shape = candidate as { code?: unknown; cause?: unknown }
+
+    if (typeof shape.code === 'string' && UNREACHABLE.has(shape.code)) return shape.code
+
+    candidate = shape.cause
+  }
+
+  return undefined
+}
+
 const detailsOf = (driver: DriverError): Record<string, string> => ({
   ...(driver.constraint === undefined ? {} : { constraint: driver.constraint }),
   ...(driver.table === undefined ? {} : { table: driver.table }),
@@ -73,6 +122,16 @@ export const toAssemoraError = (error: unknown): AssemoraError => {
   const driver = driverErrorOf(error)
 
   if (driver === undefined) {
+    const unreachable = unreachableCode(error)
+
+    if (unreachable !== undefined) {
+      return new AssemoraError(
+        'DATABASE_UNREACHABLE',
+        'The database did not answer. Check that it is running and that DATABASE_URL points at it.',
+        { status: 503, details: { code: unreachable }, cause: redact(error) },
+      )
+    }
+
     return new AssemoraError('DATABASE_ERROR', 'The database rejected the operation', {
       status: 500,
       cause: redact(error),
@@ -80,8 +139,41 @@ export const toAssemoraError = (error: unknown): AssemoraError => {
   }
 
   const details = detailsOf(driver)
+  const named = quotedIdentifier(driver.message)
 
   switch (driver.code) {
+    // `undefined_table`. The one refusal a caller above may survive, so it carries a
+    // code of its own and the adapter contract names it (`@assemora/database`).
+    case '42P01':
+      return schemaNotApplied(named ?? driver.table, redact(error))
+    // `invalid_catalog_name`: the server is there, the database in the URL is not.
+    // Not a schema that is merely unapplied — no migration creates a database — so it
+    // must never be mistaken for one.
+    case '3D000':
+      return new AssemoraError(
+        'DATABASE_NOT_FOUND',
+        `The database ${named === undefined ? 'named in DATABASE_URL' : `"${named}"`} does not exist on that server. Create it, then run "assemora db:migrate".`,
+        {
+          status: 503,
+          details: { ...details, ...(named === undefined ? {} : { database: named }) },
+          cause: redact(error),
+        },
+      )
+    // `invalid_authorization_specification` and `invalid_password`.
+    case '28000':
+    case '28P01':
+      return new AssemoraError(
+        'DATABASE_UNAUTHORIZED',
+        'The database refused these credentials. Check the user and password in DATABASE_URL.',
+        { status: 503, details, cause: redact(error) },
+      )
+    // `insufficient_privilege`: connected, authenticated, and not allowed to do this.
+    case '42501':
+      return new AssemoraError(
+        'DATABASE_FORBIDDEN',
+        'The database user is not allowed to do that. Grant it the missing privilege.',
+        { status: 503, details, cause: redact(error) },
+      )
     case '23505':
       return new AssemoraError('UNIQUE_VIOLATION', 'A record with these values already exists', {
         status: 409,

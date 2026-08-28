@@ -11,7 +11,13 @@ import { ConfigurationError } from './errors.js'
 import { createEventBus, type EventBus } from './events.js'
 import { createJobBus, type JobBus, registerJobBus } from './jobs.js'
 import { createLogger, type Logger, silentWriter } from './logger.js'
-import { type LifecyclePhase, MODULE, type ModuleBuilder, type ModuleContext } from './module.js'
+import {
+  type LifecyclePhase,
+  MODULE,
+  type ModuleBuilder,
+  type ModuleContext,
+  type NotStarted,
+} from './module.js'
 import {
   type AuditPort,
   type AuthorizationPort,
@@ -65,6 +71,18 @@ export type Application = {
   readonly registry: SchemaRegistry
   readonly logger: Logger
   readonly modules: readonly string[]
+  /**
+   * The modules that booted and are not running, and why (SPEC.md §88).
+   *
+   * Empty until something reports itself through `context.cannotStart()`, and the
+   * only honest answer to "did this application actually start". Booting is not the
+   * same question: a boot hook that tolerated a failure it could not work around
+   * returns, so `boot()` resolves either way and this is what separates the two.
+   *
+   * Whoever booted decides what it means. A CLI command reading the registry can
+   * ignore it; a process that serves must not report itself ready.
+   */
+  readonly notStarted: readonly NotStarted[]
   boot(): Promise<Application>
   shutdown(): Promise<void>
   /** Runs an operation inside a fresh context (SPEC.md §12). */
@@ -140,6 +158,8 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     names.add(candidate.name)
   }
 
+  const notStarted: NotStarted[] = []
+
   const contextFor = (module: string): ModuleContext => ({
     container,
     commands,
@@ -149,6 +169,16 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     registry,
     logger: logger.child({ module }),
     module,
+    // Appended rather than set: two hooks of one module can each fail at something,
+    // and a second reason replacing the first would hide it. The module name comes
+    // from the context rather than the caller, so nothing can report on another one.
+    cannotStart: (reason, details) => {
+      notStarted.push({
+        module,
+        reason,
+        ...(details?.remedy === undefined ? {} : { remedy: details.remedy }),
+      })
+    },
   })
 
   let phase: 'created' | 'booted' | 'stopped' = 'created'
@@ -184,6 +214,12 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     logger,
     modules: [...names],
 
+    // A getter, because the list is written while the modules boot and read after
+    // they have. A snapshot handed out at construction would always be empty.
+    get notStarted() {
+      return [...notStarted]
+    },
+
     async boot() {
       if (phase !== 'created') {
         throw new ConfigurationError('The application has already been booted')
@@ -192,7 +228,20 @@ export const createApplication = (options: ApplicationOptions = {}): Application
       await runPhase('boot', modules)
       await runPhase('ready', modules)
       phase = 'booted'
-      logger.info('Application ready', { modules: modules.length })
+
+      if (notStarted.length === 0) {
+        logger.info('Application ready', { modules: modules.length })
+      } else {
+        // Warned rather than thrown. The application is up and every module that did
+        // start is usable, and refusing to boot here would take `assemora db:generate`
+        // down with it — the command whose whole job is to boot against a schema that
+        // is not applied yet (ADR-0021). The line is deliberately not 'Application
+        // ready': that string is what an operator greps for.
+        logger.warn('Application booted without every module running', {
+          modules: modules.length,
+          notStarted,
+        })
+      }
 
       return application
     },

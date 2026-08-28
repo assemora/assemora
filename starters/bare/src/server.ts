@@ -26,7 +26,7 @@ await app.boot()
  * can pass. A real database is the opposite case in every respect, and the first
  * deploy of a project is exactly when this would fire.
  */
-if (databaseUrl() === undefined) await seed(app.app)
+if (databaseUrl() === undefined) await seed()
 else if ((await User.count()) === 0) {
   console.log('This database has no users yet. `pnpm seed` creates the first administrator.')
 }

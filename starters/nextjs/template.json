@@ -1,4 +1,5 @@
 {
+  "description": "the same application with a Next.js App Router site in front of it",
   "features": {
     "studio": {
       "dependencies": ["@assemora/studio"]

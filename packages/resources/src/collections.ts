@@ -280,20 +280,86 @@ export const droppedFieldsOf = (settings: unknown): readonly string[] => {
 }
 
 /**
+ * The code an adapter reports a table that does not exist yet under.
+ *
+ * Compared as a string rather than imported from `@assemora/database`, which owns it:
+ * the dependency graph puts that package below `@assemora/data` and outside this one's
+ * reach (SPEC.md §8). No loss — an `AssemoraError` code is a public contract, it is
+ * what a REST client reads out of `toPayload()`, and `@assemora/cli` compares
+ * `FORBIDDEN` the same way. `collections.boot.test.ts` pins the two together by
+ * throwing the real constructor at the real loader.
+ */
+const SCHEMA_NOT_APPLIED = 'SCHEMA_NOT_APPLIED'
+
+type StoredDefinitions = Awaited<ReturnType<typeof ResourceDefinitionModel.all>>
+
+/**
+ * The stored definitions, or `undefined` when their table does not exist yet.
+ *
+ * The one failure this boot survives, and nothing wider. A refused connection, a
+ * database that is not there, a privilege the user was never granted: each is an
+ * application that cannot work, and each would otherwise become the same silent empty
+ * boot as a schema waiting to be migrated (SPEC.md §86).
+ */
+const storedDefinitions = async (): Promise<StoredDefinitions | undefined> => {
+  try {
+    return await ResourceDefinitionModel.orderBy('createdAt', 'asc').get()
+  } catch (error) {
+    if (error instanceof AssemoraError && error.code === SCHEMA_NOT_APPLIED) return undefined
+
+    throw error
+  }
+}
+
+/** What a boot found in the definitions table. */
+export type LoadedCollections = {
+  readonly loaded: readonly string[]
+  readonly skipped: readonly string[]
+  /**
+   * True when the table does not exist yet, so nothing was read at all.
+   *
+   * A different fact from `loaded` being empty, and the one a caller has to branch on:
+   * both boots register no collection, and only one of them is a working application.
+   * The `collections()` module is that caller — it turns this into
+   * `context.cannotStart()`, which is what a readiness probe eventually reads.
+   */
+  readonly pending: boolean
+}
+
+/**
  * Registers every stored collection, and refuses to let one of them stop the boot.
  *
  * A definition the parser rejects today is one a plugin's field kind used to make legal,
  * or a row somebody edited by hand. Refusing to start would take the whole application
  * down for one collection, so it is named in the log and skipped — and it stays in the
  * table, so re-registering the missing field kind brings it back (SPEC.md §37, §86).
+ *
+ * The table itself not existing is the other tolerated state, and it is a different
+ * one: `pending` says the collections were not read at all rather than that there are
+ * none.
  */
 export const loadCollections = async (
   registry: SchemaRegistry,
   logger: Logger,
-): Promise<{ readonly loaded: readonly string[]; readonly skipped: readonly string[] }> => {
+): Promise<LoadedCollections> => {
   useCollectionRegistry(registry)
 
-  const rows = await ResourceDefinitionModel.orderBy('createdAt', 'asc').get()
+  const rows = await storedDefinitions()
+
+  if (rows === undefined) {
+    // Warned rather than thrown, and warned in both cases. An application must be able
+    // to boot against a schema that is not applied yet — `assemora db:generate` boots
+    // it precisely to write that schema (ADR-0021) — so this cannot be fatal here. It
+    // is also the only line a person gets who started a *server* this way, so it names
+    // the remedy rather than the symptom.
+    logger.warn('Collections were not loaded: their table does not exist yet', {
+      table: ResourceDefinitionModel.table,
+      remedy: 'assemora db:migrate',
+    })
+
+    return { loaded: [], skipped: [], pending: true }
+  }
+
   const loaded: string[] = []
   const skipped: string[] = []
 
@@ -335,5 +401,5 @@ export const loadCollections = async (
     logger.info('Collections registered', { loaded: loaded.length, skipped: skipped.length })
   }
 
-  return { loaded, skipped }
+  return { loaded, skipped, pending: false }
 }

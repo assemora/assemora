@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { type Insertable, InsertionGap } from './canvas.tsx'
+import { EmptyPage, type Insertable, InsertionGap } from './canvas.tsx'
 import type { InsertionPoint } from './insertion.ts'
 
 /** A line the width of a page, which is what one between two stacked blocks is. */
@@ -79,5 +79,37 @@ describe('an insertion point on the canvas (SPEC.md §59, §60)', () => {
 
     expect(tagOf(markup, 'button')).toContain('The Section block will not take anything more')
     expect(markup).toContain('The Section block will not take anything more')
+  })
+})
+
+describe('a page with nothing on it (SPEC.md §59)', () => {
+  const card = (options: readonly Insertable[]): string =>
+    renderToStaticMarkup(<EmptyPage options={options} busy={false} onInsert={() => undefined} />)
+
+  it('invites the first block, and offers the ones that fit', () => {
+    const markup = card([hero])
+
+    expect(markup).toContain('This page has nothing on it yet')
+    expect(markup).toContain('Hero')
+  })
+
+  /**
+   * A fresh install declares no `block()` at all, and the invitation then stood over
+   * a row of no buttons: "put the first one in" with nothing to put in reads as
+   * software that has lost its palette rather than as a project that has not written
+   * one yet.
+   */
+  it('says why there is nothing to offer, rather than offering nothing', () => {
+    const markup = card([])
+
+    expect(markup).toContain('Nothing can go on this page yet')
+    expect(markup).toContain('This application declares no block types')
+    expect(markup).not.toContain('Put the first one in')
+  })
+
+  it('sends somebody to the panel that says what to do, rather than repeating it', () => {
+    // The Blocks panel carries the `assemora make:block` line, because it is also
+    // where somebody looks on a page that already has blocks on it.
+    expect(card([])).toContain('the Blocks panel on the left has the command that can')
   })
 })

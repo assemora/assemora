@@ -18,25 +18,24 @@
       add a block, add its rule. The values are theme tokens where a theme has one.
     -->
     <style>
-      .hero {
-        padding: var(--space-xl) var(--space-sm) var(--space-lg);
-        text-align: center;
-      }
-      .hero h1 {
-        margin: 0 0 var(--space-xs);
-        font-size: clamp(2rem, 6vw, 3.5rem);
-        line-height: var(--leading-tight);
-      }
-      .hero p {
-        margin: 0;
-        color: var(--ink-soft);
-      }
-      .rich-text {
+      /* What a visitor sees until a page is published: see `Nothing` in app/main.tsx. */
+      .empty {
         max-width: var(--width-narrow);
         margin: 0 auto;
-        padding: 0 var(--space-sm) var(--space-xl);
-        white-space: pre-wrap;
+        padding: var(--space-xl) var(--space-sm);
+        color: var(--ink-soft);
       }
+      .empty h1 {
+        margin: 0 0 var(--space-sm);
+        color: var(--ink);
+        font-size: clamp(1.5rem, 4vw, 2.25rem);
+        line-height: var(--leading-tight);
+      }
+      .empty p {
+        margin: 0 0 var(--space-xs);
+        line-height: var(--leading-normal);
+      }
+      /* A block whose type has no view here, and anything that failed to load. */
       .missing {
         margin: var(--space-sm);
         padding: var(--space-sm);

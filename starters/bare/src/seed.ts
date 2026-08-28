@@ -1,10 +1,10 @@
 /**
- * The first administrator, and enough content to see something (SPEC.md §50, §85).
+ * The first administrator, and nothing else (SPEC.md §50, §85).
  *
- * The seed is written as commands rather than as inserts on purpose: `entries.create`
- * and `blocks.add` are the same commands Studio sends and an agent proposes over MCP,
- * so nothing in this project reaches the database by a path a person or an agent
- * could not take (SPEC.md §14).
+ * There is no content to seed: this project declares none, and a starter that put an
+ * article in your database to have something to show would be choosing your content
+ * model for you. What the seed exists for is the one account that cannot be made
+ * through the application, because signing in is how anything is made at all.
  *
  * Two rules govern *when* it runs, and both exist because `assemora start` — the
  * production command — runs `src/server.ts` and nothing else (SPEC.md §79):
@@ -16,12 +16,19 @@
  * 2. The password is never written here. It comes from `ASSEMORA_SEED_PASSWORD`, and
  *    when the environment has none the seed generates one and puts it in `.env` —
  *    never on a stream, and never a constant this repository could publish.
+ *
+ * Seeding *content* is a different act, and the shape is worth knowing before you need
+ * it: a record goes in through `entries.create` on the Command Bus rather than through
+ * `Post.create()`, so that validation, policies, revisions and the audit log all see
+ * it exactly as they see Studio and an agent (SPEC.md §14). That needs an actor, so
+ * `seed()` grows an `app: Application` parameter and wraps the writes in
+ * `app.run({ source: 'internal', actor: { type: 'user', id: admin.id } }, …)`.
+ * `--template blog` scaffolds a project that already does it.
  */
 import { randomBytes } from 'node:crypto'
 import { realpathSync } from 'node:fs'
 
 import { hashPassword, Permission, Role, RolePermission, User, UserRole } from '@assemora/auth'
-import type { Application } from '@assemora/core'
 
 import { createApp } from './app.ts'
 import { remember } from './env.ts'
@@ -54,12 +61,12 @@ const seedPassword = async (): Promise<string> => {
 }
 
 /**
- * Enough to sign in and see something.
+ * Enough to sign in.
  *
  * It runs once: the first user is the guard, so `pnpm seed` twice is harmless and a
  * database that already has people in it is left alone.
  */
-export const seed = async (app: Application): Promise<void> => {
+export const seed = async (): Promise<void> => {
   if ((await User.count()) > 0) return
 
   const admin = await User.create({
@@ -68,53 +75,13 @@ export const seed = async (app: Application): Promise<void> => {
     passwordHash: await hashPassword(await seedPassword()),
   })
 
-  // `*` is every permission there is (SPEC.md §50). Narrower roles — `articles.*`,
+  // `*` is every permission there is (SPEC.md §50). Narrower roles — `posts.*`,
   // `pages.read` — are made in Studio's Users section, or here.
   const administrator = await Role.create({ name: 'administrator', label: 'Administrator' })
   const everything = await Permission.create({ name: '*', description: null })
 
   await RolePermission.create({ roleId: administrator.id, permissionId: everything.id })
   await UserRole.create({ userId: admin.id, roleId: administrator.id })
-
-  // Commands need to know who is asking: policies, revisions and the audit log all
-  // record the actor, and a command run by nobody is refused rather than trusted.
-  await app.run({ source: 'internal', actor: { type: 'user', id: admin.id } }, async () => {
-    await app.commands.execute('entries.create', {
-      resource: 'articles',
-      data: {
-        title: 'Hello from Assemora',
-        slug: 'hello-from-assemora',
-        body: 'Edit this in Studio, over REST, through the SDK, or ask an agent to.',
-        published: true,
-      },
-    })
-
-    // assemora:if pages
-    const home = (await app.commands.execute('pages.create', {
-      slug: 'home',
-      title: 'Home',
-    })) as { id: string }
-
-    await app.commands.execute('blocks.add', {
-      id: home.id,
-      type: 'hero',
-      props: { title: 'Build visually. Extend with TypeScript.', subtitle: 'Control with AI.' },
-    })
-
-    await app.commands.execute('blocks.add', {
-      id: home.id,
-      type: 'richText',
-      props: {
-        body: 'A page is a tree of blocks with stable ids, never a blob of HTML. Move one in the builder and the tree changes; nothing is re-parsed.',
-      },
-    })
-
-    // A draft is not what a visitor gets. Publishing is its own command, so the two
-    // trees a page carries can differ until somebody says they should not. `/preview`
-    // serves the published tree, so without this the site would be empty.
-    await app.commands.execute('pages.publish', { id: home.id })
-    // assemora:end
-  })
 
   // The address, never the password. The password is in `.env`, under
   // ASSEMORA_SEED_PASSWORD, and that is the only place it exists in the clear.
@@ -138,6 +105,6 @@ if (entry !== undefined && realpathSync(entry) === import.meta.filename) {
   const app = createApp()
 
   await app.boot()
-  await seed(app.app)
+  await seed()
   await app.shutdown()
 }

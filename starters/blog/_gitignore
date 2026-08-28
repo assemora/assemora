@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Real credentials. `.env.example` documents every variable this project reads, and
+# the seed writes the administrator's password here itself rather than to a stream.
+.env
+
+# Uploaded files, when the media library stores them on this disk. They belong to
+# whatever is running the project, not to its source.
+storage/
+
+# `.assemora/` is deliberately *not* ignored. `assemora db:generate` diffs the schema
+# snapshot in it rather than a live database, so two people who do not share the
+# snapshot generate the same migration twice.

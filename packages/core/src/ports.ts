@@ -493,9 +493,15 @@ export const collectErrors = (): ErrorTrackingPort & { readonly reports: ErrorRe
  *
  * Getting this wrong is only harmful in one direction: a tracker fed a page of 422s
  * hides the one 500 that mattered, and then nobody looks at it again.
+ *
+ * The one thing status cannot say is that a 5xx *is* the answer. An endpoint that
+ * exists to report a state — `/ready` is the whole of the list — refuses with 503
+ * because that is what a load balancer must read, not because anything failed, and the
+ * state behind it can be permanent. So the error carries `expected` and this reads it:
+ * the decision stays in the error model, and the line here is still drawn once.
  */
 export const isIncident = (error: unknown): boolean =>
-  !(error instanceof AssemoraError) || error.status >= 500
+  !(error instanceof AssemoraError) || (error.status >= 500 && !error.expected)
 
 /** A reporter, and the log that is used when the reporter is the thing that failed. */
 export type ErrorReporting = {
