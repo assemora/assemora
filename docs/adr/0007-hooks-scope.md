@@ -34,6 +34,21 @@ already set. Without that guard, a failure the model cannot fix — a broken fil
 outside the current task, for instance — turns "Stop → block → Stop" into a loop
 with no exit condition.
 
+**The gate runs under the repository's own Node.** It reads the major from
+`.node-version` and, when the `node` it inherited is older, puts the newest installed
+version that satisfies it in front of `PATH` — fnm, nvm and Homebrew layouts. A hook
+inherits the environment of the process that launched Claude Code and cannot ask a shell
+to change it, so a session started from a shell pinned to an older version failed on the
+gate's first command: `pnpm boundaries` runs `scripts/check-boundaries.ts` through `node`
+directly, and stripping types is a Node 24 feature. The failure said
+`ERR_UNKNOWN_FILE_EXTENSION` — a complaint about a file extension — and lint, typecheck
+and the tests never ran, so every turn ended in a report about the shell rather than about
+the turn. When no satisfying version is installed the gate blocks and says exactly that,
+because it is the one gate failure no edit to this repository can fix.
+
+This does not widen what the gate runs, which is what this ADR fixes. It is what lets it
+run at all.
+
 **The milestone gate stays a command.** `pnpm verify` adds the build to the same
 chain. Claude Code exposes no milestone event, so there is nothing to attach a hook
 to; CLAUDE.md mandates the command at phase boundaries instead. This is a limitation
