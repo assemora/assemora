@@ -176,10 +176,44 @@ have already been made — do not reverse one without writing a new ADR.
   critical the day a package is installable, which is what ADR-0027 is for. It is item 0.0
   of the plan, with five other Tier 0 corrections everything else rests on.
 
+**SPEC.md §131 localisation — the core is done** (ADR-0028). `assemora({ locales,
+defaultLocale })` is a deployment fact, validated once and registered as a Schema Registry
+section so Studio, OpenAPI, the SDK and `assemora.describe` read the set rather than each
+being told. A language is a path segment stripped *before* routing — `/api/ru/articles` is
+`/api/articles` read in Russian — so every route stays declared and described once; three
+languages would otherwise treble the document whose whole purpose is to be read. A first
+segment that is not a language is untouched, so `/api/v1/…` still means a version.
+
+- `model(…).translatable()` adds `locale` and `translationOf` and the row keeps its shape.
+  A field never becomes a map keyed by language: that breaks the record type, the column,
+  the form, the OpenAPI schema, the SDK and the MCP tool at once, which is §2 abandoned
+  for a storage convenience.
+- A read is scoped to the language of the operation without a caller asking, and a missing
+  translation falls back to the default **in one query** — two appended result sets would
+  put every untranslated row after every translated one, and page two of a menu would be a
+  different menu. It costs one extra read to build the condition. `inLocale`, `allLocales`
+  and `withoutFallback` are the ways to mean something else.
+- `entries.create` writes the language of the operation; `entries.translate` writes the
+  translation, starting from a copy of the original, through the Command Bus — so it is
+  validated, authorized, revised, audited and an MCP tool by generation. A translation of
+  a translation hangs off the original, or the fallback sees two entries where the site
+  has one.
+- A resource read projects `locale` beside `id`. §131 is explicit: a page that silently
+  serves English under a Russian URL with nothing saying so is worse than a 404.
+- Before it, `Issue` gained `params` and `toPayload` gained `issues`, so a refusal reaches
+  a client as a code and its parameters rather than as an English sentence with the number
+  baked in (`site-kits.md` 2.5 — do it before localisation or do it twice).
+
+Left of §131: Studio's language switcher and translation status, the locale in OpenAPI and
+the generated SDK, and **pages** — a slug and a block tree per locale is not built. A
+collection (§37) is not translatable at all and says so where it is asked: its entries
+share one JSONB table and its stored definition has nowhere to say which fields are worth
+translating.
+
 Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
 which of its limits are permanent and which were only a schedule, and adds five
 sections it never had — §131 localisation, §132 taxonomy, §133 navigation, §134 forms,
-§135 singletons. None of those five is built yet; localisation is next.
+§135 singletons. Of those, §131's core is built; §132, §133, §134 and §135 are not.
 
 The four permanent invariants, so nobody re-argues them: a page is a block tree and
 never an HTML blob; the theme is tokens and nothing accepts CSS; a resource definition

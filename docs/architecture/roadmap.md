@@ -78,5 +78,14 @@ what a package can declare. `site-kits.md` is the ordered list and `site-kits-de
 long form; both were written from a real site measured against the framework.
 
 The spec also grew five sections it never had — §131 localisation, §132 taxonomy, §133
-navigation, §134 forms, §135 singletons (ADR-0025). None is built. §135 and §133 are in
-the site-kit plan because a package needs them; the other three are open.
+navigation, §134 forms, §135 singletons (ADR-0025). §135 and §133 are in the site-kit
+plan because a package needs them; §132 and §134 are open.
+
+**§131 localisation — the core of it is built** (ADR-0028). Languages are configured on
+`assemora()`, a language is a path segment stripped before routing, `model().translatable()`
+gives a model one row per language, a read is scoped to the language of the operation and
+falls back to the default in one query, and `entries.translate` writes a translation
+through the Command Bus like any other change. Left: Studio's language switcher and
+translation status, the locale in OpenAPI and the generated SDK, and pages — §131 asks for
+a slug and a block tree per locale and that is not built. A collection is not translatable
+and says so; ADR-0028 records why.
