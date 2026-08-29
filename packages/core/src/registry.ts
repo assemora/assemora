@@ -226,9 +226,16 @@ export const createSchemaRegistry = (): SchemaRegistry => {
     },
 
     section<K extends SectionName>(section: K): readonly RegistrySections[K][] {
-      // The section name determines which member of the union is stored under it.
-      // Narrowing happens here once instead of at every call site.
-      return [...bucket(section).values()] as readonly RegistrySections[K][]
+      /**
+       * The section name determines which member of the union is stored under it, and
+       * narrowing happens here once instead of at every call site.
+       *
+       * Through `unknown` because `RegistrySections` is an interface other packages
+       * augment: for a section name TypeScript has not resolved, `RegistrySections[K]`
+       * in this position is the *intersection* of every declared section, and no single
+       * entry is comparable to that. The name is the fact the compiler cannot see.
+       */
+      return [...bucket(section).values()] as unknown as readonly RegistrySections[K][]
     },
 
     find<K extends SectionName>(section: K, name: string): RegistrySections[K] | undefined {

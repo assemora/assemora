@@ -433,6 +433,10 @@ const serve = (
       : { cors: { origins: settings.origins, credentials: true } }),
     rateLimit: api.rateLimit,
     bodyLimit: api.bodyLimit,
+    // Read back off the application rather than off the options: `createApplication`
+    // is what validated them and what filled in a default nobody named, so this is the
+    // same answer rather than a second reading of the same question.
+    ...(app.locales === undefined ? {} : { locales: app.locales }),
     // Passed unconditionally: the option is optional in createHttpServer, and leaving
     // it out turns CSRF off entirely (SPEC.md §85).
     csrf: { cookie: CSRF_COOKIE },
@@ -607,6 +611,10 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     // Left out, core runs jobs in this process rather than discarding them: a missing
     // revision is an absence, a missing job is a lie (ADR-0023).
     ...(options.jobs === undefined ? {} : { queue: options.jobs.queue }),
+    // The languages, to the application, so a read is scoped without a caller asking —
+    // and below, to the server, so a language is an address. One option, wired twice.
+    ...(options.locales === undefined ? {} : { locales: options.locales }),
+    ...(options.defaultLocale === undefined ? {} : { defaultLocale: options.defaultLocale }),
     errors,
     logger,
   })

@@ -368,6 +368,24 @@ export type AssemoraOptions = {
    * not a way to stop serving one.
    */
   readonly theme?: boolean
+  /**
+   * The languages this deployment serves (SPEC.md §131).
+   *
+   * ```ts
+   * assemora({ locales: ['uk', 'en', 'ru'], defaultLocale: 'uk' })
+   * ```
+   *
+   * One option and not two configurations: it reaches `createApplication`, so every
+   * read is scoped to the language of the operation, *and* `createHttpServer`, so a
+   * language is a path segment. Told twice, the two would eventually disagree, and a
+   * deployment serving an address it does not scope reads is the disagreement that
+   * matters.
+   *
+   * Left out, the application is in one language and nothing changes.
+   */
+  readonly locales?: readonly string[]
+  /** Which of `locales` a missing translation falls back to. Defaults to the first. */
+  readonly defaultLocale?: string
 }
 
 /**

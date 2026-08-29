@@ -10,6 +10,7 @@ import { type AssemoraContext, type ContextInit, createContext, runInContext } f
 import { ConfigurationError } from './errors.js'
 import { createEventBus, type EventBus } from './events.js'
 import { createJobBus, type JobBus, registerJobBus } from './jobs.js'
+import { type LocaleSettings, resolveLocales } from './locales.js'
 import { createLogger, type Logger, silentWriter } from './logger.js'
 import {
   type LifecyclePhase,
@@ -60,6 +61,18 @@ export type ApplicationOptions = {
    */
   readonly errors?: ErrorTrackingPort
   readonly logger?: Logger
+  /**
+   * The languages this deployment serves (SPEC.md §131).
+   *
+   * ```ts
+   * createApplication({ locales: ['uk', 'en', 'ru'], defaultLocale: 'uk' })
+   * ```
+   *
+   * Left out, the application is in one language and nothing about it changes.
+   */
+  readonly locales?: readonly string[]
+  /** Which of `locales` a missing translation falls back to. Defaults to the first. */
+  readonly defaultLocale?: string
 }
 
 export type Application = {
@@ -70,6 +83,8 @@ export type Application = {
   readonly events: EventBus
   readonly registry: SchemaRegistry
   readonly logger: Logger
+  /** The languages this deployment serves, or `undefined` for one (SPEC.md §131). */
+  readonly locales?: LocaleSettings
   readonly modules: readonly string[]
   /**
    * The modules that booted and are not running, and why (SPEC.md §88).
@@ -96,6 +111,19 @@ export const createApplication = (options: ApplicationOptions = {}): Application
   const container = createContainer()
   const registry = createSchemaRegistry()
   const events = createEventBus(logger)
+
+  /**
+   * Refused here rather than at the first query: a language set that does not make
+   * sense is a deployment somebody has to fix before it serves anything, and the fifth
+   * page in the wrong language is a worse place to find out.
+   */
+  const locales = resolveLocales(options)
+
+  if (locales !== undefined) {
+    for (const code of locales.locales) {
+      registry.register('locales', { name: code, default: code === locales.defaultLocale })
+    }
+  }
 
   const authorization = options.authorization ?? denyAll()
   // One audit port for both buses: a read and a write belong in the same log.
@@ -204,6 +232,23 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     }
   }
 
+  /**
+   * Fills in the languages the caller did not name.
+   *
+   * A caller that names one keeps it — a job replaying the language its actor was
+   * working in, a CLI command asked for a particular one. A caller that names none gets
+   * the deployment's default, so an operation is never in no language at all while the
+   * application is in several.
+   */
+  const withLocales = (init: ContextInit): ContextInit =>
+    locales === undefined
+      ? init
+      : {
+          ...init,
+          locale: init.locale ?? locales.defaultLocale,
+          defaultLocale: locales.defaultLocale,
+        }
+
   const application: Application = {
     container,
     commands,
@@ -254,12 +299,14 @@ export const createApplication = (options: ApplicationOptions = {}): Application
       logger.info('Application stopped')
     },
 
+    ...(locales === undefined ? {} : { locales }),
+
     run(init, operation) {
-      return runInContext(createContext(init), operation)
+      return runInContext(createContext(withLocales(init)), operation)
     },
 
     contextFor(init) {
-      return createContext(init)
+      return createContext(withLocales(init))
     },
   }
 

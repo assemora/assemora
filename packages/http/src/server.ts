@@ -5,6 +5,8 @@
  * handler is validated input and the application context, and what leaves is the
  * response the route declared (SPEC.md §41, §125.1).
  */
+
+import type { IncomingMessage } from 'node:http'
 import {
   type Actor,
   type AssemoraContext,
@@ -16,6 +18,7 @@ import {
   type ErrorReporting,
   type ErrorTrackingPort,
   isIncident,
+  type LocaleSettings,
   type Logger,
   logErrors,
   publishGeneratedCrud,
@@ -26,6 +29,7 @@ import {
 } from '@assemora/core'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import Fastify from 'fastify'
 
@@ -123,6 +127,20 @@ export type HttpServerOptions = {
    * address that only ever receives a form.
    */
   readonly bodyLimit?: number
+  /**
+   * The languages this deployment serves, and which one a request is in by default
+   * (SPEC.md §131).
+   *
+   * A language is a path segment in front of the prefix — `/api/ru/articles` is
+   * `/api/articles` read in Russian — and it is *stripped before routing*, so every
+   * route is declared once, at one address, and the Schema Registry, OpenAPI and the
+   * SDK describe one path rather than one per language. Three languages would otherwise
+   * treble every endpoint in a document whose whole purpose is to be read.
+   *
+   * A segment that is not a configured language is not a language: `/api/v1/articles`
+   * keeps meaning what it meant, because `v1` is not in the list.
+   */
+  readonly locales?: LocaleSettings
   /** Turns credentials into an actor. Registered by `@assemora/auth` in phase 6. */
   readonly resolveActor?: ActorResolver
   /**
@@ -378,7 +396,49 @@ export const DEFAULT_BODY_LIMIT = 1024 * 1024
 export const createHttpServer = (options: HttpServerOptions): HttpServer => {
   const prefix = options.prefix ?? '/api'
   const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT
-  const app: FastifyInstance = Fastify({ logger: false, bodyLimit })
+  /**
+   * The language a request arrived in, by the URL it arrived at.
+   *
+   * A `WeakMap` keyed by the raw request, because this is decided in `rewriteUrl` — the
+   * one hook that runs *before* routing, which is what it has to do: a language read
+   * after routing could only ever be a header, and the whole point is that a page in
+   * Russian has an address of its own. Freed with the request, like the state below.
+   */
+  const spoken = new WeakMap<object, string>()
+
+  const app: FastifyInstance = Fastify({
+    logger: false,
+    bodyLimit,
+    ...(options.locales === undefined
+      ? {}
+      : {
+          /**
+           * Takes `/api/ru/articles` down to `/api/articles` and remembers the `ru`.
+           *
+           * Before routing, so nothing below this line has to know a language exists:
+           * one route, one description, one generated client. A first segment that is
+           * not a configured language is left alone — `/api/v1/articles` is a version
+           * and always was.
+           */
+          rewriteUrl: (request: IncomingMessage) => {
+            const url = request.url ?? '/'
+
+            if (!url.startsWith(`${prefix}/`)) return url
+
+            const rest = url.slice(prefix.length)
+            const [, first = ''] = rest.split('/', 2)
+            const code = first.split('?')[0] ?? ''
+
+            if (!options.locales?.locales.includes(code)) return url
+
+            spoken.set(request, code)
+
+            const without = rest.slice(code.length + 1)
+
+            return `${prefix}${without === '' ? '/' : without}`
+          },
+        }),
+  })
 
   // This server publishes no generated REST paths until it is told to mount them, and
   // saying so is the point: an application built with `api: { crud: false }` never calls
@@ -434,6 +494,16 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
         source: 'rest',
         ...(requestId === undefined ? {} : { requestId }),
         ...(userAgent === undefined ? {} : { userAgent }),
+        // The language the address named, or the deployment's own. A request that named
+        // none is in the default language rather than in no language: a read that fell
+        // through to "every translation" because a segment was missing would answer one
+        // page three times.
+        ...(options.locales === undefined
+          ? {}
+          : {
+              locale: spoken.get(request.raw) ?? options.locales.defaultLocale,
+              defaultLocale: options.locales.defaultLocale,
+            }),
       }),
     }
 
@@ -632,6 +702,8 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
         source: definition.source ?? 'rest',
         requestId: arrived.requestId,
         ...(arrived.userAgent === undefined ? {} : { userAgent: arrived.userAgent }),
+        ...(arrived.locale === undefined ? {} : { locale: arrived.locale }),
+        ...(arrived.defaultLocale === undefined ? {} : { defaultLocale: arrived.defaultLocale }),
       })
 
       // Inside a context, because resolving credentials is database work — a session

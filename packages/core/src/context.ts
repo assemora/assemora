@@ -29,7 +29,24 @@ export type AssemoraContext = {
   readonly requestId: string
   readonly actor?: Actor
   readonly source: ContextSource
+  /**
+   * The language this operation is in (SPEC.md §131).
+   *
+   * A read is scoped to it without a caller asking, which is the whole point: an
+   * application whose every query had to name a language would be one where forgetting
+   * to is a page in the wrong one. Absent in an application that serves one language,
+   * and absent is what every layer treated it as until now.
+   */
   readonly locale?: string
+  /**
+   * The language a missing translation falls back to.
+   *
+   * Here rather than in a module-level global, because it travels with the operation:
+   * a job replaying an actor's work and a request being served are two operations at
+   * once, and a global would make the second decide for the first. Whoever creates the
+   * context — the application, the HTTP server — reads it from one configuration.
+   */
+  readonly defaultLocale?: string
   /**
    * What the client said it was, when the operation arrived over a network.
    *
@@ -57,6 +74,7 @@ export type ContextInit = {
   readonly requestId?: string
   readonly actor?: Actor
   readonly locale?: string
+  readonly defaultLocale?: string
   readonly userAgent?: string
 }
 
@@ -65,6 +83,7 @@ export const createContext = (init: ContextInit): AssemoraContext => ({
   source: init.source,
   ...(init.actor === undefined ? {} : { actor: init.actor }),
   ...(init.locale === undefined ? {} : { locale: init.locale }),
+  ...(init.defaultLocale === undefined ? {} : { defaultLocale: init.defaultLocale }),
   ...(init.userAgent === undefined ? {} : { userAgent: init.userAgent }),
 })
 

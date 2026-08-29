@@ -72,6 +72,13 @@ export {
   runJob,
 } from './jobs.js'
 export {
+  isLocale,
+  type LocaleDescriptor,
+  type LocaleOptions,
+  type LocaleSettings,
+  resolveLocales,
+} from './locales.js'
+export {
   createLogger,
   type LogFields,
   type Logger,

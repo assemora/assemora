@@ -1074,3 +1074,59 @@ describe('a body larger than the endpoint accepts (SPEC.md §85)', () => {
     expect(app.registry.find('routes', 'post /upload')?.bodyLimit).toBeUndefined()
   })
 })
+
+describe('a language is a path segment (SPEC.md §131)', () => {
+  const speaking = route.get('/spoken', {
+    response: { locale: string(), fallback: string() },
+    handler: async ({ context }) => ({
+      locale: context.locale ?? 'none',
+      fallback: context.defaultLocale ?? 'none',
+    }),
+  })
+
+  const served = () => {
+    const running = build({ locales: { locales: ['uk', 'en', 'ru'], defaultLocale: 'uk' } })
+
+    running.mount(speaking)
+
+    return running
+  }
+
+  it('reads the language off the address and routes to the one description', async () => {
+    const response = await served().inject({ method: 'GET', url: '/api/ru/spoken' })
+
+    expect(response.json()).toEqual({ locale: 'ru', fallback: 'uk' })
+  })
+
+  it('serves the default language at the bare address', async () => {
+    const response = await served().inject({ method: 'GET', url: '/api/spoken' })
+
+    expect(response.json()).toEqual({ locale: 'uk', fallback: 'uk' })
+  })
+
+  it('leaves a first segment that is not a language alone', async () => {
+    // `/api/v1/spoken` is a version and always was: nothing is stripped, so the route
+    // is simply not there. A locale prefix that swallowed it would have made every
+    // versioned address unreachable.
+    expect((await served().inject({ method: 'GET', url: '/api/v1/spoken' })).statusCode).toBe(404)
+  })
+
+  it('describes one path, not one per language', () => {
+    served()
+
+    // Three languages would otherwise treble every endpoint in the document whose
+    // whole purpose is to be read.
+    expect(app.registry.section('routes').map((entry) => entry.path)).toEqual(['/spoken'])
+  })
+
+  it('says nothing about a language in an application that serves one', async () => {
+    const running = build()
+
+    running.mount(speaking)
+
+    expect((await running.inject({ method: 'GET', url: '/api/spoken' })).json()).toEqual({
+      locale: 'none',
+      fallback: 'none',
+    })
+  })
+})
