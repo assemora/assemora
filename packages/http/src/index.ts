@@ -25,7 +25,12 @@ export {
   type ServedAsset,
 } from './assets.js'
 export { type BytesResponse, bytes, isBytesResponse } from './bytes.js'
-export { type CommandEndpoint, commandEndpoints, commandRoutes } from './commands.js'
+export {
+  type CommandEndpoint,
+  type CommandRouteOptions,
+  commandEndpoints,
+  commandRoutes,
+} from './commands.js'
 export {
   CRUD_OPERATIONS,
   type CrudBuses,
@@ -65,6 +70,7 @@ export {
 export {
   type ActorResolver,
   createHttpServer,
+  DEFAULT_BODY_LIMIT,
   type HttpServer,
   type HttpServerOptions,
   type InjectedResponse,

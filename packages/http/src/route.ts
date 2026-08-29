@@ -51,6 +51,16 @@ export type RouteDefinition<P extends Shape, Q extends Shape, B extends Shape, R
   readonly description?: string
   readonly tags?: readonly string[]
   readonly errors?: readonly ErrorDescriptor[]
+  /**
+   * How many bytes this route accepts, when the server's own ceiling is the wrong one
+   * (SPEC.md §85).
+   *
+   * Per route rather than one number for the process, because the route that takes an
+   * upload is the only one that needs the wide ceiling: a limit generous enough for a
+   * photograph is a memory amplifier on every other address, and every address is what
+   * a single server-wide number widens.
+   */
+  readonly bodyLimit?: number
   handler(request: RouteRequest<P, Q, B>): Promise<R> | R
 }
 
@@ -76,6 +86,8 @@ export type Route = {
   readonly description: string | undefined
   readonly tags: readonly string[]
   readonly errors: readonly ErrorDescriptor[]
+  /** What this route accepts, and the server's ceiling when it is `undefined`. */
+  readonly bodyLimit: number | undefined
   handler(request: RouteRequest<Shape, Shape, Shape>): Promise<unknown> | unknown
 }
 
@@ -96,6 +108,14 @@ export type RouteDescriptor = {
   readonly module?: string
   /** Which API version published it, for a reader that groups without parsing paths. */
   readonly version?: string
+  /**
+   * The largest body it accepts, in bytes, when it is not the server's own.
+   *
+   * Described rather than only enforced: OpenAPI and the SDK are generated from this,
+   * and a document that promises an upload the server answers `413` to is a document
+   * that lies about the one thing the caller has to size (SPEC.md §42, §44).
+   */
+  readonly bodyLimit?: number
 }
 
 declare module '@assemora/core' {
@@ -131,6 +151,7 @@ const define = <P extends Shape, Q extends Shape, B extends Shape, R>(
   description: definition.description,
   tags: definition.tags ?? [],
   errors: definition.errors ?? [],
+  bodyLimit: definition.bodyLimit,
   handler: definition.handler as Route['handler'],
 })
 
@@ -188,4 +209,5 @@ export const describeRoute = (definition: Route, module?: string): RouteDescript
   errors: definition.errors,
   ...(module === undefined ? {} : { module }),
   ...(definition.version === undefined ? {} : { version: definition.version }),
+  ...(definition.bodyLimit === undefined ? {} : { bodyLimit: definition.bodyLimit }),
 })

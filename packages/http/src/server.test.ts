@@ -997,3 +997,80 @@ describe('the ceiling of SPEC.md §85 is a ceiling', () => {
     }
   })
 })
+
+describe('a body larger than the endpoint accepts (SPEC.md §85)', () => {
+  const upload = (bodyLimit?: number) =>
+    route.post('/upload', {
+      ...(bodyLimit === undefined ? {} : { bodyLimit }),
+      body: { data: string() },
+      response: { size: number() },
+      handler: async ({ body }) => ({ size: body.data.length }),
+    })
+
+  /** A payload whose JSON is comfortably larger than `bytes`. */
+  const payload = (bytes: number) => ({ data: 'x'.repeat(bytes) })
+
+  it('refuses it, and says how large the endpoint is', async () => {
+    const small = build({ bodyLimit: 1024 })
+
+    small.mount(upload())
+
+    const response = await small.inject({
+      method: 'POST',
+      url: '/api/upload',
+      payload: payload(4096),
+    })
+
+    expect(response.statusCode).toBe(413)
+
+    const answer = response.json<{ error: { code: string; message: string } }>()
+
+    // The §46 envelope, like every other refusal: a caller that reads `error.code`
+    // must not have to read Fastify's shape for this one.
+    expect(answer.error.code).toBe('PAYLOAD_TOO_LARGE')
+    expect(answer.error.message).toContain('1024')
+  })
+
+  it('lets the route that takes an upload have a ceiling of its own', async () => {
+    const small = build({ bodyLimit: 1024 })
+
+    small.mount(upload(64 * 1024))
+
+    const response = await small.inject({
+      method: 'POST',
+      url: '/api/upload',
+      payload: payload(4096),
+    })
+
+    expect(response.statusCode).toBe(201)
+    expect(response.json<{ size: number }>().size).toBe(4096)
+  })
+
+  it('leaves every other address at the ceiling the server set', async () => {
+    const small = build({ bodyLimit: 1024 })
+
+    small.mount(upload(64 * 1024), login)
+
+    const refused = await small.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'ada@x.io', password: 'longenough'.repeat(400) },
+    })
+
+    expect(refused.statusCode).toBe(413)
+  })
+
+  it('describes the ceiling, so a generated client is not promised what is refused', () => {
+    const small = build({ bodyLimit: 1024 })
+
+    small.mount(upload(64 * 1024))
+
+    expect(app.registry.find('routes', 'post /upload')?.bodyLimit).toBe(64 * 1024)
+  })
+
+  it('describes nothing when the route keeps what the server set', () => {
+    server.mount(upload())
+
+    expect(app.registry.find('routes', 'post /upload')?.bodyLimit).toBeUndefined()
+  })
+})

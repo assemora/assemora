@@ -113,6 +113,8 @@ export const queryRoutes = (endpoints: readonly QueryEndpoint[], queries: QueryB
       { code: 'VALIDATION_ERROR', status: 422, description: 'The input does not fit' },
       { code: 'FORBIDDEN', status: 403, description: 'The actor may not run this query' },
     ],
+    // A read takes its input from the query string, so there is no body to bound.
+    bodyLimit: undefined,
     handler: async ({ request }) =>
       await queries.execute(
         endpoint.name,

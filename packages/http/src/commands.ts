@@ -67,9 +67,23 @@ export const commandEndpoints = (registry: SchemaRegistry): CommandEndpoint[] =>
     .filter(isCommandEndpoint)
     .filter((endpoint) => endpoint.reachableFrom !== 'its own route')
 
+/** What a caller may say about the endpoints this generates. */
+export type CommandRouteOptions = {
+  /**
+   * A ceiling of its own for named commands, in bytes, keyed by command name.
+   *
+   * Every command answers at one generated address, so a command that carries a file
+   * — `media.upload`, whose input is base64 — cannot be given room without giving the
+   * same room to `auth.users.create`. Naming it here keeps the wide ceiling on the one
+   * endpoint that needs it (SPEC.md §85).
+   */
+  readonly bodyLimit?: Readonly<Record<string, number>>
+}
+
 export const commandRoutes = (
   endpoints: readonly CommandEndpoint[],
   commands: CommandBus,
+  options: CommandRouteOptions = {},
 ): Route[] =>
   endpoints.map((endpoint) => ({
     node: 'route',
@@ -93,5 +107,6 @@ export const commandRoutes = (
       { code: 'VALIDATION_ERROR', status: 422, description: 'The input does not fit' },
       { code: 'FORBIDDEN', status: 403, description: 'The actor may not run this command' },
     ],
+    bodyLimit: options.bodyLimit?.[endpoint.name],
     handler: async ({ body }) => await commands.execute(endpoint.name, body),
   }))

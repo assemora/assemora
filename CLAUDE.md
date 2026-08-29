@@ -442,13 +442,23 @@ Known gaps, each with a reason rather than an oversight:
   `sync` following ADR-0012's generic CRUD is the shape; which side of a mutual
   relation owns the fact, and what a policy on a link means, have to be decided first.
 
-Defects that measurement found, all real, none fixed. Each carries its `path:line` in
-`docs/architecture/site-kits.md`, whose Tier 0 and Tier 1 are the ones a package makes
+**Site kits, Tier 1.1 — done.** A body limit is a number the application sets.
+
+- `bodyLimit` is an option on `createHttpServer`, on a route, and per command name on the
+  endpoints `mountCommands()` generates. Per route, because the ceiling a photograph needs
+  is a memory amplifier on every address that only ever receives a form — so `assemora()`
+  gives it to `POST /api/commands/media.upload` alone, at 16 MiB by default and
+  `media: { maxUploadBytes }` to change. Everything else keeps 1 MiB, now stated as
+  `DEFAULT_BODY_LIMIT` rather than inherited from Fastify. A refusal is translated into
+  §46's envelope and names the limit: a body rejected by the parser never reaches a route,
+  so without that it arrived in a shape no generated client reads.
+- `RouteDescriptor.bodyLimit` is the registry half, so OpenAPI and the SDK stop promising
+  an upload the server answers 413 to.
+
+The rest of what that measurement found is real and unfixed. Each carries its `path:line`
+in `docs/architecture/site-kits.md`, whose Tier 0 and Tier 1 are the ones a package makes
 urgent:
 
-- Nothing sets `bodyLimit`, so Fastify's 1 MiB default plus base64's 4/3 inflation caps
-  an upload at about 786 KB. Measured: 600 KB uploads, 800 KB is refused 413. No project
-  code can raise it, and on a site whose content is photographs that is day one.
 - `assetCacheControl` tests for a hex hash and Vite's alphabet is base64url, so every
   asset this repository builds is `no-cache` — and there is no `ETag` and no
   `Last-Modified`, so a conditional request re-downloads in full. Nothing is compressed

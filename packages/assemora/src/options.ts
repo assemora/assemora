@@ -17,7 +17,12 @@ import { resolve as resolvePath } from 'node:path'
 import type { ErrorTrackingPort, Logger, ModuleBuilder, QueuePort } from '@assemora/core'
 import { DEFAULT_SLOW_QUERY_MS } from '@assemora/data'
 import type { DatabaseAdapter } from '@assemora/database'
-import { type ApiVersion, SLOW_REQUEST_MS, type VersionDeclaration } from '@assemora/http'
+import {
+  type ApiVersion,
+  DEFAULT_BODY_LIMIT,
+  SLOW_REQUEST_MS,
+  type VersionDeclaration,
+} from '@assemora/http'
 import type { MutationMode } from '@assemora/mcp'
 import type { StorageDriver } from '@assemora/media'
 
@@ -46,6 +51,15 @@ export type ApiOptions = {
   readonly prefix?: string
   /** 600 a minute by default (SPEC.md §85). Counted in this process only. */
   readonly rateLimit?: RateWindow
+  /**
+   * The largest body any endpoint accepts, in bytes. 1 MiB by default (SPEC.md §85).
+   *
+   * This is the floor every address shares. The one endpoint that needs more is the
+   * media upload, and it has `media: { maxUploadBytes }` of its own precisely so that
+   * a site whose content is photographs does not have to hand the same room to every
+   * form it serves.
+   */
+  readonly bodyLimit?: number
   /** Generated REST CRUD for every resource (SPEC.md §43). On by default. */
   readonly crud?: boolean
   /** `/openapi.json` and `/_introspection` (SPEC.md §44, §45). On by default. */
@@ -129,7 +143,26 @@ export type McpOptions = {
  * Omitting it leaves the storage driver alone, for an application that calls
  * `useStorage()` itself.
  */
-export type MediaOptions = { readonly root: string } | { readonly storage: StorageDriver }
+/** What a media library accepts, whichever driver stores it. */
+type MediaLimits = {
+  /**
+   * The largest file `media.upload` accepts, in bytes. 16 MiB by default.
+   *
+   * Sized against what arrives rather than against the file: a file reaches the command
+   * as base64 inside its input, which is four bytes on the wire for every three stored,
+   * so this ceiling admits a file of about 12 MB. The default is generous on purpose —
+   * a photograph from a phone is 2–5 MB, and a media library that refuses one is a
+   * media library nobody can put content in.
+   *
+   * It applies to `POST /api/commands/media.upload` alone. Every other address keeps
+   * `api: { bodyLimit }`, because a ceiling wide enough for a photograph is a memory
+   * amplifier anywhere it is not needed (SPEC.md §85).
+   */
+  readonly maxUploadBytes?: number
+}
+
+export type MediaOptions = ({ readonly root: string } | { readonly storage: StorageDriver }) &
+  MediaLimits
 
 /**
  * The application's own frontend — what the builder canvas frames (SPEC.md §59).
@@ -363,9 +396,17 @@ const API_RATE_LIMIT: RateWindow = { max: 600, windowMs: 60_000 }
 /** Tool calls are heavier than requests, and an agent is faster than a person. */
 const MCP_RATE_LIMIT: RateWindow = { max: 120, windowMs: 60_000 }
 
+/** 16 MiB: base64 of a file of about 12 MB, and a phone photograph is 2–5 MB. */
+export const DEFAULT_MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+
+/** What `media.upload` accepts, which is the one endpoint sized for a file. */
+export const uploadLimitOf = (media: MediaOptions | undefined): number =>
+  media?.maxUploadBytes ?? DEFAULT_MAX_UPLOAD_BYTES
+
 export type ResolvedApi = {
   readonly prefix: string
   readonly rateLimit: RateWindow
+  readonly bodyLimit: number
   readonly crud: boolean
   readonly documentation: boolean
   readonly introspection: 'authenticated' | 'public'
@@ -423,6 +464,8 @@ export type Settings = {
   readonly session: ResolvedSession
   readonly observability: ResolvedObservability
   readonly origins: readonly string[]
+  /** What `media.upload` accepts, resolved whether or not media was configured. */
+  readonly uploadBytes: number
   readonly revisions: boolean
   readonly audit: boolean
   readonly changeSets: boolean
@@ -437,6 +480,7 @@ const apiOf = (value: AssemoraOptions['api']): ResolvedApi | undefined => {
   return {
     prefix: given.prefix ?? DEFAULT_PREFIX,
     rateLimit: given.rateLimit ?? API_RATE_LIMIT,
+    bodyLimit: given.bodyLimit ?? DEFAULT_BODY_LIMIT,
     crud: given.crud ?? true,
     documentation: given.documentation ?? true,
     introspection: given.introspection ?? 'authenticated',
@@ -498,6 +542,7 @@ export const resolve = (options: AssemoraOptions): Settings => ({
     slowRequestMs: options.observability?.slowRequestMs ?? SLOW_REQUEST_MS,
   },
   origins: options.origins ?? [],
+  uploadBytes: uploadLimitOf(options.media),
   revisions: options.revisions ?? true,
   audit: options.audit ?? true,
   changeSets: options.changeSets ?? true,

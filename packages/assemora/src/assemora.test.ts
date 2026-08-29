@@ -1302,6 +1302,75 @@ describe('media (SPEC.md §63)', () => {
   })
 })
 
+describe('a photograph fits through the upload (SPEC.md §63, §85)', () => {
+  /** Bigger than the 1 MiB every other address keeps, and smaller than the default. */
+  const photograph = Buffer.alloc(3 * 1024 * 1024, 0x7f).toString('base64')
+
+  it('accepts one, because the upload endpoint is sized for a file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [auth(), media(), notes()], media: { root } })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const uploaded = await server.inject({
+      method: 'POST',
+      url: '/api/commands/media.upload',
+      payload: { filename: 'pizza.jpg', mimeType: 'image/jpeg', data: photograph },
+      headers: asStudio(jar),
+    })
+
+    expect(uploaded.statusCode).toBe(200)
+  })
+
+  it('refuses one at every other command, which is why the ceiling is not the server', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({ modules: [auth(), media(), notes()], media: { root } })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const refused = await server.inject({
+      method: 'POST',
+      url: '/api/commands/entries.create',
+      payload: { resource: 'notes', values: { title: photograph } },
+      headers: asStudio(jar),
+    })
+
+    expect(refused.statusCode).toBe(413)
+    expect(refused.json<{ error: { code: string } }>().error.code).toBe('PAYLOAD_TOO_LARGE')
+  })
+
+  it('is the application to set, when 16 MiB is the wrong number', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-media-'))
+    const built = build({
+      modules: [auth(), media(), notes()],
+      media: { root, maxUploadBytes: 1024 },
+    })
+
+    await built.boot()
+    await administrator()
+
+    const server = serverOf(built)
+    const jar = cookiesOf(await signIn(server))
+
+    const refused = await server.inject({
+      method: 'POST',
+      url: '/api/commands/media.upload',
+      payload: { filename: 'pizza.jpg', mimeType: 'image/jpeg', data: photograph },
+      headers: asStudio(jar),
+    })
+
+    expect(refused.statusCode).toBe(413)
+  })
+})
+
 describe('the bytes pass the policy the library passes (SPEC.md §51, §63)', () => {
   /** A library an application decided to keep behind a policy. */
   const closed = () => auth({ policies: [policy('media', { read: () => false })] })

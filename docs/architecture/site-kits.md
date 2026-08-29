@@ -79,16 +79,24 @@ unreachable. `useAdapter`, `useStorage` and `registerJobBus` are the same shape.
 
 | # | Change | Package | Cost |
 | --- | --- | --- | --- |
-| 1.1 | `bodyLimit` on the server and per route | `http` | ~30 lines |
+| ~~1.1~~ | ~~`bodyLimit` on the server and per route~~ — **done** | `http` | ~30 lines |
 | 1.2 | `case 'relation'` in Studio, + `ResourceOptions.titleField` | Studio + `resources` | ~40 lines |
 | 1.3 | Asset caching, `ETag`, compression | `http` | ~120 lines |
 | 1.4 | A body parser, and the exact bytes | `http` | ~250 lines |
 
-**1.1** `grep -rn bodyLimit packages/` finds nothing, Fastify's default is 1 MiB, and
-`media.upload` takes base64, which inflates 4/3. Measured: 600 KB uploads, 800 KB is
-refused 413. A hundred photographs are the content of a food site and no project code can
-raise the ceiling. `RouteDescriptor` gains it too, so OpenAPI and the SDK stop promising
-an upload the server refuses.
+**1.1 — done.** `grep -rn bodyLimit packages/` found nothing, Fastify's default is 1 MiB,
+and `media.upload` takes base64, which inflates 4/3. Measured: 600 KB uploaded, 800 KB was
+refused 413. A hundred photographs are the content of such a site and no project code
+could raise the ceiling.
+
+It is now an option on `createHttpServer`, on a route, and per command name on the
+endpoints `mountCommands()` generates — per route because a ceiling sized for a photograph
+is a memory amplifier on every address that only receives a form. `assemora()` gives it to
+`media.upload` alone: 16 MiB by default, `media: { maxUploadBytes }` to change, everything
+else at `DEFAULT_BODY_LIMIT`. A refusal is translated into §46's envelope and names the
+limit, because a body the parser rejects never reaches a route and so was arriving in a
+shape no generated client reads. `RouteDescriptor.bodyLimit` is the registry half, so
+OpenAPI and the SDK stop promising an upload the server refuses.
 
 **1.2** `grep relation apps/studio/src/screens/fields.tsx` → zero. `EntryPicker` exists
 (`fields.tsx:378`) and is reachable only from `LinkInput`; `media()` — the same stored

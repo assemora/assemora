@@ -432,6 +432,7 @@ const serve = (
       ? {}
       : { cors: { origins: settings.origins, credentials: true } }),
     rateLimit: api.rateLimit,
+    bodyLimit: api.bodyLimit,
     // Passed unconditionally: the option is optional in createHttpServer, and leaving
     // it out turns CSRF off entirely (SPEC.md §85).
     csrf: { cookie: CSRF_COOKIE },
@@ -470,7 +471,14 @@ const serve = (
   // themselves, because `commandEndpoints()` reads the declaration off the registry.
   // A list of names kept here would have gone stale the moment a package added a
   // publicly authorized command (SPEC.md §85).
-  server.mount(...commandRoutes(commandEndpoints(app.registry), app.commands))
+  // The upload is the one command whose input carries a file, so it is the one
+  // endpoint that is sized for one. Every other command keeps the server's own ceiling
+  // (SPEC.md §85).
+  server.mount(
+    ...commandRoutes(commandEndpoints(app.registry), app.commands, {
+      bodyLimit: { 'media.upload': settings.uploadBytes },
+    }),
+  )
 
   server.mountQueries()
 

@@ -31,7 +31,7 @@ import Fastify from 'fastify'
 
 import { type AssetsOptions, findAsset } from './assets.js'
 import { isBytesResponse } from './bytes.js'
-import { commandEndpoints, commandRoutes } from './commands.js'
+import { type CommandRouteOptions, commandEndpoints, commandRoutes } from './commands.js'
 import {
   type CrudBuses,
   type CrudLookup,
@@ -112,6 +112,17 @@ export type HttpServerOptions = {
    */
   readonly cors?: { readonly origins: readonly string[]; readonly credentials?: boolean }
   readonly rateLimit?: { readonly max: number; readonly windowMs: number }
+  /**
+   * The largest request body this server accepts, in bytes. 1 MiB by default
+   * (SPEC.md §85).
+   *
+   * A route may raise or lower its own, and one that takes an upload has to: a file
+   * reaches `media.upload` as base64, which is four bytes on the wire for every three
+   * stored, so a 1 MiB ceiling refuses a 786 KB photograph — and a phone takes photographs
+   * several times that. Widening the server instead would hand the same ceiling to every
+   * address that only ever receives a form.
+   */
+  readonly bodyLimit?: number
   /** Turns credentials into an actor. Registered by `@assemora/auth` in phase 6. */
   readonly resolveActor?: ActorResolver
   /**
@@ -194,8 +205,13 @@ export type HttpServer = {
    * `async` callback used to compile and publish nothing at all.
    */
   version<R extends VersionDeclaration>(name: string, define: (api: ApiVersion) => R): HttpServer
-  /** Mounts every registered command as an endpoint (SPEC.md §14). */
-  mountCommands(): HttpServer
+  /**
+   * Mounts every registered command as an endpoint (SPEC.md §14).
+   *
+   * `bodyLimit` names the commands whose endpoint needs a ceiling of its own — an
+   * upload is the case, because its file arrives as base64 inside the input.
+   */
+  mountCommands(options?: CommandRouteOptions): HttpServer
   /** Mounts every registered query as an endpoint (SPEC.md §15). */
   mountQueries(): HttpServer
   /**
@@ -350,9 +366,19 @@ const policyFor = (security: HttpServerOptions['security']): string => {
   ].join('; ')
 }
 
+/**
+ * 1 MiB, which is Fastify's own default, stated here rather than inherited.
+ *
+ * Stated because it is a ceiling somebody has to raise deliberately: a body limit is
+ * read off the framework the day an upload is refused, and a number that lives in a
+ * dependency's defaults is one nothing in this repository can be pointed at.
+ */
+export const DEFAULT_BODY_LIMIT = 1024 * 1024
+
 export const createHttpServer = (options: HttpServerOptions): HttpServer => {
   const prefix = options.prefix ?? '/api'
-  const app: FastifyInstance = Fastify({ logger: false })
+  const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT
+  const app: FastifyInstance = Fastify({ logger: false, bodyLimit })
 
   // This server publishes no generated REST paths until it is told to mount them, and
   // saying so is the point: an application built with `api: { crud: false }` never calls
@@ -505,6 +531,35 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
       runInContext(context, () => logRequest(options.logger, served, slowMs))
     })
   })()
+
+  /**
+   * A body refused before any handler saw it (SPEC.md §46, §85).
+   *
+   * A route's own `catch` answers everything thrown inside it, and this is thrown
+   * outside: the parser enforces the limit, so no handler ever runs. Left untranslated,
+   * the one refusal whose fix is a number in the application's own configuration is
+   * also the only one that arrives in a shape no generated client reads — and it would
+   * say `Request body is too large` without saying what the limit was.
+   */
+  app.setErrorHandler((error, request, reply) => {
+    // Everything else keeps the answer it already had: this handler exists for the
+    // failures that happen before a route's own, not to become a second one.
+    if ((error as { code?: string }).code !== 'FST_ERR_CTP_BODY_TOO_LARGE') {
+      return reply.send(error)
+    }
+
+    const accepted = request.routeOptions.bodyLimit ?? bodyLimit
+    const failure = failureOf(
+      new AssemoraError(
+        'PAYLOAD_TOO_LARGE',
+        `This request is larger than the ${accepted} bytes this endpoint accepts. A file travels as base64, which is a third larger than the file itself, so size the limit against what arrives: raise bodyLimit on the route that takes the upload, or on the server for all of them.`,
+        { status: 413 },
+      ),
+      stateOf(request).context.requestId,
+    )
+
+    return reply.status(failure.status).send(failure.payload)
+  })
 
   const csrfCookie = options.csrf?.cookie ?? 'assemora_csrf'
   const csrfHeader = options.csrf?.header ?? 'x-csrf-token'
@@ -1013,6 +1068,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
       app.route({
         method: definition.method.toUpperCase() as 'GET',
         url,
+        ...(definition.bodyLimit === undefined ? {} : { bodyLimit: definition.bodyLimit }),
         handler: handle(definition, url),
       })
     })
@@ -1082,8 +1138,10 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
       )
     },
 
-    mountCommands() {
-      return server.mount(...commandRoutes(commandEndpoints(options.registry), options.commands))
+    mountCommands(commandOptions) {
+      return server.mount(
+        ...commandRoutes(commandEndpoints(options.registry), options.commands, commandOptions),
+      )
     },
 
     mountQueries() {
