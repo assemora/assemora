@@ -150,6 +150,32 @@ have already been made — do not reverse one without writing a new ADR.
   words — a tracker fed a page of refusals hides the one 500 that mattered. The bit only
   ever *withdraws* the claim, so the harmful direction is not expressible.
 
+- **What comes next is settled, and is not e-commerce.** A real site was measured against
+  the framework — a catalogue of a hundred photographed items, a checkout, an order-status
+  screen and a staff queue. Its customer-facing half is already expressible — models,
+  resources, commands, queries, routes, blocks and policies reach far enough. So the
+  question ADR-0025 reopened is answered: **Assemora does not learn what an order is.**
+  ADR-0027 records what replaces it — the framework ships mechanisms and a package ships
+  nouns, declaring through the same builder methods an application uses. `module()` grows
+  facets; `Order` never arrives. `docs/architecture/site-kits.md` is the ordered work and
+  `site-kits-design.md` is the long form behind it.
+- Studio stays a closed, pre-built artifact and becomes registry-driven, and the unit a
+  package contributes is a **view of a declared resource**, never a screen. The argument
+  is the transport rather than a rule: a descriptor reaches Studio as JSON from
+  `() => registry.describe()`, and a function does not survive `JSON.stringify` — so a
+  predicate written into a declared action is not rejected, it is erased. The ceiling that
+  draws is real and accepted: "waiting more than five minutes" compares a field against a
+  *moving* value, so it becomes a column a job writes, which puts derived state in a
+  command where it is validated, authorized, audited and visible to an agent.
+- **A package can open the application today, and nothing says so.** `registerPolicy`
+  refuses only a duplicate and writes nothing to the registry; `authorize` grants on
+  permission *or* policy, so a policy is an alternative grant rather than a second gate;
+  and nothing anywhere registers a policy for `pages`. Twelve lines in an installed
+  package make `pages.create` and `pages.publish` succeed for a caller with no credential
+  at all. Not exploitable while nothing is published and every module is first-party —
+  critical the day a package is installable, which is what ADR-0027 is for. It is item 0.0
+  of the plan, with five other Tier 0 corrections everything else rests on.
+
 Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
 which of its limits are permanent and which were only a schedule, and adds five
 sections it never had — §131 localisation, §132 taxonomy, §133 navigation, §134 forms,
@@ -415,6 +441,43 @@ Known gaps, each with a reason rather than an oversight:
   SDK and MCP cannot edit, and the audit log cannot see. `entries.link` / `unlink` /
   `sync` following ADR-0012's generic CRUD is the shape; which side of a mutual
   relation owns the fact, and what a policy on a link means, have to be decided first.
+
+Defects that measurement found, all real, none fixed. Each carries its `path:line` in
+`docs/architecture/site-kits.md`, whose Tier 0 and Tier 1 are the ones a package makes
+urgent:
+
+- Nothing sets `bodyLimit`, so Fastify's 1 MiB default plus base64's 4/3 inflation caps
+  an upload at about 786 KB. Measured: 600 KB uploads, 800 KB is refused 413. No project
+  code can raise it, and on a site whose content is photographs that is day one.
+- `assetCacheControl` tests for a hex hash and Vite's alphabet is base64url, so every
+  asset this repository builds is `no-cache` — and there is no `ETag` and no
+  `Last-Modified`, so a conditional request re-downloads in full. Nothing is compressed
+  either: the shell bundle is 202,723 bytes against 63,732 gzipped.
+- `relation()` has no Studio control — `grep relation apps/studio/src/screens/fields.tsx`
+  is zero hits — while `EntryPicker` exists and is reachable only from `LinkInput`. And
+  the collection editor *refuses to save* a relation field without a target, then hands
+  the editor a text box for a UUID.
+- A record-scoped action (`update`, `delete`, `restore`, `publish`) passes stage one the
+  moment a policy object exists, and nothing checks the handler ever asked stage two.
+  The framework's own commands all remember; an application's need not.
+- A command and a query may share a name, and that produces two MCP tools with one name.
+  `packages/mcp/src/server.ts:97` is a `find`, so the read wins and the mutation is
+  unreachable.
+- A policy is invisible: `registerPolicy` writes nothing to the Schema Registry, so an
+  application's access control is the one thing the single source does not describe.
+- The builder canvas frames `/preview` same-origin with no `sandbox`, and the CSRF cookie
+  is `httpOnly: false` at `Path=/` — so a block view can read the parent's cookies.
+- `datetime` renders through `toISOString()` into a `datetime-local`, so 18:00 Kyiv
+  displays as 15:00. The write path is correct, so it does not compound.
+- `validateProps` has no null branch while `validateAgainstFields` does, so clearing a
+  block's image, number, date or link throws where the same field in a resource form
+  clears.
+- There is no `media.update`, so `alt`, `width` and `height` are permanently null.
+- A collection's listing emits no `ORDER BY` when no sort is sent, then paginates over an
+  unordered heap.
+- A validation message is English prose with its parameter baked in and `toPayload` drops
+  the code, so a non-English site cannot show a server-side field error. §131 does not
+  fix it — a translated row inherits the same untranslatable English.
 
 ## Commands
 

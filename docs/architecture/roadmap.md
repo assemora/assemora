@@ -68,3 +68,15 @@ their own phases. Until they contain a `package.json`, pnpm ignores them.
 The `apps/`, `starters/` and `examples/` directories are no longer empty; every one
 of them is a workspace package that CI compiles, which is what stops a starter or an
 example from rotting quietly.
+
+## After the phases
+
+The phases described the framework. What follows describes what it is *for*, and it is
+not a phase eleven: ADR-0027 settles that Assemora ships mechanisms and a package ships
+nouns, so the work is to close the gap between what a project can write in TypeScript and
+what a package can declare. `site-kits.md` is the ordered list and `site-kits-design.md` the
+long form; both were written from a real site measured against the framework.
+
+The spec also grew five sections it never had — §131 localisation, §132 taxonomy, §133
+navigation, §134 forms, §135 singletons (ADR-0025). None is built. §135 and §133 are in
+the site-kit plan because a package needs them; the other three are open.
