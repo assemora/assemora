@@ -88,6 +88,8 @@ export type ResourceDescriptor = {
     readonly delete: boolean
   }
   readonly defaultSort?: string
+  /** The field that names an entry, where the resource declared one. */
+  readonly titleField?: string
   readonly perPage: number
 }
 

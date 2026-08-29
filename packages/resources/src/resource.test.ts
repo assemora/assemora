@@ -388,3 +388,35 @@ describe('a field named after something on Object.prototype', () => {
     expect(Object.hasOwn(found ?? {}, 'constructor')).toBe(false)
   })
 })
+
+describe('what an entry is called (SPEC.md §35, §58)', () => {
+  it('describes the field a picker should read', () => {
+    const Named = resource(
+      Article,
+      { title: text(), slug: slug('title') },
+      { name: 'named', titleField: 'title' },
+    )
+
+    expect(Named.descriptor.titleField).toBe('title')
+  })
+
+  it('says nothing when nothing was said, so a reader knows it is guessing', () => {
+    expect(Articles.descriptor.titleField).toBeUndefined()
+  })
+
+  it('refuses a field the resource does not declare, and lists the ones it does', () => {
+    expect(() =>
+      resource(Article, { title: text() }, { name: 'unnamed', titleField: 'headline' }),
+    ).toThrow(/not one of its fields.*title/s)
+  })
+
+  it('refuses a hidden field, because a title nobody may read is not a title', () => {
+    expect(() =>
+      resource(
+        Article,
+        { title: text().hidden(), slug: slug('title') },
+        { name: 'secret', titleField: 'title' },
+      ),
+    ).toThrow(/hidden/)
+  })
+})

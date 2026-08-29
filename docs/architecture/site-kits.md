@@ -80,7 +80,7 @@ unreachable. `useAdapter`, `useStorage` and `registerJobBus` are the same shape.
 | # | Change | Package | Cost |
 | --- | --- | --- | --- |
 | ~~1.1~~ | ~~`bodyLimit` on the server and per route~~ — **done** | `http` | ~30 lines |
-| 1.2 | `case 'relation'` in Studio, + `ResourceOptions.titleField` | Studio + `resources` | ~40 lines |
+| ~~1.2~~ | ~~`case 'relation'` in Studio, + `ResourceOptions.titleField`~~ — **done** | Studio + `resources` | ~40 lines |
 | 1.3 | Asset caching, `ETag`, compression | `http` | ~120 lines |
 | 1.4 | A body parser, and the exact bytes | `http` | ~250 lines |
 
@@ -98,7 +98,12 @@ limit, because a body the parser rejects never reaches a route and so was arrivi
 shape no generated client reads. `RouteDescriptor.bodyLimit` is the registry half, so
 OpenAPI and the SDK stop promising an upload the server refuses.
 
-**1.2** `grep relation apps/studio/src/screens/fields.tsx` → zero. `EntryPicker` exists
+**1.2 — done.** Studio draws a picker over the target resource, and `ResourceOptions`
+carries `titleField`, refused at `resource()` when it names nothing or names a hidden
+field. A relation whose target is not described, or not readable by this actor, keeps a
+text box and says which of the two it is. What follows is what it was.
+
+`grep relation apps/studio/src/screens/fields.tsx` → zero. `EntryPicker` exists
 (`fields.tsx:378`) and is reachable only from `LinkInput`; `media()` — the same stored
 shape — got a picker and `relation()` got neither. And Studio's collection editor
 *refuses to save* a relation field without a target

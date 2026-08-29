@@ -351,8 +351,20 @@ const CodeInput = ({
   )
 }
 
-/** What an entry is called in a picker, when nothing declares a title. */
+/**
+ * What an entry is called wherever one line of text stands for the whole row.
+ *
+ * The resource's own answer first: `titleField` is a declaration, and everything below
+ * it is a guess. The guess reads the first declared field that holds text, which makes
+ * the answer depend on the order somebody wrote the fields in — declare `articleNumber`
+ * before `name` and every list reads `091`, `001`, `144`.
+ */
 const titleOf = (resource: ResourceDescriptor, row: Readonly<Record<string, unknown>>): string => {
+  const declared =
+    resource.titleField === undefined ? undefined : String(row[resource.titleField] ?? '')
+
+  if (declared !== undefined && declared !== '') return declared
+
   const readable = resource.fields.find(
     (field) =>
       !field.hidden &&
@@ -369,12 +381,80 @@ const titleOf = (resource: ResourceDescriptor, row: Readonly<Record<string, unkn
 type Listing = { readonly data: readonly Record<string, unknown>[] }
 
 /**
- * Which entry of which resource a link points at.
+ * One entry of one resource, chosen by its title rather than typed as a uuid.
  *
- * A page of entries rather than the whole set (SPEC.md §89), searched where the resource
- * declares a searchable field. A stored id the page does not hold stays offered, because
- * it is still what the link points at.
+ * A page of entries rather than the whole set (SPEC.md §89), searched where the
+ * resource declares a searchable field. A stored id the page does not hold stays
+ * offered, because it is still what the value points at.
  */
+const EntryOfResource = ({
+  resource,
+  id,
+  onPick,
+}: {
+  resource: ResourceDescriptor
+  id: string
+  onPick(id: string): void
+}) => {
+  const [search, setSearch] = useState('')
+
+  const listing = useQuery({
+    queryKey: ['entries', resource.name, search],
+    queryFn: ({ signal }) =>
+      api.query<Listing>('entries.list', { resource: resource.name, search, perPage: 50 }, signal),
+  })
+
+  const rows = listing.data?.data ?? []
+
+  if (listing.isError) {
+    // The listing is a query like any other and can be refused: a role may read this
+    // entry and not that resource. The id is still writable by hand, so the value is
+    // not stuck behind a control that cannot load.
+    return (
+      <div className="space-y-1">
+        <Input
+          className="font-mono text-xs"
+          placeholder="The id it points at"
+          value={id}
+          onChange={(event) => onPick(event.target.value)}
+        />
+        <span className="text-xs text-ink-faint">
+          {resource.label} cannot be listed for you, so the id has to be written out.
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {resource.fields.some((field) => field.searchable) && (
+        <Input
+          type="search"
+          className="max-w-48"
+          placeholder={`Search ${resource.label.toLowerCase()}…`}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      )}
+
+      <Select aria-label="Which entry" value={id} onChange={(event) => onPick(event.target.value)}>
+        <option value="">{listing.isPending ? 'Loading…' : 'Choose an entry…'}</option>
+        {/* An id this page does not hold — an older entry, one another search found —
+            is still what the value points at, so it stays offered. */}
+        {id === '' || rows.some((row) => String(row.id) === id) ? null : (
+          <option value={id}>{id}</option>
+        )}
+        {rows.map((row) => (
+          <option key={String(row.id)} value={String(row.id)}>
+            {titleOf(resource, row)}
+          </option>
+        ))}
+      </Select>
+    </div>
+  )
+}
+
+/** Which entry of which resource a link points at. */
 const EntryPicker = ({
   resource,
   id,
@@ -384,89 +464,90 @@ const EntryPicker = ({
   id: string
   onPick(next: { resource: string; id: string }): void
 }) => {
-  const [search, setSearch] = useState('')
   const introspection = useIntrospection()
   const resources = (introspection.data?.resources ?? []).filter((each) => each.api.read)
   const chosen = resources.find((each) => each.name === resource)
 
-  const listing = useQuery({
-    queryKey: ['entries', resource, search],
-    queryFn: ({ signal }) =>
-      api.query<Listing>('entries.list', { resource, search, perPage: 50 }, signal),
-    enabled: chosen !== undefined,
-  })
-
-  const rows = listing.data?.data ?? []
-
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <Select
-          className="max-w-48"
-          aria-label="Which resource"
-          value={resource}
-          onChange={(event) => onPick({ resource: event.target.value, id: '' })}
-        >
-          <option value="">Choose a resource…</option>
-          {/* A resource this application no longer has is still what the link points
-              at, so it stays offered rather than vanishing. */}
-          {resource === '' || resources.some((each) => each.name === resource) ? null : (
-            <option value={resource}>{resource}</option>
-          )}
-          {resources.map((each) => (
-            <option key={each.name} value={each.name}>
-              {each.label}
-            </option>
-          ))}
-        </Select>
-
-        {chosen?.fields.some((field) => field.searchable) && (
-          <Input
-            type="search"
-            className="max-w-48"
-            placeholder={`Search ${chosen.label.toLowerCase()}…`}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+      <Select
+        className="max-w-48"
+        aria-label="Which resource"
+        value={resource}
+        onChange={(event) => onPick({ resource: event.target.value, id: '' })}
+      >
+        <option value="">Choose a resource…</option>
+        {/* A resource this application no longer has is still what the link points
+            at, so it stays offered rather than vanishing. */}
+        {resource === '' || resources.some((each) => each.name === resource) ? null : (
+          <option value={resource}>{resource}</option>
         )}
-      </div>
-
-      {chosen !== undefined &&
-        (listing.isError ? (
-          // The listing is a query like any other and can be refused: a role may read
-          // this entry and not that resource. The id is still writable by hand, so the
-          // link is not stuck behind a control that cannot load.
-          <div className="space-y-1">
-            <Input
-              className="font-mono text-xs"
-              placeholder="The id it points at"
-              value={id}
-              onChange={(event) => onPick({ resource, id: event.target.value })}
-            />
-            <span className="text-xs text-ink-faint">
-              {chosen.label} cannot be listed for you, so the id has to be written out.
-            </span>
-          </div>
-        ) : (
-          <Select
-            aria-label="Which entry"
-            value={id}
-            onChange={(event) => onPick({ resource, id: event.target.value })}
-          >
-            <option value="">{listing.isPending ? 'Loading…' : 'Choose an entry…'}</option>
-            {/* An id this page does not hold — an older entry, one another search
-                found — is still what the link points at, so it stays offered. */}
-            {id === '' || rows.some((row) => String(row.id) === id) ? null : (
-              <option value={id}>{id}</option>
-            )}
-            {rows.map((row) => (
-              <option key={String(row.id)} value={String(row.id)}>
-                {titleOf(chosen, row)}
-              </option>
-            ))}
-          </Select>
+        {resources.map((each) => (
+          <option key={each.name} value={each.name}>
+            {each.label}
+          </option>
         ))}
+      </Select>
+
+      {chosen !== undefined && (
+        <EntryOfResource
+          resource={chosen}
+          id={id}
+          onPick={(next) => onPick({ resource, id: next })}
+        />
+      )}
     </div>
+  )
+}
+
+/**
+ * A reference to an entry of the resource the field named (SPEC.md §39).
+ *
+ * The target is part of the declaration, so this control has nothing to ask: it lists
+ * that resource and nothing else. Clearing sends `null` rather than an empty string,
+ * which is what clears an optional field — an empty string is not a uuid, and the
+ * resource would refuse it.
+ */
+const RelationInput = ({
+  field,
+  value,
+  onChange,
+}: {
+  field: FieldDescriptor
+  value: unknown
+  onChange(value: unknown): void
+}) => {
+  const introspection = useIntrospection()
+  const target = field.target ?? ''
+  const chosen = (introspection.data?.resources ?? []).find((each) => each.name === target)
+
+  // A relation whose target this application does not describe — not registered, or
+  // not readable by this actor. The id is what the column holds, so it stays editable
+  // rather than leaving the field unfillable, and the reason is said out loud.
+  if (chosen === undefined || !chosen.api.read) {
+    return (
+      <div className="space-y-1">
+        <Input
+          className="font-mono text-xs"
+          placeholder="The id it points at"
+          value={asText(value)}
+          onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
+        />
+        <span className="text-xs text-ink-faint">
+          {target === ''
+            ? 'This field names no target resource, so there is nothing to list.'
+            : `${target} cannot be listed here, so the id has to be written out.`}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <EntryOfResource
+      resource={chosen}
+      id={asText(value)}
+      onPick={(id) => onChange(id === '' ? null : id)}
+    />
   )
 }
 
@@ -1108,6 +1189,9 @@ const Control = ({
 
     case 'media':
       return <MediaInput field={field} value={value} onChange={onChange} />
+
+    case 'relation':
+      return <RelationInput field={field} value={value} onChange={onChange} />
 
     case 'text':
     case 'slug':

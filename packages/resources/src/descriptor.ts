@@ -59,6 +59,16 @@ export type ResourceDescriptor = {
   readonly fields: readonly ResourceFieldDescriptor[]
   readonly api: ApiExposure
   readonly defaultSort?: string
+  /**
+   * The field that names an entry, wherever one has to be shown as a line of text
+   * (SPEC.md §35, §58).
+   *
+   * A picker, a relation, a breadcrumb and a list all need one string for a row, and
+   * without this they guess: the first declared field that happens to hold text. That
+   * is a guess about *declaration order*, so declaring `articleNumber` before `name`
+   * makes every list in Studio read `091`, `001`, `144`.
+   */
+  readonly titleField?: string
   readonly perPage: number
 }
 

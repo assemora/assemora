@@ -442,7 +442,8 @@ Known gaps, each with a reason rather than an oversight:
   `sync` following ADR-0012's generic CRUD is the shape; which side of a mutual
   relation owns the fact, and what a policy on a link means, have to be decided first.
 
-**Site kits, Tier 1.1 — done.** A body limit is a number the application sets.
+**Site kits, Tier 1.1 and 1.2 — done.** A body limit is a number the application sets,
+and a relation is chosen rather than typed.
 
 - `bodyLimit` is an option on `createHttpServer`, on a route, and per command name on the
   endpoints `mountCommands()` generates. Per route, because the ceiling a photograph needs
@@ -454,6 +455,13 @@ Known gaps, each with a reason rather than an oversight:
   so without that it arrived in a shape no generated client reads.
 - `RouteDescriptor.bodyLimit` is the registry half, so OpenAPI and the SDK stop promising
   an upload the server answers 413 to.
+- Studio draws `relation()` with a picker over the target resource, and `ResourceOptions`
+  gains `titleField`. Without it a picker read the first *declared* field holding text, so
+  declaring `articleNumber` before `name` made every list read `091`, `001`, `144` — an
+  answer that depended on the order somebody wrote the fields in. A `titleField` naming
+  nothing, or naming a hidden field, is refused at `resource()` where it was written.
+  A relation whose target is not described, or not readable by this actor, keeps a text
+  box and says which of the two it is: the column still holds an id.
 
 The rest of what that measurement found is real and unfixed. Each carries its `path:line`
 in `docs/architecture/site-kits.md`, whose Tier 0 and Tier 1 are the ones a package makes
@@ -463,10 +471,9 @@ urgent:
   asset this repository builds is `no-cache` — and there is no `ETag` and no
   `Last-Modified`, so a conditional request re-downloads in full. Nothing is compressed
   either: the shell bundle is 202,723 bytes against 63,732 gzipped.
-- `relation()` has no Studio control — `grep relation apps/studio/src/screens/fields.tsx`
-  is zero hits — while `EntryPicker` exists and is reachable only from `LinkInput`. And
-  the collection editor *refuses to save* a relation field without a target, then hands
-  the editor a text box for a UUID.
+- A collection has no `titleField`: a dynamic definition does not carry one, so a
+  collection made in Studio still falls to the guess. The picker itself works there,
+  because a relation's target is in the descriptor either way.
 - A record-scoped action (`update`, `delete`, `restore`, `publish`) passes stage one the
   moment a policy object exists, and nothing checks the handler ever asked stage two.
   The framework's own commands all remember; an application's need not.

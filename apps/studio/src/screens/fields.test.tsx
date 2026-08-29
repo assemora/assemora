@@ -28,16 +28,20 @@ const field = (
 })
 
 /** A provider, because a picker asks the application what exists rather than guessing. */
-const draw = (element: ReactElement): string =>
-  renderToStaticMarkup(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
-      {element}
-    </QueryClientProvider>,
-  )
+const draw = (element: ReactElement, seed?: (client: QueryClient) => void): string => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-const input = (descriptor: FieldDescriptor, value: unknown, issues?: Record<string, string[]>) =>
+  seed?.(client)
+
+  return renderToStaticMarkup(<QueryClientProvider client={client}>{element}</QueryClientProvider>)
+}
+
+const input = (
+  descriptor: FieldDescriptor,
+  value: unknown,
+  issues?: Record<string, string[]>,
+  seed?: (client: QueryClient) => void,
+) =>
   draw(
     <FieldInput
       field={descriptor}
@@ -45,7 +49,34 @@ const input = (descriptor: FieldDescriptor, value: unknown, issues?: Record<stri
       {...(issues === undefined ? {} : { issues })}
       onChange={() => undefined}
     />,
+    seed,
   )
+
+/** What the application answered when Studio asked what exists. */
+const knows = (
+  resources: readonly Record<string, unknown>[],
+  entries: readonly Record<string, unknown>[] = [],
+) => {
+  const named = resources[0]?.name
+
+  return (client: QueryClient): void => {
+    client.setQueryData(['introspection'], { resources })
+
+    if (named !== undefined) client.setQueryData(['entries', named, ''], { data: entries })
+  }
+}
+
+/** A resource, described the way `/_introspection` describes one. */
+const listable = (over: Record<string, unknown>) => ({
+  label: 'Products',
+  kind: 'static',
+  model: 'products',
+  primaryKey: 'id',
+  fields: [field({ kind: 'text', name: 'name' })],
+  api: { create: true, read: true, update: true, delete: true },
+  perPage: 20,
+  ...over,
+})
 
 /** How many times a tag opens. Counting cells is the whole point of the table test. */
 const count = (markup: string, tag: string): number => markup.split(`<${tag}`).length - 1
@@ -308,5 +339,81 @@ describe('a kind Studio has never heard of', () => {
 
     expect(markup).toContain('value="here"')
     expect(markup).not.toContain('<textarea')
+  })
+})
+
+describe('a relation is chosen, not typed (SPEC.md §39, §58)', () => {
+  const relation = field({ kind: 'relation', name: 'category', target: 'products' })
+
+  it('lists the resource the field names', () => {
+    const html = input(
+      relation,
+      '',
+      undefined,
+      knows(
+        [listable({ name: 'products' })],
+        [
+          { id: 'd1', name: 'Wide Brim Hat' },
+          { id: 'd2', name: 'Canvas Tote' },
+        ],
+      ),
+    )
+
+    expect(html).toContain('Wide Brim Hat')
+    expect(html).toContain('Canvas Tote')
+    expect(html).toContain('<select')
+  })
+
+  it('calls an entry what the resource says names it', () => {
+    const html = input(
+      relation,
+      '',
+      undefined,
+      knows(
+        [
+          listable({
+            name: 'products',
+            titleField: 'name',
+            // Declared first, and therefore what the guess would have read.
+            fields: [
+              field({ kind: 'text', name: 'articleNumber' }),
+              field({ kind: 'text', name: 'name' }),
+            ],
+          }),
+        ],
+        [{ id: 'd1', articleNumber: '091', name: 'Wide Brim Hat' }],
+      ),
+    )
+
+    // Declaration order would have made this read `091`, which is the whole reason
+    // `titleField` exists.
+    expect(html).toContain('Wide Brim Hat')
+    expect(html).not.toContain('>091<')
+  })
+
+  it('keeps the stored id offered when the page it lists does not hold it', () => {
+    const html = input(
+      relation,
+      'd9',
+      undefined,
+      knows([listable({ name: 'products' })], [{ id: 'd1', name: 'Wide Brim Hat' }]),
+    )
+
+    expect(html).toContain('d9')
+  })
+
+  it('says so, and stays fillable, when the field names no target', () => {
+    const html = input(field({ kind: 'relation', name: 'category' }), 'd1')
+
+    expect(html).toContain('names no target resource')
+    expect(html).toContain('<input')
+    expect(html).toContain('d1')
+  })
+
+  it('says so, and stays fillable, when the target cannot be listed here', () => {
+    const html = input(relation, 'd1', undefined, knows([listable({ name: 'something-else' })]))
+
+    expect(html).toContain('cannot be listed here')
+    expect(html).toContain('<input')
   })
 })

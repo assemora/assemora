@@ -5,7 +5,7 @@
  * filtered, searched and sorted, and which CRUD endpoints exist. The model keeps
  * owning the data.
  */
-import { currentContext, ValidationError } from '@assemora/core'
+import { ConfigurationError, currentContext, ValidationError } from '@assemora/core'
 import type {
   ComputedValues,
   Fields as DataFields,
@@ -31,6 +31,20 @@ export type ResourceOptions = {
   readonly api?: Partial<ApiExposure>
   /** `title` or `-createdAt`. */
   readonly defaultSort?: string
+  /**
+   * Which field names an entry, where one line of text has to stand for the whole row.
+   *
+   * ```ts
+   * resource(Dish, { name: text(), articleNumber: text() }, { titleField: 'name' })
+   * ```
+   *
+   * A relation control, a link picker and a list all have to call an entry something.
+   * Unsaid, they take the first declared field holding text — an answer that depends
+   * on the order the fields were written in, which is not something a declaration
+   * meant to say. It has to name a declared field that is not hidden: a title nobody
+   * may read is not a title (SPEC.md §35, §58).
+   */
+  readonly titleField?: string
   readonly perPage?: number
   readonly maxPerPage?: number
 }
@@ -135,6 +149,23 @@ export const resource = <
   const maxPerPage = options.maxPerPage ?? 100
   const entries = Object.entries(fields) as [string, AnyField][]
 
+  if (options.titleField !== undefined) {
+    const chosen = entries.find(([fieldName]) => fieldName === options.titleField)?.[1]
+    const offered = entries
+      .filter(([, field]) => !field.isHidden)
+      .map(([fieldName]) => fieldName)
+      .join(', ')
+
+    // Refused where it was written rather than shrugged at in Studio: a title that
+    // names nothing is a resource whose every list reads as a uuid, and the person
+    // who would see that is not the person who wrote this line.
+    if (chosen === undefined || chosen.isHidden) {
+      throw new ConfigurationError(
+        `"${name}" declares titleField: "${options.titleField}", which is ${chosen === undefined ? 'not one of its fields' : 'hidden, and a title nobody may read is not a title'}. Name one of: ${offered === '' ? 'nothing this resource declares' : offered}.`,
+      )
+    }
+  }
+
   const descriptor: ResourceDescriptor = {
     name,
     label,
@@ -144,6 +175,7 @@ export const resource = <
     fields: entries.map(([fieldName, field]) => describeField(fieldName, field)),
     api: { ...DEFAULT_API, ...options.api },
     ...(options.defaultSort === undefined ? {} : { defaultSort: options.defaultSort }),
+    ...(options.titleField === undefined ? {} : { titleField: options.titleField }),
     perPage,
   }
 
