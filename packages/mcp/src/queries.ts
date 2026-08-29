@@ -91,9 +91,10 @@ export const mcpQueries = (options: McpQueryOptions) => {
         permissions: [
           ...new Set([...(all.commands ?? []), ...(all.queries ?? [])].map(named).filter(Boolean)),
         ].sort(),
-        // Nothing implements localisation yet. Declared here because §71 declares it,
-        // and an empty list is a truthful answer.
-        locales: [],
+        // The languages this deployment serves, read from the registry like everything
+        // else here (SPEC.md §131). Empty for an application in one language, which is
+        // what it always answered.
+        locales: all.locales ?? [],
       }
     },
   })

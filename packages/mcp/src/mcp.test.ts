@@ -109,6 +109,28 @@ describe('assemora.describe (SPEC.md §71)', () => {
     ])
   })
 
+  it('names the languages this deployment serves (SPEC.md §131)', async () => {
+    const multilingual = createApplication({
+      modules: [mcp()],
+      authorization: permitAll(),
+      logger: createLogger(silentWriter),
+      locales: ['uk', 'en'],
+      defaultLocale: 'en',
+    })
+
+    await multilingual.boot()
+
+    const described = (await multilingual.run({ source: 'mcp' }, () =>
+      multilingual.queries.execute('assemora.describe', {}),
+    )) as { locales: readonly { name: string; default: boolean }[] }
+
+    // An agent asked to translate has to know what into, and this is where it reads it.
+    expect(described.locales).toEqual([
+      { name: 'uk', default: false },
+      { name: 'en', default: true },
+    ])
+  })
+
   it('lists what an actor could be granted, because a command name is a permission', async () => {
     const described = (await app.run({ source: 'mcp' }, () =>
       app.queries.execute('assemora.describe', {}),
