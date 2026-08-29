@@ -320,6 +320,26 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
     return code === undefined ? [] : [comparison('locale', '=', code)]
   }
 
+  /**
+   * The state a `where(query => …)` group is built in.
+   *
+   * Empty conditions, and neither of the two the query adds by itself: a group is the
+   * caller's own parentheses and nothing else. `toAst()` is what the group is taken
+   * from, and it puts the soft-delete and language filters at the front — so a nested
+   * `orWhere` produced `(deletedAt is null AND a) OR b`, which is not the parentheses
+   * anybody wrote. It was invisible while the outer query repeated both conditions
+   * anyway; the fallback rewrites the language one, and then it is not invisible.
+   *
+   * Expressed as `trashed: 'with'` and `locale: 'all'` rather than as a third flag,
+   * because those are exactly what "add neither" already means.
+   */
+  const nestedState = (): QueryState => ({
+    ...state,
+    where: [],
+    trashed: 'with',
+    locale: 'all',
+  })
+
   const softDeleteCondition = (): readonly Condition[] => {
     const column = state.table().softDeleteColumn
 
@@ -452,7 +472,7 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
     where(first: unknown, second?: unknown, third?: unknown) {
       if (typeof first === 'function') {
         const nested = (first as (query: ScopedQuery<F, SN, Row>) => ScopedQuery<F, SN, Row>)(
-          createQuery<F, SN, Row>({ ...state, where: [] }, runtime),
+          createQuery<F, SN, Row>(nestedState(), runtime),
         )
         return withCondition(group(nested.toAst().where))
       }
@@ -475,7 +495,7 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
     orWhere(first: unknown, second?: unknown, third?: unknown) {
       if (typeof first === 'function') {
         const nested = (first as (query: ScopedQuery<F, SN, Row>) => ScopedQuery<F, SN, Row>)(
-          createQuery<F, SN, Row>({ ...state, where: [] }, runtime),
+          createQuery<F, SN, Row>(nestedState(), runtime),
         )
         return withCondition(group(nested.toAst().where, 'or'))
       }

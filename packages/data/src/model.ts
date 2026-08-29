@@ -60,6 +60,19 @@ export type Model<
   all(): Promise<Instance<F, C>[]>
   create(values: Partial<InferRecord<F>>): Promise<Instance<F, C>>
   /**
+   * The row of this entry in the language being read (SPEC.md §131).
+   *
+   * `find()` answers the row whose id was asked for, in whatever language it happens to
+   * be written — which is what a policy check and an edit want. This answers the *entry*
+   * that row belongs to, read in the language of the operation, with the same fallback
+   * as any other read. It is what a relation needs: a translation's foreign keys point
+   * at originals, so following one and showing its name means asking for the entry
+   * rather than for the row.
+   *
+   * Identical to `find()` on a model that is not translatable.
+   */
+  translated(id: unknown): Promise<Instance<F, C> | null>
+  /**
    * One row per language, and the row keeps its own shape (SPEC.md §131).
    *
    * ```ts
@@ -339,6 +352,41 @@ export const model = <
 
     all() {
       return query().get()
+    },
+
+    async translated(id: unknown) {
+      if (descriptor().translatable !== true) return statics.find(id)
+
+      // The row first, unscoped, because the id may name a translation: asking for the
+      // group of `id` without knowing which row it is would miss the original.
+      const named = await statics.find(id)
+
+      if (named === null) return null
+
+      const row = named as unknown as Record<string, unknown>
+      const entry = row.translationOf ?? row[primaryKey]
+
+      /**
+       * `translationOf` is a column of a translatable model and not a member of `F`,
+       * which is what makes this the one place that has to say so. Everything else —
+       * the language filter, the fallback — is the ordinary read.
+       */
+      const grouped = query() as unknown as {
+        where(build: (nested: unknown) => unknown): { get(): Promise<Instance<F, C>[]> }
+      }
+
+      const rows = await grouped
+        .where((nested) => {
+          const scope = nested as {
+            where(field: string, value: unknown): typeof scope
+            orWhere(field: string, value: unknown): typeof scope
+          }
+
+          return scope.where(primaryKey, entry).orWhere('translationOf', entry)
+        })
+        .get()
+
+      return rows[0] ?? null
     },
 
     async create(values: Partial<InferRecord<F>>) {

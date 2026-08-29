@@ -114,3 +114,31 @@ describe('a missing translation falls back to the default language', () => {
     expect(rows.map((row) => row.locale)).toEqual(['uk', 'uk'])
   })
 })
+
+describe('translated() follows a relation to the entry rather than to the row', () => {
+  it('answers the row of this entry in the language being read', async () => {
+    // `d2` is the Ukrainian original; asking for it in Russian gives the Russian row.
+    const found = await speaking('ru', async () => Dish.translated('d2'))
+
+    expect(found?.id).toBe('d2-ru')
+    expect(found?.locale).toBe('ru')
+  })
+
+  it('works from either row of the entry, because a foreign key names one of them', async () => {
+    const found = await speaking('uk', async () => Dish.translated('d2-ru'))
+
+    expect(found?.id).toBe('d2')
+  })
+
+  it('falls back like any other read', async () => {
+    const found = await speaking('ru', async () => Dish.translated('d1'))
+
+    expect(found?.locale).toBe('uk')
+  })
+
+  it('is find() on a model that is not translatable', async () => {
+    const Plain = model('plain_two', { id: uuid().primary(), title: string() })
+
+    expect(await speaking('ru', async () => Plain.translated('nothing'))).toBeNull()
+  })
+})
