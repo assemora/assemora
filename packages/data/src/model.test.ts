@@ -398,6 +398,19 @@ describe('a translatable model (SPEC.md §131)', () => {
     expect(named('translationOf')?.isNullable).toBe(true)
   })
 
+  it('makes a unique column unique within a language', () => {
+    const Slugged = model('slugged', {
+      id: uuid().primary(),
+      slug: string().unique(),
+      title: string(),
+    }).translatable()
+
+    // Globally unique would mean the Russian row could not carry the Ukrainian slug —
+    // which is to say the model could hold no translations at all.
+    expect(Slugged.descriptor.columns.find((one) => one.name === 'slug')?.isUnique).toBe(false)
+    expect(Slugged.descriptor.uniqueTogether).toEqual([['slug', 'locale']])
+  })
+
   it('leaves a model that is not translatable alone', () => {
     const Plain = model('plain_articles', { id: uuid().primary(), title: string() })
 

@@ -51,6 +51,7 @@ const reachable = await (async () => {
 
 const Dish = model('it_dishes', {
   id: uuid().primary().defaultRandom(),
+  slug: string().unique(),
   title: string(),
   visible: boolean().default(true),
 }).translatable()
@@ -90,12 +91,14 @@ describe.skipIf(!reachable)('a translatable model against PostgreSQL', () => {
   beforeAll(async () => {
     // Written outside any context, which is what a seed and a migration are.
     const pizza = await Dish.create({
+      slug: 'pizza',
       title: 'Піца Папа Котта',
       visible: true,
       locale: 'uk',
       translationOf: null,
     })
     const soup = await Dish.create({
+      slug: 'borsch',
       title: 'Борщ',
       visible: true,
       locale: 'uk',
@@ -104,8 +107,16 @@ describe.skipIf(!reachable)('a translatable model against PostgreSQL', () => {
 
     borsch = String(soup.id)
 
-    await Dish.create({ title: 'Борщ', visible: true, locale: 'ru', translationOf: borsch })
+    // The same slug in another language, which a globally unique column would refuse.
     await Dish.create({
+      slug: 'borsch',
+      title: 'Борщ',
+      visible: true,
+      locale: 'ru',
+      translationOf: borsch,
+    })
+    await Dish.create({
+      slug: 'hidden',
       title: 'Прихована',
       visible: false,
       locale: 'uk',
@@ -113,6 +124,18 @@ describe.skipIf(!reachable)('a translatable model against PostgreSQL', () => {
     })
 
     expect(String(pizza.id)).not.toBe(borsch)
+  })
+
+  it('lets two languages share a slug, and refuses two rows of one language sharing it', async () => {
+    await expect(
+      Dish.create({
+        slug: 'borsch',
+        title: 'Другий борщ',
+        visible: true,
+        locale: 'uk',
+        translationOf: null,
+      }),
+    ).rejects.toThrow()
   })
 
   it('carries both columns into the real schema, indexed', async () => {

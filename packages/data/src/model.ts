@@ -200,15 +200,37 @@ export const model = <
   const descriptor = (): TableDescriptor => {
     if (cached !== undefined) return cached
 
+    const described = Object.entries(columns).map(([name, column]) => describeColumn(name, column))
+
+    /**
+     * On a translatable model, a unique column is unique *within a language*.
+     *
+     * `slug: string().unique()` on a model with one row per language is a model with no
+     * translations: the Russian row would carry the same slug as the Ukrainian one and
+     * the constraint would refuse it. Globally unique is never what was meant — two
+     * rows sharing a slug *are* the same entry, in two languages, which is exactly what
+     * §131 stores.
+     *
+     * Done here rather than asked of the application, because it is not a choice: an
+     * application that had to remember would be one where forgetting is a table that
+     * cannot hold a translation, discovered at the first one.
+     */
+    const perLocale = translates ? described.filter((column) => column.isUnique) : []
+
     cached = {
       name: table,
       primaryKey,
-      columns: Object.entries(columns).map(([name, column]) => describeColumn(name, column)),
+      columns: described.map((column) =>
+        perLocale.includes(column) ? { ...column, isUnique: false } : column,
+      ),
       relations: Object.entries(relations).map(([name, relation]) =>
         describeRelation(name, relation, { table, primaryKey }),
       ),
       ...(softDeleteColumn === undefined ? {} : { softDeleteColumn }),
       ...(translates ? { translatable: true } : {}),
+      ...(perLocale.length === 0
+        ? {}
+        : { uniqueTogether: perLocale.map((column) => [column.name, 'locale']) }),
     }
 
     return cached
