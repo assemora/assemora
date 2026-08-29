@@ -74,7 +74,7 @@ describe('an application that serves several languages', () => {
     const seen = await app.run({ source: 'cli' }, async () => currentContext())
 
     expect(seen?.locale).toBe('uk')
-    expect(seen?.defaultLocale).toBe('uk')
+    expect(seen?.locales?.defaultLocale).toBe('uk')
   })
 
   it('keeps the language an operation did name', async () => {
@@ -84,7 +84,7 @@ describe('an application that serves several languages', () => {
 
     expect(seen?.locale).toBe('en')
     // The fallback is the deployment's, never the operation's.
-    expect(seen?.defaultLocale).toBe('uk')
+    expect(seen?.locales?.defaultLocale).toBe('uk')
   })
 
   it('leaves an application in one language exactly as it was', async () => {

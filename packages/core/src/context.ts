@@ -8,6 +8,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 
+import type { LocaleSettings } from './locales.js'
+
 export type ActorType = 'user' | 'agent' | 'api'
 
 export type Actor = {
@@ -39,14 +41,18 @@ export type AssemoraContext = {
    */
   readonly locale?: string
   /**
-   * The language a missing translation falls back to.
+   * Every language this deployment serves, and which one is the fallback.
    *
    * Here rather than in a module-level global, because it travels with the operation:
    * a job replaying an actor's work and a request being served are two operations at
-   * once, and a global would make the second decide for the first. Whoever creates the
-   * context — the application, the HTTP server — reads it from one configuration.
+   * once, and a global would make the second decide for the first.
+   *
+   * The whole settings object and not the fallback alone, because everything that has
+   * to check a language against the set — a command taking one as an argument, a tool
+   * an agent calls — would otherwise need a second way to reach it, and a second way
+   * is how the two come to disagree.
    */
-  readonly defaultLocale?: string
+  readonly locales?: LocaleSettings
   /**
    * What the client said it was, when the operation arrived over a network.
    *
@@ -74,7 +80,7 @@ export type ContextInit = {
   readonly requestId?: string
   readonly actor?: Actor
   readonly locale?: string
-  readonly defaultLocale?: string
+  readonly locales?: LocaleSettings
   readonly userAgent?: string
 }
 
@@ -83,7 +89,7 @@ export const createContext = (init: ContextInit): AssemoraContext => ({
   source: init.source,
   ...(init.actor === undefined ? {} : { actor: init.actor }),
   ...(init.locale === undefined ? {} : { locale: init.locale }),
-  ...(init.defaultLocale === undefined ? {} : { defaultLocale: init.defaultLocale }),
+  ...(init.locales === undefined ? {} : { locales: init.locales }),
   ...(init.userAgent === undefined ? {} : { userAgent: init.userAgent }),
 })
 

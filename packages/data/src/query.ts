@@ -381,7 +381,7 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
   const astToRun = async (): Promise<QueryAst> => {
     const base = toAst()
     const code = readsIn()
-    const fallbackTo = currentContext()?.defaultLocale
+    const fallbackTo = currentContext()?.locales?.defaultLocale
 
     if (
       !state.fallback ||

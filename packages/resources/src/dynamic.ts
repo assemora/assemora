@@ -353,6 +353,21 @@ export const dynamicResource = (
     validate,
 
     [PERSISTENCE]: {
+      /**
+       * A collection is not translatable (SPEC.md §37, §131).
+       *
+       * Its entries live in one shared table as JSONB, so "one row per language" would
+       * be one row per language *of every collection at once* — and the definition a
+       * collection is made from is stored data with no place to say which of its fields
+       * are worth translating. It is the one gap in "every layer, or none", and it is
+       * named here rather than left to be discovered.
+       */
+      translatable: false,
+
+      async translation() {
+        return null
+      },
+
       async load(id) {
         return wholeEntry((await load(id)).toJSON()) as unknown as Record<string, unknown>
       },

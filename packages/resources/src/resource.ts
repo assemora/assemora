@@ -58,6 +58,16 @@ export type ListQuery = {
 }
 
 export type Persistence = {
+  /** Whether the model behind this resource holds one row per language (SPEC.md §131). */
+  readonly translatable: boolean
+  /**
+   * The row translating `original` into `locale`, or null where none exists yet.
+   *
+   * Here rather than expressed as a `list()` filter, because `translationOf` is not one
+   * of the resource's declared fields and must never become one: it is how the rows of
+   * one entry are tied together, not something an editor fills in.
+   */
+  translation(original: unknown, locale: string): Promise<{ readonly id: unknown } | null>
   /** The stored entry, for a record-level policy check before anything is written. */
   load(id: unknown): Promise<Record<string, unknown>>
   create(values: Record<string, unknown>): Promise<{ id: unknown; after: Record<string, unknown> }>
@@ -310,6 +320,16 @@ export const resource = <
     const actor = currentContext()?.actor
     const projected: Record<string, unknown> = {
       id: String((instance as unknown as Record<string, unknown>)[model.primaryKey]),
+      /**
+       * Which language this entry is actually written in (SPEC.md §131).
+       *
+       * Projected like `id`, and for the same reason: it is not one of the resource's
+       * declared fields, and a reader that cannot tell a translation from a fallback
+       * has been handed the wrong answer without being told. §131 is explicit — a page
+       * that silently serves English under a Russian URL with nothing saying so is
+       * worse than a 404.
+       */
+      ...(model.descriptor.translatable === true ? { locale: row.locale } : {}),
     }
 
     for (const [fieldName, field] of entries) {
@@ -352,6 +372,30 @@ export const resource = <
     validate,
 
     [PERSISTENCE]: {
+      translatable: model.descriptor.translatable === true,
+
+      async translation(original, locale) {
+        /**
+         * `translationOf` and `locale` are columns of a translatable model and are not
+         * fields of `F`, which is what makes this the one place that has to say so.
+         * `allLocales()` because the search is for a row in another language than the
+         * one being read in — scoping it to the current one would find nothing, always.
+         */
+        const searching = model.allLocales() as unknown as {
+          where(field: string, value: unknown): typeof searching
+          first(): Promise<Instance<F, C> | null>
+        }
+
+        const found = await searching
+          .where('translationOf', original)
+          .where('locale', locale)
+          .first()
+
+        return found === null
+          ? null
+          : { id: (found as unknown as Record<string, unknown>)[model.primaryKey] }
+      },
+
       async load(id) {
         return snapshot(await model.findOrFail(id))
       },

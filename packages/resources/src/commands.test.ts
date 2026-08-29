@@ -71,6 +71,7 @@ describe('registration through the module facet', () => {
     expect([...app.commands.names()].sort()).toEqual([
       'entries.create',
       'entries.delete',
+      'entries.translate',
       'entries.update',
     ])
   })

@@ -502,7 +502,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           ? {}
           : {
               locale: spoken.get(request.raw) ?? options.locales.defaultLocale,
-              defaultLocale: options.locales.defaultLocale,
+              locales: options.locales,
             }),
       }),
     }
@@ -703,7 +703,7 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
         requestId: arrived.requestId,
         ...(arrived.userAgent === undefined ? {} : { userAgent: arrived.userAgent }),
         ...(arrived.locale === undefined ? {} : { locale: arrived.locale }),
-        ...(arrived.defaultLocale === undefined ? {} : { defaultLocale: arrived.defaultLocale }),
+        ...(arrived.locales === undefined ? {} : { locales: arrived.locales }),
       })
 
       // Inside a context, because resolving credentials is database work — a session

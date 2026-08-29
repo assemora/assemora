@@ -1080,7 +1080,7 @@ describe('a language is a path segment (SPEC.md §131)', () => {
     response: { locale: string(), fallback: string() },
     handler: async ({ context }) => ({
       locale: context.locale ?? 'none',
-      fallback: context.defaultLocale ?? 'none',
+      fallback: context.locales?.defaultLocale ?? 'none',
     }),
   })
 

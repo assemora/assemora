@@ -58,7 +58,14 @@ const Dish = model('it_dishes', {
 let adapter: PostgresAdapter
 
 const speaking = <T>(locale: string, operation: () => Promise<T>): Promise<T> =>
-  runInContext(createContext({ source: 'internal', locale, defaultLocale: 'uk' }), operation)
+  runInContext(
+    createContext({
+      source: 'internal',
+      locale,
+      locales: { locales: ['uk', 'ru'], defaultLocale: 'uk' },
+    }),
+    operation,
+  )
 
 beforeAll(async () => {
   if (!reachable) return

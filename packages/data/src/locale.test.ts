@@ -27,7 +27,7 @@ const uk = (locale: string | undefined) =>
   createContext({
     source: 'internal',
     ...(locale === undefined ? {} : { locale }),
-    defaultLocale: 'uk',
+    locales: { locales: ['uk', 'en', 'ru'], defaultLocale: 'uk' },
   })
 
 const speaking = <T>(locale: string | undefined, operation: () => Promise<T>): Promise<T> =>

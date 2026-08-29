@@ -274,7 +274,7 @@ export const createApplication = (options: ApplicationOptions = {}): Application
       : {
           ...init,
           locale: init.locale ?? locales.defaultLocale,
-          defaultLocale: locales.defaultLocale,
+          locales,
         }
 
   const application: Application = {
