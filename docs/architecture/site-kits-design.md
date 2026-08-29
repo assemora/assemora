@@ -385,11 +385,11 @@ anybody typed on purpose. Highest leverage item in the plan: it deletes
 `packages/theme/src/write.ts` (66 lines) and the `ATTEMPTS = 3` retry loop
 (`packages/theme/src/commands.ts:35, 84`), and it is what makes 3.6 cheap.
 
-**2.5** `Issue` is `{ path, code, message }` and every refinement bakes its parameter into
-an English sentence, so a customer who does not read English is told `"Must be at least 9 characters"` and
-the client validates twice. §131 does not fix it — a translated copy of the row inherits
-the same untranslatable English. Do it **before** localisation or localisation does it
-twice.
+**2.5 — done.** `Issue` carries `params`, the refinements that know a number pass it, and
+`ValidationError.toPayload` carries `issues` beside the `fields` §84 fixes. `message` stays
+English by design: it is what a log shows and what a client with no catalogue falls back
+on. It was done first, for the reason it gave: §131 does not fix it, because a translated
+copy of the row inherits the same untranslatable English.
 
 ### Tier 3 — the declarative Studio surface
 
