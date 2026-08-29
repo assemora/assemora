@@ -4,12 +4,30 @@
  */
 import type { Issue } from '@assemora/schema'
 
+/**
+ * One failure, in the form a client that renders its own wording needs.
+ *
+ * `fields` (below) is what SPEC.md §84 fixes and it stays exactly as it was: a field
+ * path to English sentences. This is the same failure said again with its parts still
+ * separate, because a sentence with its parameter already inside it can be rewritten
+ * but never translated — and a site with three languages has to say `Мінімум 9
+ * символів` from the same refusal.
+ */
+export type ErrorIssue = {
+  readonly path: readonly (string | number)[]
+  readonly code: string
+  readonly message: string
+  readonly params?: Readonly<Record<string, string | number | readonly (string | number)[]>>
+}
+
 export type ErrorPayload = {
   readonly error: {
     readonly code: string
     readonly message: string
     readonly details?: unknown
     readonly fields?: Readonly<Record<string, readonly string[]>>
+    /** Present on a validation failure, beside `fields` rather than instead of it. */
+    readonly issues?: readonly ErrorIssue[]
     readonly requestId?: string
   }
 }
@@ -117,6 +135,14 @@ export class ValidationError extends AssemoraError {
         code: this.code,
         message: this.message,
         fields: this.fields,
+        // The same failures, with the code and the parameters a translator needs still
+        // separate. `fields` is what §84 fixes and it is unchanged.
+        issues: this.issues.map((issue) => ({
+          path: issue.path,
+          code: issue.code,
+          message: issue.message,
+          ...(issue.params === undefined ? {} : { params: issue.params }),
+        })),
         ...(requestId === undefined ? {} : { requestId }),
       },
     }

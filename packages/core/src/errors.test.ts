@@ -54,9 +54,33 @@ describe('ValidationError', () => {
         code: 'VALIDATION_ERROR',
         message: 'Validation failed',
         fields: { email: ['Invalid email'] },
+        issues: [{ path: ['email'], code: 'email', message: 'Invalid email' }],
         requestId: 'req-2',
       },
     })
+  })
+
+  it('carries the code and the parameters a translator needs', () => {
+    const refused = new ValidationError([
+      {
+        path: ['phone'],
+        code: 'min',
+        message: 'Must be at least 9 characters',
+        params: { length: 9 },
+      },
+    ])
+
+    // `fields` is the English sentence SPEC.md §84 fixes, and it is unchanged.
+    expect(refused.toPayload().error.fields).toEqual({ phone: ['Must be at least 9 characters'] })
+    // Beside it, the same failure with the nine still separate from the sentence.
+    expect(refused.toPayload().error.issues).toEqual([
+      {
+        path: ['phone'],
+        code: 'min',
+        message: 'Must be at least 9 characters',
+        params: { length: 9 },
+      },
+    ])
   })
 
   it('keeps a whole-value issue addressable', () => {

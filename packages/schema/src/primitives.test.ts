@@ -224,3 +224,28 @@ describe('optional and nullable, as combinators', () => {
     expect(relaxed.parse(42).ok).toBe(false)
   })
 })
+
+describe('an issue carries its parameters', () => {
+  it('keeps the number out of the sentence as well as in it', () => {
+    const result = string().min(9).parse('short')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+
+    expect(result.issues[0]).toEqual({
+      path: [],
+      code: 'min',
+      message: 'Must be at least 9 characters',
+      params: { length: 9 },
+    })
+  })
+
+  it('says which values an enum allows, as values', () => {
+    const result = enumOf('cash', 'card').parse('crypto')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+
+    expect(result.issues[0]?.params).toEqual({ values: ['cash', 'card'] })
+  })
+})

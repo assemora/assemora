@@ -34,7 +34,12 @@ describe('object', () => {
 
     expect(issues(result)).toEqual([
       { path: ['email'], code: 'email', message: 'Invalid email' },
-      { path: ['password'], code: 'min', message: 'Must be at least 8 characters' },
+      {
+        path: ['password'],
+        code: 'min',
+        message: 'Must be at least 8 characters',
+        params: { length: 8 },
+      },
     ])
   })
 

@@ -95,7 +95,12 @@ const buildString = (state: StringState): StringSchema => {
           ...state.refinements,
           (value) =>
             value.length < length
-              ? { path: [], code: 'min', message: `Must be at least ${length} characters` }
+              ? {
+                  path: [],
+                  code: 'min',
+                  message: `Must be at least ${length} characters`,
+                  params: { length },
+                }
               : undefined,
         ],
       }),
@@ -108,7 +113,12 @@ const buildString = (state: StringState): StringSchema => {
           ...state.refinements,
           (value) =>
             value.length > length
-              ? { path: [], code: 'max', message: `Must be at most ${length} characters` }
+              ? {
+                  path: [],
+                  code: 'max',
+                  message: `Must be at most ${length} characters`,
+                  params: { length },
+                }
               : undefined,
         ],
       }),
@@ -206,7 +216,12 @@ const buildNumber = (state: NumberState): NumberSchema => {
           ...state.refinements,
           (value) =>
             value < minimum
-              ? { path: [], code: 'min', message: `Must be at least ${minimum}` }
+              ? {
+                  path: [],
+                  code: 'min',
+                  message: `Must be at least ${minimum}`,
+                  params: { minimum },
+                }
               : undefined,
         ],
       }),
@@ -219,7 +234,12 @@ const buildNumber = (state: NumberState): NumberSchema => {
           ...state.refinements,
           (value) =>
             value > maximum
-              ? { path: [], code: 'max', message: `Must be at most ${maximum}` }
+              ? {
+                  path: [],
+                  code: 'max',
+                  message: `Must be at most ${maximum}`,
+                  params: { maximum },
+                }
               : undefined,
         ],
       }),
@@ -304,7 +324,7 @@ const buildEnum = <T extends string>(
     parse: (value: unknown): ParseResult<T> =>
       typeof value === 'string' && allowed.has(value)
         ? ok(value as T)
-        : fail('enum', `Expected one of: ${values.join(', ')}`),
+        : fail('enum', `Expected one of: ${values.join(', ')}`, [], { values: [...values] }),
     toJsonSchema: () => ({
       type: 'string',
       enum: [...values],
