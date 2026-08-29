@@ -18,6 +18,7 @@ export type {
   RelationKind,
   TableDescriptor,
 } from './adapter.js'
+export { LOCALE_COLUMN, TRANSLATION_OF_COLUMN } from './adapter.js'
 export {
   isSchemaNotApplied,
   SCHEMA_NOT_APPLIED,

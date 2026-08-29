@@ -90,6 +90,17 @@ export type TableDescriptor = {
   readonly translatable?: boolean
 }
 
+/**
+ * The two columns a translatable model carries (SPEC.md §131).
+ *
+ * Named here rather than spelled out in each layer that has to recognise them: the data
+ * layer declares them, the schema diff has to know that a table gaining `locale` is a
+ * table becoming translatable, and the SQL writer has to know what to backfill it with.
+ * Three spellings of one name is how the three come to disagree.
+ */
+export const LOCALE_COLUMN = 'locale'
+export const TRANSLATION_OF_COLUMN = 'translationOf'
+
 export type DatabaseSchema = {
   readonly tables: readonly TableDescriptor[]
 }

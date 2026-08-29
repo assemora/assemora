@@ -58,12 +58,22 @@ export type MigrationContent = {
 const generateMigration = async (
   before: readonly TableDescriptor[],
   after: readonly TableDescriptor[],
+  defaultLocale?: string,
 ): Promise<MigrationContent> => {
   // Loaded here rather than at the top of the module: `assemora --help` must not pay
   // for a database driver it is never going to use.
   const { migrationSql } = await import('@assemora/database-postgres')
 
-  return migrationSql(diffSchema(before, after).changes)
+  /**
+   * The default language reaches the writer because a table becoming translatable is
+   * the one case where a not-null column *can* be added to a populated table: what the
+   * rows already there are written in is a fact the application configured, not a guess
+   * about the data (SPEC.md §131).
+   */
+  return migrationSql(
+    diffSchema(before, after).changes,
+    defaultLocale === undefined ? {} : { defaultLocale },
+  )
 }
 
 /**
@@ -580,7 +590,7 @@ export const dbGenerate = defineCommand({
 
     // Booting is what imports the project's models, and the registry they declare
     // themselves into is the `after` side of the diff.
-    await loadApplication(loaded)
+    const application = await loadApplication(loaded)
 
     const after = declaredTables()
 
@@ -601,7 +611,11 @@ export const dbGenerate = defineCommand({
       return refuseWithoutSnapshot(loaded, existing.length)
     }
 
-    const generated = await generateMigration(snapshot ?? [], after)
+    const generated = await generateMigration(
+      snapshot ?? [],
+      after,
+      application.locales?.defaultLocale,
+    )
 
     if (generated.up.length === 0) {
       line('The models and the last migration agree. Nothing to generate.')

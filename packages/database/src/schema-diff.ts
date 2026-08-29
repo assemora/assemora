@@ -88,6 +88,15 @@ export type ColumnAdded = ChangeRisk & {
   readonly table: string
   readonly column: string
   readonly after: ColumnDescriptor
+  /**
+   * Whether this column arrives because the table is becoming translatable (SPEC.md §131).
+   *
+   * A column that cannot be null normally has no value to give the rows already there,
+   * which is why adding one is refused. `locale` is the exception and the only one: what
+   * every existing row is written in is the deployment's default language, and that is a
+   * fact the framework holds rather than a guess about the data.
+   */
+  readonly becomesTranslatable?: boolean
 }
 
 export type ColumnRemoved = ChangeRisk & {
@@ -183,6 +192,27 @@ export type ForeignKeyRemoved = ChangeRisk & {
  * find the descriptors again. Adding a member here is a compile error in every
  * generator that exhausts the union, which is the point of it being one.
  */
+/**
+ * A group of columns unique together, arriving on or leaving a table that stays.
+ *
+ * `uniqueTogether` used to travel only inside `tableAdded` and `tableRemoved`, on the
+ * reasoning that a composite unique cannot move on a table that stays. Localisation
+ * moves one: `slug` unique on its own becomes `(slug, locale)` unique the moment a model
+ * is translatable, and without this the generated migration dropped the old constraint
+ * and added nothing — a table that had lost a guarantee and said nothing about it.
+ */
+export type UniqueTogetherAdded = ChangeRisk & {
+  readonly kind: 'uniqueTogetherAdded'
+  readonly table: string
+  readonly columns: readonly string[]
+}
+
+export type UniqueTogetherRemoved = ChangeRisk & {
+  readonly kind: 'uniqueTogetherRemoved'
+  readonly table: string
+  readonly columns: readonly string[]
+}
+
 export type SchemaChange =
   | TableAdded
   | TableRemoved
@@ -197,6 +227,8 @@ export type SchemaChange =
   | IndexRemoved
   | ForeignKeyAdded
   | ForeignKeyRemoved
+  | UniqueTogetherAdded
+  | UniqueTogetherRemoved
 
 export type SchemaDiff = {
   /** In the order they must be applied. Empty when the two schemas agree. */
@@ -268,17 +300,23 @@ const riskOfTypeChange = (from: ColumnType, to: ColumnType): ChangeRisk => {
 const RANK: Readonly<Record<SchemaChange['kind'], number>> = {
   foreignKeyRemoved: 0,
   indexRemoved: 1,
-  tableAdded: 2,
-  columnAdded: 3,
-  columnTypeChanged: 4,
-  columnEnumChanged: 5,
-  columnNullabilityChanged: 6,
-  columnUniquenessChanged: 7,
-  primaryKeyMoved: 8,
-  indexAdded: 9,
-  foreignKeyAdded: 10,
-  columnRemoved: 11,
-  tableRemoved: 12,
+  // Before the columns move: a group being dropped is what frees a column to stop being
+  // unique on its own, or to start.
+  uniqueTogetherRemoved: 2,
+  tableAdded: 3,
+  columnAdded: 4,
+  columnTypeChanged: 5,
+  columnEnumChanged: 6,
+  columnNullabilityChanged: 7,
+  columnUniquenessChanged: 8,
+  primaryKeyMoved: 9,
+  // After them, for the mirror reason: `(slug, locale)` cannot be declared until
+  // `locale` is there and filled in.
+  uniqueTogetherAdded: 10,
+  indexAdded: 11,
+  foreignKeyAdded: 12,
+  columnRemoved: 13,
+  tableRemoved: 14,
 }
 
 /**
@@ -346,8 +384,14 @@ const foreignKeysOf = (table: TableDescriptor): Map<string, RelationDescriptor> 
   return keys
 }
 
-const columnAdded = (table: string, column: string, after: ColumnDescriptor): ColumnAdded => ({
+const columnAdded = (
+  table: string,
+  column: string,
+  after: ColumnDescriptor,
+  becomesTranslatable = false,
+): ColumnAdded => ({
   kind: 'columnAdded',
+  ...(becomesTranslatable ? { becomesTranslatable } : {}),
   table,
   column,
   after,
@@ -472,6 +516,7 @@ const diffColumns = (
   table: string,
   before: ReadonlyMap<string, ColumnDescriptor>,
   after: ReadonlyMap<string, ColumnDescriptor>,
+  becomesTranslatable = false,
 ): SchemaChange[] => {
   const changes: SchemaChange[] = []
 
@@ -480,7 +525,7 @@ const diffColumns = (
     const is = after.get(column)
 
     if (was !== undefined && is !== undefined) changes.push(...diffColumn(table, column, was, is))
-    else if (is !== undefined) changes.push(columnAdded(table, column, is))
+    else if (is !== undefined) changes.push(columnAdded(table, column, is, becomesTranslatable))
     else if (was !== undefined) changes.push(columnRemoved(table, column, was))
   }
 
@@ -489,7 +534,12 @@ const diffColumns = (
 
 const diffTable = (before: TableDescriptor, after: TableDescriptor): SchemaChange[] => {
   const table = after.name
-  const changes = diffColumns(table, columnsOf(before), columnsOf(after))
+  const changes = diffColumns(
+    table,
+    columnsOf(before),
+    columnsOf(after),
+    before.translatable !== true && after.translatable === true,
+  )
 
   if (before.primaryKey !== after.primaryKey) {
     changes.push({
@@ -502,6 +552,41 @@ const diffTable = (before: TableDescriptor, after: TableDescriptor): SchemaChang
       // accepts it as a key.
       mayFailOnExistingRows: true,
     })
+  }
+
+  /**
+   * Compared as sorted, joined names, because a group is a set: `(slug, locale)` and
+   * `(locale, slug)` are one constraint, and a declaration that listed them the other
+   * way round must not read as a change.
+   */
+  const groupsOf = (table: TableDescriptor): ReadonlyMap<string, readonly string[]> =>
+    new Map((table.uniqueTogether ?? []).map((columns) => [[...columns].sort().join(','), columns]))
+
+  const wasGroups = groupsOf(before)
+  const isGroups = groupsOf(after)
+
+  for (const key of new Set([...wasGroups.keys(), ...isGroups.keys()])) {
+    const was = wasGroups.get(key)
+    const is = isGroups.get(key)
+
+    if (was !== undefined && is === undefined) {
+      changes.push({
+        kind: 'uniqueTogetherRemoved',
+        table,
+        columns: was,
+        destructive: false,
+        mayFailOnExistingRows: false,
+      })
+    } else if (was === undefined && is !== undefined) {
+      changes.push({
+        kind: 'uniqueTogetherAdded',
+        table,
+        columns: is,
+        destructive: false,
+        // Rows that are already duplicates on the group refuse the constraint.
+        mayFailOnExistingRows: true,
+      })
+    }
   }
 
   const wasKeys = foreignKeysOf(before)
@@ -663,5 +748,9 @@ export const describeChange = (change: SchemaChange): string => {
       return `adds a foreign key from ${at(change)} to ${change.after.target}.${change.after.ownerKey}`
     case 'foreignKeyRemoved':
       return `drops the foreign key from ${at(change)} to ${change.before.target}.${change.before.ownerKey}`
+    case 'uniqueTogetherAdded':
+      return `makes ${change.columns.join(' and ')} unique together on ${change.table}`
+    case 'uniqueTogetherRemoved':
+      return `drops the unique constraint on ${change.columns.join(' and ')} of ${change.table}`
   }
 }

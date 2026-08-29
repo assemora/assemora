@@ -805,6 +805,10 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     registry: app.registry,
     logger: app.logger,
     modules: app.modules,
+    // What the application was configured with, so a caller reading the facade — the
+    // CLI generating a migration, above all — gets the same answer core validated
+    // (SPEC.md §131).
+    ...(app.locales === undefined ? {} : { locales: app.locales }),
     // A getter, like core's: it is written while the modules boot, and this facade is
     // built before they do.
     get notStarted() {

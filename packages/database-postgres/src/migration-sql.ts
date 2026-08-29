@@ -48,6 +48,7 @@ import type {
   SchemaChange,
   TableDescriptor,
 } from '@assemora/database'
+import { LOCALE_COLUMN } from '@assemora/database'
 
 import {
   addForeignKeySql,
@@ -72,6 +73,24 @@ import {
 } from './migrations.js'
 import { toColumnName } from './schema.js'
 
+/**
+ * What the writer needs beyond the diff itself.
+ *
+ * Only one thing so far, and it is a deployment fact rather than a schema fact: what
+ * language the rows a table already holds are written in, for the moment that table
+ * becomes translatable (SPEC.md §131).
+ */
+export type MigrationSqlOptions = {
+  readonly defaultLocale?: string
+}
+
+/**
+ * A string as PostgreSQL reads it. Used for one value — a language tag the application
+ * configured and this repository validated against `^[a-z]{2,3}(-…)*$` — and doubled
+ * quotes even so, because a literal built by concatenation is a habit worth not having.
+ */
+const literal = (value: string): string => `'${value.replace(/'/g, "''")}'`
+
 export type GeneratedMigration = {
   readonly up: readonly string[]
   readonly down: readonly string[]
@@ -91,6 +110,9 @@ export type GeneratedMigration = {
 const PHASES = [
   'drop-foreign-key',
   'drop-primary-key',
+  // Before the columns move, because a group being dropped is what frees a column to
+  // stop being unique on its own — or to start.
+  'drop-unique',
   'drop-index',
   'drop-column',
   'drop-table',
@@ -98,6 +120,9 @@ const PHASES = [
   'add-column',
   'alter-column',
   'add-primary-key',
+  // After them, for the mirror reason: `(slug, locale)` cannot be declared until
+  // `locale` is there and filled in.
+  'add-unique',
   'create-index',
   'add-foreign-key',
 ] as const
@@ -123,6 +148,8 @@ const INVERSE: Readonly<Record<Phase, Phase>> = {
   'add-column': 'drop-column',
   'alter-column': 'alter-column',
   'add-primary-key': 'drop-primary-key',
+  'add-unique': 'drop-unique',
+  'drop-unique': 'add-unique',
   'create-index': 'drop-index',
   'add-foreign-key': 'drop-foreign-key',
 }
@@ -397,7 +424,67 @@ const typeChangeStep = (table: string, before: ColumnDescriptor, after: ColumnDe
  * zero — would put data in the table that nobody asked for. `hasDefault` makes no
  * difference for exactly that reason, and `schema-diff.ts` reads it the same way.
  */
-const addColumnSteps = (table: string, column: ColumnDescriptor): readonly Step[] => {
+/**
+ * A composite unique constraint, named the way PostgreSQL names one it wrote itself —
+ * `<table>_<a>_<b>_key` — so a database built from `create table` and one migrated into
+ * the same shape carry the same constraint under the same name.
+ */
+const uniqueTogetherName = (table: string, columns: readonly string[]): string =>
+  `${table}_${columns.map((column) => toColumnName(column)).join('_')}_key`
+
+const addUniqueTogetherSql = (table: string, columns: readonly string[]): string =>
+  `alter table ${quote(table)} add constraint ${quote(
+    uniqueTogetherName(table, columns),
+  )} unique (${columns.map((column) => quote(toColumnName(column))).join(', ')})`
+
+const dropUniqueTogetherSql = (table: string, columns: readonly string[]): string =>
+  `alter table ${quote(table)} drop constraint ${quote(uniqueTogetherName(table, columns))}`
+
+const addColumnSteps = (
+  table: string,
+  column: ColumnDescriptor,
+  options: MigrationSqlOptions & { readonly becomesTranslatable?: boolean } = {},
+): readonly Step[] => {
+  /**
+   * The one column that *can* be added not-null to a table that already has rows.
+   *
+   * Everything above is why a value cannot be guessed. This one is not guessed: a table
+   * becoming translatable means every row it already holds is written in the language
+   * this deployment declared as its default, and that is a fact the configuration holds
+   * rather than an assumption about the data (SPEC.md §131).
+   *
+   * Written as three statements — add it nullable, fill it, require it — because that is
+   * the shape a populated table needs, and it is exactly the pair of migrations a project
+   * would otherwise have to hand-write for every translatable table it has.
+   */
+  if (!column.isNullable && column.name === LOCALE_COLUMN && options.becomesTranslatable) {
+    if (options.defaultLocale === undefined) {
+      throw unsupported(
+        `Cannot add ${columnRef(table, column.name)}: the model is translatable but this application configures no locales, so there is no language to write into the rows that already exist. Add locales: [...] to the application first.`,
+        { table, column: toColumnName(column.name) },
+      )
+    }
+
+    return [
+      step('add-column', {
+        up: [
+          addColumnSql(table, { ...column, isNullable: true }),
+          `update ${quote(table)} set ${quote(toColumnName(column.name))} = ${literal(options.defaultLocale)}`,
+          `alter table ${quote(table)} alter column ${quote(toColumnName(column.name))} set not null`,
+        ],
+        down: [dropColumnSql(table, column)],
+      }),
+      ...(needsIndex(column)
+        ? [
+            step('create-index', {
+              up: [createIndexSql(table, column.name, 'migration')],
+              down: [dropIndexSql(table, column.name, 'migration')],
+            }),
+          ]
+        : []),
+    ]
+  }
+
   if (!column.isNullable) {
     throw unsupported(
       `Cannot add ${columnRef(table, column.name)} as not null: there is no database default, so the statement fails on the first existing row. Add the column as nullable, backfill it, and make it required in a migration of its own.`,
@@ -528,14 +615,17 @@ const createTableSteps = (descriptor: TableDescriptor): readonly Step[] => [
   }),
 ]
 
-const stepsFor = (change: SchemaChange): readonly Step[] => {
+const stepsFor = (change: SchemaChange, options: MigrationSqlOptions = {}): readonly Step[] => {
   switch (change.kind) {
     case 'tableAdded':
       return createTableSteps(change.after)
     case 'tableRemoved':
       return dropTableSteps(change.before)
     case 'columnAdded':
-      return addColumnSteps(change.table, change.after)
+      return addColumnSteps(change.table, change.after, {
+        ...options,
+        ...(change.becomesTranslatable === true ? { becomesTranslatable: true } : {}),
+      })
     case 'columnRemoved':
       return dropColumnSteps(change.table, change.before)
     case 'columnTypeChanged':
@@ -642,6 +732,20 @@ const stepsFor = (change: SchemaChange): readonly Step[] => {
           down: [dropForeignKeySql(change.table, change.after)],
         }),
       ]
+    case 'uniqueTogetherAdded':
+      return [
+        step('add-unique', {
+          up: [addUniqueTogetherSql(change.table, change.columns)],
+          down: [dropUniqueTogetherSql(change.table, change.columns)],
+        }),
+      ]
+    case 'uniqueTogetherRemoved':
+      return [
+        step('drop-unique', {
+          up: [dropUniqueTogetherSql(change.table, change.columns)],
+          down: [addUniqueTogetherSql(change.table, change.columns)],
+        }),
+      ]
     case 'foreignKeyRemoved':
       return [
         step('drop-foreign-key', {
@@ -681,7 +785,10 @@ const inOrder = (steps: readonly Step[], phaseOf: (step: Step) => Phase): readon
  * Throws when a correct statement cannot be written — a cast PostgreSQL cannot
  * perform, or a required column added to a table that already holds rows.
  */
-export const migrationSql = (changes: readonly SchemaChange[]): GeneratedMigration => {
+export const migrationSql = (
+  changes: readonly SchemaChange[],
+  options: MigrationSqlOptions = {},
+): GeneratedMigration => {
   const wholeTables = new Set(
     changes
       .filter((change) => change.kind === 'tableAdded' || change.kind === 'tableRemoved')
@@ -690,7 +797,7 @@ export const migrationSql = (changes: readonly SchemaChange[]): GeneratedMigrati
 
   const steps = changes
     .filter((change) => !isCoveredByItsTable(change, wholeTables))
-    .flatMap(stepsFor)
+    .flatMap((change) => stepsFor(change, options))
 
   return {
     up: distinct(inOrder(steps, (entry) => entry.phase).flatMap((entry) => entry.up)),

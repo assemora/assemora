@@ -1053,3 +1053,87 @@ describe('an index that appears or goes because uniqueness moved', () => {
     expect(down).toEqual([])
   })
 })
+
+describe('a table becoming translatable (SPEC.md §131)', () => {
+  const column = (name: string, over: Partial<ColumnDescriptor> = {}): ColumnDescriptor => ({
+    name,
+    type: 'string',
+    isPrimary: false,
+    isNullable: false,
+    isUnique: false,
+    isIndexed: false,
+    hasDefault: false,
+    ...over,
+  })
+
+  it('adds the locale column, fills it and requires it, in one step', () => {
+    const written = migrationSql(
+      [
+        {
+          kind: 'columnAdded',
+          table: 'dishes',
+          column: 'locale',
+          after: column('locale', { isIndexed: true }),
+          becomesTranslatable: true,
+          destructive: false,
+          mayFailOnExistingRows: true,
+        },
+      ],
+      { defaultLocale: 'uk' },
+    )
+
+    expect(written.up.slice(0, 3)).toEqual([
+      'alter table "dishes" add column "locale" varchar(255)',
+      `update "dishes" set "locale" = 'uk'`,
+      'alter table "dishes" alter column "locale" set not null',
+    ])
+  })
+
+  it('refuses when the application configures no languages to fill it with', () => {
+    expect(() =>
+      migrationSql([
+        {
+          kind: 'columnAdded',
+          table: 'dishes',
+          column: 'locale',
+          after: column('locale'),
+          becomesTranslatable: true,
+          destructive: false,
+          mayFailOnExistingRows: true,
+        },
+      ]),
+    ).toThrow(/configures no locales/)
+  })
+
+  it('still refuses any other required column with no default', () => {
+    expect(() =>
+      migrationSql([
+        {
+          kind: 'columnAdded',
+          table: 'dishes',
+          column: 'title',
+          after: column('title'),
+          destructive: false,
+          mayFailOnExistingRows: true,
+        },
+      ]),
+    ).toThrow(/there is no database default/)
+  })
+
+  it('names a composite unique the way PostgreSQL names its own', () => {
+    const written = migrationSql([
+      {
+        kind: 'uniqueTogetherAdded',
+        table: 'dishes',
+        columns: ['slug', 'locale'],
+        destructive: false,
+        mayFailOnExistingRows: true,
+      },
+    ])
+
+    expect(written.up).toEqual([
+      'alter table "dishes" add constraint "dishes_slug_locale_key" unique ("slug", "locale")',
+    ])
+    expect(written.down).toEqual(['alter table "dishes" drop constraint "dishes_slug_locale_key"'])
+  })
+})

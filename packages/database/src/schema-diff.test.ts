@@ -601,3 +601,103 @@ describe('warning a person (SPEC.md §34)', () => {
     ])
   })
 })
+
+describe('a table becoming translatable (SPEC.md §131)', () => {
+  const plain: TableDescriptor = {
+    name: 'dishes',
+    primaryKey: 'id',
+    columns: [
+      {
+        name: 'id',
+        type: 'uuid',
+        isPrimary: true,
+        isNullable: false,
+        isUnique: false,
+        isIndexed: false,
+        hasDefault: false,
+      },
+      {
+        name: 'slug',
+        type: 'string',
+        isPrimary: false,
+        isNullable: false,
+        isUnique: true,
+        isIndexed: false,
+        hasDefault: false,
+      },
+    ],
+    relations: [],
+  }
+
+  const translated: TableDescriptor = {
+    ...plain,
+    translatable: true,
+    columns: [
+      {
+        name: 'id',
+        type: 'uuid',
+        isPrimary: true,
+        isNullable: false,
+        isUnique: false,
+        isIndexed: false,
+        hasDefault: false,
+      },
+      {
+        name: 'slug',
+        type: 'string',
+        isPrimary: false,
+        isNullable: false,
+        isUnique: false,
+        isIndexed: false,
+        hasDefault: false,
+      },
+      {
+        name: 'locale',
+        type: 'string',
+        isPrimary: false,
+        isNullable: false,
+        isUnique: false,
+        isIndexed: true,
+        hasDefault: false,
+      },
+      {
+        name: 'translationOf',
+        type: 'uuid',
+        isPrimary: false,
+        isNullable: true,
+        isUnique: false,
+        isIndexed: true,
+        hasDefault: false,
+      },
+    ],
+    uniqueTogether: [['slug', 'locale']],
+  }
+
+  it('says the locale column arrives because the table is becoming translatable', () => {
+    const added = diffSchema([plain], [translated]).changes.find(
+      (change) => change.kind === 'columnAdded' && change.column === 'locale',
+    )
+
+    // Which is what lets the SQL writer backfill it: what the rows already there are
+    // written in is the deployment's default language, not a guess about the data.
+    expect(added).toMatchObject({ becomesTranslatable: true })
+  })
+
+  it('moves the unique constraint rather than only dropping it', () => {
+    const changes = diffSchema([plain], [translated]).changes
+
+    expect(changes.map((change) => change.kind)).toEqual(
+      expect.arrayContaining(['columnUniquenessChanged', 'uniqueTogetherAdded']),
+    )
+    expect(changes.find((change) => change.kind === 'uniqueTogetherAdded')).toMatchObject({
+      table: 'dishes',
+      columns: ['slug', 'locale'],
+    })
+  })
+
+  it('reads a group as a set, so the order it was declared in is not a change', () => {
+    const other: TableDescriptor = { ...translated, uniqueTogether: [['locale', 'slug']] }
+
+    expect(diffSchema([translated], [other]).changes).toEqual([])
+  })
+})
