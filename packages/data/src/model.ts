@@ -8,7 +8,7 @@ import { ValidationError } from '@assemora/core'
 import type { ColumnDescriptor, RelationDescriptor, TableDescriptor } from '@assemora/database'
 import { comparison, emptyQuery } from '@assemora/database'
 
-import type { AnyColumn } from './columns.js'
+import { type AnyColumn, string, uuid } from './columns.js'
 import {
   type ComputedFunctions,
   type ComputedValues,
@@ -59,7 +59,54 @@ export type Model<
   findOrFail(id: unknown): Promise<Instance<F, C>>
   all(): Promise<Instance<F, C>[]>
   create(values: Partial<InferRecord<F>>): Promise<Instance<F, C>>
+  /**
+   * One row per language, and the row keeps its own shape (SPEC.md §131).
+   *
+   * ```ts
+   * export const Article = model('articles', {
+   *   id: uuid().primary(),
+   *   title: string(),
+   * }).translatable()
+   * ```
+   *
+   * The model gains `locale` and `translationOf` and nothing else changes: `title` is
+   * still a `string`, `Article.$infer` still has the shape it had, and every scope,
+   * relation and query written against it still means what it meant. What changes is
+   * that a read is scoped to the language of the operation without a caller asking.
+   */
+  translatable(): Model<F & TranslationFields, SN, C>
 }
+
+/**
+ * The two columns a translatable model gains (SPEC.md §131).
+ *
+ * A row per language, and the row keeps its own shape. `title` stays a `string`: the
+ * moment a field becomes a map keyed by language, one declaration stops feeding the
+ * record type, the column, the form, the OpenAPI schema and the SDK at once, which is
+ * §2 and §128 given up for a storage convenience. `Article.where('locale', 'ru')` is an
+ * ordinary query and everything already built keeps working.
+ *
+ * Both are indexed. Every read of a translatable model filters on `locale`, and the
+ * fallback groups by `translationOf` — an index each is what the feature is, not a
+ * tuning decision somebody makes later.
+ */
+/**
+ * How `translatable()` tells the `model()` call it re-enters what it is doing.
+ *
+ * A symbol rather than a field on `ModelOptions`, because it is not something an
+ * application says: writing `{ translatable: true }` beside `softDeletes` would be a
+ * second way to declare it, and the two would eventually be given different answers.
+ */
+const TRANSLATABLE = Symbol.for('assemora.model.translatable')
+
+export const TRANSLATION_FIELDS = {
+  /** The language this row is written in. */
+  locale: string().index(),
+  /** The row this one translates, or null for the original. */
+  translationOf: uuid().nullable().index(),
+} as const
+
+export type TranslationFields = typeof TRANSLATION_FIELDS
 
 const registry = new Map<string, { readonly descriptor: TableDescriptor }>()
 
@@ -139,6 +186,8 @@ export const model = <
 
   const primaryKey = Object.entries(columns).find(([, column]) => column.isPrimary)?.[0] ?? 'id'
 
+  const translates = (options as Readonly<Record<symbol, unknown>>)[TRANSLATABLE] === true
+
   const softDeleteColumn =
     options.softDeletes === true
       ? 'deletedAt'
@@ -159,6 +208,7 @@ export const model = <
         describeRelation(name, relation, { table, primaryKey }),
       ),
       ...(softDeleteColumn === undefined ? {} : { softDeleteColumn }),
+      ...(translates ? { translatable: true } : {}),
     }
 
     return cached
@@ -185,6 +235,10 @@ export const model = <
     limit: undefined,
     offset: undefined,
     trashed: 'without',
+    // The language of the operation, and the fallback on: both are what a read means
+    // without a caller saying anything (SPEC.md §131).
+    locale: 'context',
+    fallback: true,
   })
 
   const query = (): ScopedQuery<F, keyof S & string, Instance<F, C>> =>
@@ -278,7 +332,21 @@ export const model = <
     },
   }
 
-  const built = Object.assign(query(), statics) as Model<F, keyof S & string, C>
+  const translatable = (): Model<F & TranslationFields, keyof S & string, C> =>
+    // Declared again with the two extra columns rather than patched in place: a model is
+    // its fields, and everything derived from them — the record type, the descriptor,
+    // the validator, the instance — is built once from that one list. Re-entering here
+    // is what keeps a translatable model from being a second kind of model.
+    model<F & TranslationFields, S, C>(
+      table,
+      { ...fields, ...TRANSLATION_FIELDS },
+      // The symbol rides along beside the declared options. It is not part of
+      // `ModelOptions` and must not become part of it, so it is attached rather than
+      // written into the literal.
+      Object.assign({ [TRANSLATABLE]: true }, options) as ModelOptions<F & TranslationFields, S, C>,
+    )
+
+  const built = Object.assign(query(), statics, { translatable }) as Model<F, keyof S & string, C>
 
   // A getter, not a value: Object.assign would resolve it, and resolving a relation
   // while the models are still being declared reaches a target that does not exist yet.

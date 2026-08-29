@@ -372,3 +372,36 @@ describe('transactions', () => {
     expect(await User.count()).toBe(2)
   })
 })
+
+describe('a translatable model (SPEC.md §131)', () => {
+  const Article = model('articles', {
+    id: uuid().primary(),
+    title: string(),
+  }).translatable()
+
+  it('gains the two columns and keeps its own shape', () => {
+    expect(Article.descriptor.columns.map((column) => column.name)).toEqual([
+      'id',
+      'title',
+      'locale',
+      'translationOf',
+    ])
+    expect(Article.descriptor.translatable).toBe(true)
+  })
+
+  it('indexes both, because every read of it filters on one', () => {
+    const named = (name: string) => Article.descriptor.columns.find((one) => one.name === name)
+
+    expect(named('locale')?.isIndexed).toBe(true)
+    expect(named('translationOf')?.isIndexed).toBe(true)
+    // The original is the row that translates nothing.
+    expect(named('translationOf')?.isNullable).toBe(true)
+  })
+
+  it('leaves a model that is not translatable alone', () => {
+    const Plain = model('plain_articles', { id: uuid().primary(), title: string() })
+
+    expect(Plain.descriptor.columns.map((column) => column.name)).toEqual(['id', 'title'])
+    expect(Plain.descriptor.translatable).toBeUndefined()
+  })
+})

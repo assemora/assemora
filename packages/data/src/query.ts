@@ -4,7 +4,7 @@
  * Every call returns a new builder, so a query is safe to share and to derive from.
  * The builder produces a Query AST and never touches an adapter's own query API.
  */
-import { AssemoraError } from '@assemora/core'
+import { AssemoraError, currentContext } from '@assemora/core'
 import type {
   ComparisonOperator,
   Condition,
@@ -97,6 +97,23 @@ export type QueryState = {
   readonly limit: number | undefined
   readonly offset: number | undefined
   readonly trashed: 'without' | 'with' | 'only'
+  /**
+   * Which language this reads in (SPEC.md §131).
+   *
+   * `'context'` is the language of the operation, which is the default and the whole
+   * point: an application whose every query had to name a language is one where
+   * forgetting to is a page in the wrong one. Ignored entirely on a model that is not
+   * translatable.
+   */
+  readonly locale: 'context' | 'all' | { readonly code: string }
+  /**
+   * Whether a row with no translation is answered in the default language instead.
+   *
+   * On, because a catalogue that showed a hundred dishes in Ukrainian and twenty in
+   * Russian is not a Russian catalogue. The row that comes back carries its own
+   * `locale`, so the answer already says which language it is actually in.
+   */
+  readonly fallback: boolean
 }
 
 export type QueryRuntime<Row> = {
@@ -173,6 +190,25 @@ export interface Query<F extends Fields, SN extends string = never, Row = InferR
 
   withTrashed(): ScopedQuery<F, SN, Row>
   onlyTrashed(): ScopedQuery<F, SN, Row>
+
+  /**
+   * Reads in a named language instead of the one the operation is in (SPEC.md §131).
+   *
+   * ```ts
+   * await Article.published().get()          // the language of the request
+   * await Article.inLocale('de').get()       // German, whatever the request is in
+   * ```
+   */
+  inLocale(code: string): ScopedQuery<F, SN, Row>
+  /** Every translation of every row, in every language. */
+  allLocales(): ScopedQuery<F, SN, Row>
+  /**
+   * Answers only what is written in this language, rather than falling back.
+   *
+   * What a translator's screen asks: "which of these has not been done yet" is a
+   * question the fallback exists to hide from everybody else.
+   */
+  withoutFallback(): ScopedQuery<F, SN, Row>
 
   get(): Promise<Row[]>
   first(): Promise<Row | null>
@@ -263,6 +299,27 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
 
   const withCondition = (condition: Condition) => derive({ where: [...state.where, condition] })
 
+  /**
+   * The language this query reads in, or `undefined` for "every language".
+   *
+   * `undefined` is also what an application in one language answers, and what a query
+   * outside any context answers — a migration, a script, a test. Both mean the same
+   * thing here: no language filter, which is exactly what those reads did before §131.
+   */
+  const readsIn = (): string | undefined => {
+    if (!state.table().translatable) return undefined
+    if (state.locale === 'all') return undefined
+    if (state.locale !== 'context') return state.locale.code
+
+    return currentContext()?.locale
+  }
+
+  const localeCondition = (): readonly Condition[] => {
+    const code = readsIn()
+
+    return code === undefined ? [] : [comparison('locale', '=', code)]
+  }
+
   const softDeleteCondition = (): readonly Condition[] => {
     const column = state.table().softDeleteColumn
 
@@ -297,15 +354,93 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
   const toAst = (): QueryAst => ({
     model: state.table().name,
     operation: 'select',
-    where: [...softDeleteCondition(), ...state.where],
+    where: [...softDeleteCondition(), ...localeCondition(), ...state.where],
     order: state.order,
     with: state.load,
     ...(state.limit === undefined ? {} : { limit: state.limit }),
     ...(state.offset === undefined ? {} : { offset: state.offset }),
   })
 
+  /**
+   * The query that actually runs, with the fallback folded into it (SPEC.md §131).
+   *
+   * One query and not two, because `order`, `limit` and `offset` decide what a page
+   * *is*: two result sets appended would put every untranslated row after every
+   * translated one, and page two of a menu would be a different menu.
+   *
+   * It costs one extra read to build. The rows already written in this language are
+   * fetched first — under the caller's own `where`, with no order and no limit — and
+   * what comes back is the set of *groups* that need no fallback. The query then asks
+   * for those rows, plus the default-language row of every group not among them.
+   *
+   * The alternative is `distinct on` or a window function, which is a change to the
+   * Query AST every adapter would have to implement, and ADR-0013 is why that is not a
+   * thing to do lightly. This uses `in` and `not in`, which every adapter already
+   * agrees about.
+   */
+  const astToRun = async (): Promise<QueryAst> => {
+    const base = toAst()
+    const code = readsIn()
+    const fallbackTo = currentContext()?.defaultLocale
+
+    if (
+      !state.fallback ||
+      code === undefined ||
+      fallbackTo === undefined ||
+      // The default language is where a fallback would come *from*. Nothing to do.
+      code === fallbackTo
+    ) {
+      return base
+    }
+
+    const key = state.table().primaryKey
+    // Deliberately without the caller's `order`, `limit` and `offset`: this asks which
+    // groups are already written in this language, and a page of that answer would
+    // leave the rest of them falling back when they should not.
+    const { limit: _limit, offset: _offset, ...whole } = base
+    const written = await execute<Record<string, unknown>[]>(
+      { ...whole, order: [], with: [] },
+      { table: state.table(), related: runtime.related() },
+    )
+
+    /**
+     * What each row translates, or itself where it translates nothing.
+     *
+     * A row written directly in a language, with no original behind it, is its own
+     * group — otherwise an article first written in Russian would be answered twice.
+     */
+    const covered = written.map((row) => row.translationOf ?? row[key])
+
+    return {
+      ...base,
+      where: [
+        ...softDeleteCondition(),
+        ...state.where,
+        /**
+         * A combinator says how a condition joins the one before it, not how its own
+         * children join each other — which is why `orComparison` exists at all. So the
+         * outer group joins the caller's `where` with `and`, and the inner group joins
+         * its sibling with `or`.
+         */
+        group(
+          [
+            comparison('locale', '=', code),
+            group(
+              [
+                comparison('locale', '=', fallbackTo),
+                ...(covered.length === 0 ? [] : [comparison(key, 'not in', covered)]),
+              ],
+              'or',
+            ),
+          ],
+          'and',
+        ),
+      ],
+    }
+  }
+
   const run = async (): Promise<Row[]> => {
-    const rows = await execute<Record<string, unknown>[]>(toAst(), {
+    const rows = await execute<Record<string, unknown>[]>(await astToRun(), {
       table: state.table(),
       related: runtime.related(),
     })
@@ -392,6 +527,10 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
     withTrashed: () => derive({ trashed: 'with' }),
     onlyTrashed: () => derive({ trashed: 'only' }),
 
+    inLocale: (code: string) => derive({ locale: { code } }),
+    allLocales: () => derive({ locale: 'all' }),
+    withoutFallback: () => derive({ fallback: false }),
+
     get: run,
 
     async first() {
@@ -412,7 +551,7 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
 
     async count() {
       return execute<number>(
-        { ...toAst(), operation: 'count', order: [], with: [] },
+        { ...(await astToRun()), operation: 'count', order: [], with: [] },
         { table: state.table() },
       )
     },

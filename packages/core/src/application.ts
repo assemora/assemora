@@ -224,6 +224,34 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     }
   }
 
+  /**
+   * A model that holds one row per language, in a deployment that serves one.
+   *
+   * Refused here rather than at the first read. The two columns are already in the
+   * schema by then, every row has been written with `locale` set to nothing in
+   * particular, and the fallback has no default language to fall back *to* — so the
+   * answer is a table of rows in no language, which no migration undoes.
+   *
+   * Read through `describe()` rather than `section('models')` because `models` is a
+   * section `@assemora/data` declares, and core may not know what a model is (SPEC.md
+   * §8). A name and a shape is all this needs.
+   */
+  const translatableWithoutLocales = (): readonly string[] => {
+    if (locales !== undefined) return []
+
+    return (registry.describe().models ?? [])
+      .filter((entry) => (entry as { table?: { translatable?: boolean } }).table?.translatable)
+      .map((entry) => entry.name)
+  }
+
+  const wanting = translatableWithoutLocales()
+
+  if (wanting.length > 0) {
+    throw new ConfigurationError(
+      `${wanting.join(', ')} ${wanting.length === 1 ? 'is translatable' : 'are translatable'}, but this application serves one language. Say which: locales: ['en', …].`,
+    )
+  }
+
   const runPhase = async (name: LifecyclePhase, order: readonly ModuleBuilder[]): Promise<void> => {
     for (const candidate of order) {
       for (const hook of candidate[MODULE].hooks[name]) {

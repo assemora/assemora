@@ -79,6 +79,15 @@ export type TableDescriptor = {
    * (SPEC.md §24).
    */
   readonly uniqueTogether?: readonly (readonly string[])[]
+  /**
+   * Whether this table holds one row per language (SPEC.md §131).
+   *
+   * Carried on the descriptor rather than inferred from the presence of a `locale`
+   * column, because a column called `locale` is a perfectly ordinary thing for an
+   * application to declare — a log of what language somebody chose, say — and a read
+   * silently scoped to it would be a filter nobody wrote.
+   */
+  readonly translatable?: boolean
 }
 
 export type DatabaseSchema = {
