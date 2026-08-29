@@ -173,6 +173,24 @@ const alive = (pid: number): boolean => {
 }
 
 /**
+ * Waits for a process to be gone, the way `freed` waits for a port.
+ *
+ * A server closes its listening socket while it is shutting down, so the port is free
+ * before the process that held it has been reaped — asking about the pid the instant the
+ * port frees is asking during that window. Polled rather than paused once: the width of
+ * the window is the machine's, and this suite runs beside 137 other files.
+ */
+const buried = async (pid: number): Promise<boolean> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (!alive(pid)) return true
+
+    await pause(50)
+  }
+
+  return false
+}
+
+/**
  * A server that ignores the polite signal and holds a port.
  *
  * This is what a graceful drain looks like for the seconds that matter, and it is the
@@ -391,7 +409,7 @@ describe('dev', () => {
       await running
 
       expect(await freed(port)).toBe(true)
-      expect(alive(pid)).toBe(false)
+      expect(await buried(pid)).toBe(true)
     },
     PATIENCE,
   )
