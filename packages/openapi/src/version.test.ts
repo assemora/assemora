@@ -107,7 +107,10 @@ beforeEach(() => {
 })
 
 type Operation = { operationId?: string; summary?: string }
-type Document = { paths: Record<string, Record<string, Operation>> }
+type Document = {
+  servers: readonly { url: string }[]
+  paths: Record<string, Record<string, Operation>>
+}
 
 const documentOf = (registry: SchemaRegistry): Document =>
   buildOpenApiDocument(registry, { title: 'Assemora', version: '1.0.0' }) as Document
@@ -128,13 +131,13 @@ describe('the OpenAPI document shows the versioned paths', () => {
 
     expect(paths).toEqual(
       expect.arrayContaining([
-        '/api/v1/articles',
-        '/api/v1/articles/{id}',
-        '/api/v2/articles',
-        '/api/v2/articles/{id}',
+        '/v1/articles',
+        '/v1/articles/{id}',
+        '/v2/articles',
+        '/v2/articles/{id}',
       ]),
     )
-    expect(paths).not.toContain('/api/articles')
+    expect(paths).not.toContain('/articles')
   })
 
   it('gives the two versions operations a client can tell apart', () => {
@@ -150,9 +153,9 @@ describe('the OpenAPI document shows the versioned paths', () => {
 
     const { paths } = documentOf(registry)
 
-    expect(paths['/api/v1/articles']?.get?.operationId).toBe('get_v1_articles')
-    expect(paths['/api/v2/articles']?.get?.operationId).toBe('get_v2_articles')
-    expect(paths['/api/v1/search']?.get?.summary).toBe('Searches the archive')
+    expect(paths['/v1/articles']?.get?.operationId).toBe('get_v1_articles')
+    expect(paths['/v2/articles']?.get?.operationId).toBe('get_v2_articles')
+    expect(paths['/v1/search']?.get?.summary).toBe('Searches the archive')
   })
 })
 
@@ -181,7 +184,15 @@ describe('the API Explorer shows them too (SPEC.md §45)', () => {
 
 describe('every path the document publishes answers (SPEC.md §98, §121)', () => {
   /** `/api/v1/articles/{id}` is a template; a request needs a value in it. */
-  const addressOf = (path: string): string => path.replace(/\{[^}]+\}/g, 'a1')
+  /**
+   * A path composed with the document's own base, which is what a client does.
+   *
+   * `servers[0]` is the default language's base — the other, where a deployment has
+   * languages, carries `{locale}` and is the same addresses one segment further along
+   * (SPEC.md §131).
+   */
+  const addressOf = (document: Document, path: string): string =>
+    `${document.servers[0]?.url ?? ''}${path}`.replace(/\{[^}]+\}/g, 'a1')
 
   const everyOperation = async (
     server: ReturnType<typeof createHttpServer>,
@@ -193,12 +204,12 @@ describe('every path the document publishes answers (SPEC.md §98, §121)', () =
       for (const method of Object.keys(operations)) {
         const response = await server.inject({
           method: method.toUpperCase(),
-          url: addressOf(path),
+          url: addressOf(document, path),
           payload: method === 'get' || method === 'delete' ? undefined : {},
         })
 
         answers.push({
-          address: `${method.toUpperCase()} ${addressOf(path)}`,
+          address: `${method.toUpperCase()} ${addressOf(document, path)}`,
           status: response.statusCode,
         })
       }

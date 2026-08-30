@@ -174,8 +174,8 @@ describe('a collection stored in the database, after a restart (SPEC.md §37)', 
     const document = await serverOf(built).inject({ method: 'GET', url: '/api/openapi.json' })
     const paths = Object.keys(document.json<{ paths: Record<string, unknown> }>().paths)
 
-    expect(paths).toContain('/api/testimonials')
-    expect(paths).toContain('/api/testimonials/{id}')
+    expect(paths).toContain('/testimonials')
+    expect(paths).toContain('/testimonials/{id}')
 
     // The registry is what the SDK generator reads, and it now describes the same
     // addresses the server answers on (SPEC.md §98).
@@ -308,7 +308,7 @@ describe('a collection created while this process serves (SPEC.md §37)', () => 
     }>()
 
     expect(Object.keys(body.paths)).toEqual(
-      expect.arrayContaining(['/api/testimonials', '/api/testimonials/{id}']),
+      expect.arrayContaining(['/testimonials', '/testimonials/{id}']),
     )
     expect(Object.keys(body.components.schemas)).toContain('testimonials')
   })
@@ -346,7 +346,7 @@ describe('a collection created while this process serves (SPEC.md §37)', () => 
     const document = await server.inject({ method: 'GET', url: '/api/openapi.json' })
 
     expect(Object.keys(document.json<{ paths: Record<string, unknown> }>().paths)).not.toContain(
-      '/api/testimonials',
+      '/testimonials',
     )
   })
 
@@ -446,8 +446,8 @@ describe('a collection that publishes less (SPEC.md §43)', () => {
     const document = await server.inject({ method: 'GET', url: '/api/openapi.json' })
     const paths = document.json<{ paths: Record<string, Record<string, unknown>> }>().paths
 
-    expect(Object.keys(paths['/api/changelog'] ?? {})).toEqual(['get'])
-    expect(Object.keys(paths['/api/changelog/{id}'] ?? {})).toEqual(['get'])
+    expect(Object.keys(paths['/changelog'] ?? {})).toEqual(['get'])
+    expect(Object.keys(paths['/changelog/{id}'] ?? {})).toEqual(['get'])
   })
 
   it('refuses the same operation on the command path, so Studio and MCP agree', async () => {

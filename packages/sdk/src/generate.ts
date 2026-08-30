@@ -300,6 +300,16 @@ export const generateSdk = (snapshot: RegistrySnapshot, options: GenerateOptions
   const clientModule = options.clientModule ?? '@assemora/sdk'
   const resources = (snapshot.resources ?? []).filter(isResource)
   const routes = (snapshot.routes ?? []).filter(isRoute)
+  /**
+   * The languages this deployment serves, typed (SPEC.md §131).
+   *
+   * A union rather than `string`, because the set is known at generation time and a
+   * caller asking for a language nobody serves should be told by the compiler rather
+   * than by a 404 — which is the whole reason the SDK is generated at all.
+   */
+  const locales = (snapshot.locales ?? [])
+    .map((entry) => (entry as { name?: unknown }).name)
+    .filter((name): name is string => typeof name === 'string')
 
   const accessors = new Map(
     resources.map((resource) => [resource.name, accessorFor(resource, routes)] as const),
@@ -339,16 +349,38 @@ export const generateSdk = (snapshot: RegistrySnapshot, options: GenerateOptions
   const endpoints =
     routes.length === 0 ? [] : ['export type Endpoints = {', ...routes.map(endpointMethod), '}', '']
 
+  const multilingual = locales.length > 1
+
+  const localeType = multilingual
+    ? [
+        '/** Every language this deployment serves. */',
+        `export type Locale = ${locales.map((code) => `'${code}'`).join(' | ')}`,
+        '',
+      ]
+    : []
+
   const api = [
     'export type AssemoraApi = Client & {',
     ...resourceMembers,
     ...(routes.length === 0 ? [] : ['  readonly endpoints: Endpoints']),
+    // Narrower than `Client.inLocale`, which takes any string: here the languages are
+    // known, so asking for one nobody serves is a compile error.
+    ...(multilingual ? ['  inLocale(locale: Locale): AssemoraApi'] : []),
     '}',
     '',
-    'export const createTypedClient = (options: ClientOptions): AssemoraApi =>',
+    multilingual
+      ? 'export const createTypedClient = (options: ClientOptions & { locale?: Locale }): AssemoraApi =>'
+      : 'export const createTypedClient = (options: ClientOptions): AssemoraApi =>',
     '  createClient(options) as AssemoraApi',
     '',
   ]
 
-  return [...header, ...records, records.length === 0 ? '' : '', ...endpoints, ...api].join('\n')
+  return [
+    ...header,
+    ...localeType,
+    ...records,
+    records.length === 0 ? '' : '',
+    ...endpoints,
+    ...api,
+  ].join('\n')
 }

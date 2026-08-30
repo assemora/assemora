@@ -142,3 +142,59 @@ describe('errors (SPEC.md §83, §84)', () => {
     expect(failure.code).toBe('UNKNOWN')
   })
 })
+
+describe('reading and writing in a language (SPEC.md §131)', () => {
+  it('puts the language in the base, because a language is a path segment', async () => {
+    const calls: string[] = []
+    const api = createClient({
+      url: 'https://shop.example/api',
+      locale: 'ru',
+      fetch: async (input) => {
+        calls.push(String(input))
+        return new Response(
+          JSON.stringify({ data: [], total: 0, page: 1, perPage: 20, lastPage: 1 }),
+        )
+      },
+    })
+
+    await api.resource('dishes').list()
+
+    expect(calls[0]).toBe('https://shop.example/api/ru/dishes')
+  })
+
+  it('reaches the default language when no language is named', async () => {
+    const calls: string[] = []
+    const api = createClient({
+      url: 'https://shop.example/api',
+      fetch: async (input) => {
+        calls.push(String(input))
+        return new Response(JSON.stringify({ id: 'd1' }))
+      },
+    })
+
+    await api.resource('dishes').get('d1')
+
+    expect(calls[0]).toBe('https://shop.example/api/dishes/d1')
+  })
+
+  it('answers with a second client rather than changing this one', async () => {
+    const calls: string[] = []
+    const fetcher = async (input: unknown) => {
+      calls.push(String(input))
+      return new Response(JSON.stringify({ id: 'd1' }))
+    }
+
+    const api = createClient({ url: 'https://shop.example/api', fetch: fetcher as typeof fetch })
+
+    await api.inLocale('en').resource('dishes').get('d1')
+    // The client the caller holds is untouched: a language decides what every answer is,
+    // and one that changed under a held reference would make earlier and later reads
+    // disagree with nothing saying so.
+    await api.resource('dishes').get('d1')
+
+    expect(calls).toEqual([
+      'https://shop.example/api/en/dishes/d1',
+      'https://shop.example/api/dishes/d1',
+    ])
+  })
+})

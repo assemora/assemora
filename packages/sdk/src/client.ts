@@ -8,6 +8,18 @@
 
 export type ClientOptions = {
   readonly url: string
+  /**
+   * The language to read and write in (SPEC.md §131).
+   *
+   * A language is a path segment, so this is a base rather than a header: `url` plus
+   * `ru` is `https://…/api/ru`, which is the same API answering in Russian. Left out,
+   * the deployment's default language answers — and in an application that serves one
+   * language there is nothing else it could be.
+   *
+   * The OpenAPI document says the same thing as a server variable, so a client generated
+   * from it and this one reach the same addresses.
+   */
+  readonly locale?: string
   readonly token?: string
   /** Injected in tests, and wherever `fetch` is not global. */
   readonly fetch?: typeof globalThis.fetch
@@ -83,6 +95,14 @@ export type Client = {
     path: string,
     options?: { body?: unknown; query?: Readonly<Record<string, unknown>> },
   ): Promise<T>
+  /**
+   * The same client, reading and writing in another language.
+   *
+   * A second client rather than a mode on this one: a language decides what every answer
+   * *is*, and a client that could change it under a caller holding a reference would be
+   * one whose earlier reads and later reads disagree with nothing saying so.
+   */
+  inLocale(locale: string): Client
 }
 
 const queryString = (query: Readonly<Record<string, unknown>> | undefined): string => {
@@ -110,7 +130,8 @@ const flatten = (query: ListQuery | undefined): Record<string, unknown> => ({
 
 export const createClient = (options: ClientOptions): Client => {
   const send = options.fetch ?? globalThis.fetch
-  const base = options.url.replace(/\/+$/, '')
+  const root = options.url.replace(/\/+$/, '')
+  const base = options.locale === undefined ? root : `${root}/${options.locale}`
 
   const request = async <T>(
     method: string,
@@ -148,7 +169,11 @@ export const createClient = (options: ClientOptions): Client => {
     delete: (id) => request<{ id: string }>('delete', `/${name}/${encodeURIComponent(id)}`),
   })
 
-  const client = { resource, request }
+  const client = {
+    resource,
+    request,
+    inLocale: (locale: string) => createClient({ ...options, locale }),
+  }
 
   // `api.articles.list()` reads better than `api.resource('articles').list()`, and
   // both reach the same place (SPEC.md §48).

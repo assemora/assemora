@@ -65,7 +65,7 @@ describe('paths', () => {
   it('documents a route the moment it is registered, with no annotation anywhere', () => {
     server.mount(login)
 
-    const operation = document().paths['/api/auth/login']?.post
+    const operation = document().paths['/auth/login']?.post
 
     expect(operation).toMatchObject({
       operationId: 'post_auth_login',
@@ -85,10 +85,7 @@ describe('paths', () => {
   it('turns declared errors into documented responses (SPEC.md §46)', () => {
     server.mount(login)
 
-    const responses = document().paths['/api/auth/login']?.post?.responses as Record<
-      string,
-      unknown
-    >
+    const responses = document().paths['/auth/login']?.post?.responses as Record<string, unknown>
 
     expect(Object.keys(responses).sort()).toEqual(['201', '401', '422'])
     expect(responses['401']).toMatchObject({ description: 'Wrong email or password' })
@@ -97,7 +94,7 @@ describe('paths', () => {
   it('separates path parameters from query parameters', () => {
     server.mount(readArticle)
 
-    const operation = document().paths['/api/articles/{id}']?.get
+    const operation = document().paths['/articles/{id}']?.get
     const parameters = (operation?.parameters ?? []) as {
       name: string
       in: string
@@ -114,7 +111,7 @@ describe('paths', () => {
   it('marks an authenticated route as such', () => {
     server.mount(readArticle)
 
-    const operation = document().paths['/api/articles/{id}']?.get
+    const operation = document().paths['/articles/{id}']?.get
 
     const responses = (operation?.responses ?? {}) as Record<string, unknown>
 
@@ -203,7 +200,7 @@ describe('the document is served by the API it describes', () => {
 
     expect(response.statusCode).toBe(200)
     expect(body.openapi).toBe('3.1.0')
-    expect(Object.keys(body.paths)).toContain('/api/auth/login')
+    expect(Object.keys(body.paths)).toContain('/auth/login')
   })
 
   it('exposes what the API Explorer shows, to somebody it recognises (SPEC.md §45)', async () => {
@@ -248,5 +245,43 @@ describe('the document is served by the API it describes', () => {
 
     expect(response.statusCode).toBe(200)
     expect(app.registry.find('routes', 'get /_introspection')).toMatchObject({ auth: false })
+  })
+})
+
+describe('the languages a deployment serves (SPEC.md §131)', () => {
+  const withLocales = () =>
+    buildOpenApiDocument(
+      {
+        routes: [{ name: 'get /articles', method: 'get', path: '/articles' }],
+        locales: [
+          { name: 'uk', default: true },
+          { name: 'en', default: false },
+          { name: 'ru', default: false },
+        ],
+      },
+      { title: 'Assemora', version: '1.0.0' },
+    ) as { servers: readonly Record<string, unknown>[]; paths: Record<string, unknown> }
+
+  it('carries the prefix as a server, so a path can be relative to more than one', () => {
+    // The whole reason the prefix left the path: `/api/articles` cannot be relative to
+    // both `/api` and `/api/ru`, and a locale is exactly a second base.
+    expect(Object.keys(withLocales().paths)).toEqual(['/articles'])
+    expect(withLocales().servers[0]).toMatchObject({ url: '/api' })
+  })
+
+  it('offers the same API one segment further along, with the languages as a variable', () => {
+    expect(withLocales().servers[1]).toMatchObject({
+      url: '/api/{locale}',
+      variables: { locale: { enum: ['uk', 'en', 'ru'], default: 'uk' } },
+    })
+  })
+
+  it('offers one server in an application that serves one language', () => {
+    const document = buildOpenApiDocument(
+      { routes: [{ name: 'get /articles', method: 'get', path: '/articles' }] },
+      { title: 'Assemora', version: '1.0.0' },
+    ) as { servers: readonly Record<string, unknown>[] }
+
+    expect(document.servers).toEqual([{ url: '/api' }])
   })
 })

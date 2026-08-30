@@ -140,6 +140,12 @@ const isRouteEntry = (entry: unknown): entry is RouteEntry =>
 const isResourceEntry = (entry: unknown): entry is ResourceEntry =>
   Array.isArray((entry as ResourceEntry)?.fields)
 
+/** A language this deployment serves (SPEC.md §131). */
+type LocaleEntry = { readonly name: string; readonly default?: boolean }
+
+const isLocaleEntry = (entry: unknown): entry is LocaleEntry =>
+  typeof (entry as LocaleEntry)?.name === 'string'
+
 /** Everything the registry holds, as plain data. What the CLI will hand in too. */
 export type RegistrySnapshot = Readonly<
   Record<string, readonly Readonly<Record<string, unknown>>[]>
@@ -150,6 +156,39 @@ const snapshotOf = (source: SchemaRegistry | RegistrySnapshot): RegistrySnapshot
     ? ((source as SchemaRegistry).describe() as RegistrySnapshot)
     : (source as RegistrySnapshot)
 
+/**
+ * Where the API is, as OpenAPI says it: a base, and the paths relative to it.
+ *
+ * The prefix used to be inside every path — `/api/articles` — which reads the same to a
+ * person and cannot express one thing: that the same endpoint is also served one segment
+ * further along, under a language (SPEC.md §131). `servers` is what OpenAPI has for a
+ * base that varies, and a path that already contains the base cannot be relative to two
+ * of them.
+ *
+ * So a document now carries `/api` as its server and `/articles` as its path, which is
+ * how an OpenAPI document is ordinarily written, and a deployment serving several
+ * languages carries a second server with the language as a variable. A generated client
+ * then reaches `/api/ru/articles` by choosing a server rather than by rewriting a path.
+ */
+const serversFor = (
+  prefix: string,
+  locales: readonly LocaleEntry[],
+): readonly Readonly<Record<string, unknown>>[] => {
+  const names = locales.map((entry) => entry.name)
+  const fallback = locales.find((entry) => entry.default)?.name ?? names[0]
+
+  if (names.length < 2 || fallback === undefined) return [{ url: prefix }]
+
+  return [
+    { url: prefix, description: `The default language (${fallback})` },
+    {
+      url: `${prefix}/{locale}`,
+      description: 'The same API, read and written in one language',
+      variables: { locale: { enum: [...names], default: fallback } },
+    },
+  ]
+}
+
 export const buildOpenApiDocument = (
   source: SchemaRegistry | RegistrySnapshot,
   info: OpenApiInfo,
@@ -159,11 +198,12 @@ export const buildOpenApiDocument = (
   const snapshot = snapshotOf(source)
   const routes = (snapshot.routes ?? []).filter(isRouteEntry)
   const resources = (snapshot.resources ?? []).filter(isResourceEntry)
+  const locales = (snapshot.locales ?? []).filter(isLocaleEntry)
 
   const paths: Record<string, Record<string, unknown>> = {}
 
   for (const entry of routes) {
-    const url = `${prefix}${toOpenApiPath(entry.path)}`
+    const url = toOpenApiPath(entry.path)
     const operation = {
       operationId: entry.name.replace(/[^A-Za-z0-9]+/g, '_'),
       ...(entry.description === undefined ? {} : { summary: entry.description }),
@@ -186,6 +226,7 @@ export const buildOpenApiDocument = (
 
   return {
     openapi: '3.1.0',
+    servers: serversFor(prefix, locales),
     info: {
       title: info.title,
       version: info.version,

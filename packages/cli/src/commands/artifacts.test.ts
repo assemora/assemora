@@ -176,9 +176,7 @@ describe('api:openapi', () => {
 
     expect(document.openapi).toBe('3.1.0')
     expect(document.info).toEqual({ title: 'Blog', version: '2.1.0' })
-    expect(document.paths['/api/auth/login']?.post?.summary).toBe(
-      'Exchanges credentials for a token',
-    )
+    expect(document.paths['/auth/login']?.post?.summary).toBe('Exchanges credentials for a token')
   })
 
   it('reports where it wrote and how big it is, in bytes the file really has', async () => {

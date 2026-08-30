@@ -361,3 +361,47 @@ describe('the emitted client, as the compiler reads it', () => {
     )
   })
 })
+
+describe('the languages a deployment serves (SPEC.md §131)', () => {
+  const multilingual = () =>
+    generateSdk({
+      resources: [
+        {
+          name: 'dishes',
+          fields: [{ name: 'title', kind: 'text', required: true }],
+          api: { create: true, read: true, update: true, delete: true },
+        },
+      ],
+      locales: [
+        { name: 'uk', default: true },
+        { name: 'en', default: false },
+        { name: 'ru', default: false },
+      ],
+    })
+
+  it('types the language, so asking for one nobody serves is a compile error', () => {
+    expect(multilingual()).toContain("export type Locale = 'uk' | 'en' | 'ru'")
+    expect(multilingual()).toContain(
+      'export const createTypedClient = (options: ClientOptions & { locale?: Locale }): AssemoraApi =>',
+    )
+  })
+
+  it('lets a caller read the same API in another language', () => {
+    expect(multilingual()).toContain('  inLocale(locale: Locale): AssemoraApi')
+  })
+
+  it('says nothing about languages in an application that serves one', () => {
+    const written = generateSdk({
+      resources: [
+        {
+          name: 'dishes',
+          fields: [{ name: 'title', kind: 'text', required: true }],
+          api: { create: true, read: true, update: true, delete: true },
+        },
+      ],
+    })
+
+    expect(written).not.toContain('Locale')
+    expect(written).toContain('export const createTypedClient = (options: ClientOptions)')
+  })
+})

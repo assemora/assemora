@@ -632,9 +632,7 @@ describe('the developer adds a model, a resource and a block (SPEC.md §124, §7
       components: { schemas: Record<string, { properties: Record<string, unknown> }> }
     }>(await api('/openapi.json'))
 
-    expect(Object.keys(document.paths)).toEqual(
-      expect.arrayContaining(['/api/posts', '/api/posts/{id}']),
-    )
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/posts', '/posts/{id}']))
     expect(Object.keys(document.components.schemas.posts?.properties ?? {})).toContain('title')
 
     const snapshot = await bodyOf<Record<string, { name: string }[]>>(
@@ -787,7 +785,7 @@ describe('after migration the system automatically provides (SPEC.md §124)', ()
     expect(document.statusCode).toBe(200)
     expect(described.info).toMatchObject({ title: 'demo', version: '1.0.0' })
     expect(Object.keys(described.paths)).toEqual(
-      expect.arrayContaining(['/api/articles', '/api/articles/{id}']),
+      expect.arrayContaining(['/articles', '/articles/{id}']),
     )
     expect(Object.keys(described.components.schemas.articles?.properties ?? {})).toEqual(
       expect.arrayContaining(['title', 'published']),

@@ -168,8 +168,8 @@ describe('a version under assemora() (SPEC.md §9, §47)', () => {
     const document = await server.inject({ method: 'GET', url: '/api/openapi.json' })
     const paths = Object.keys(document.json<{ paths: Record<string, unknown> }>().paths)
 
-    expect(paths).toContain('/api/v1/notes')
-    expect(paths).not.toContain('/api/notes')
+    expect(paths).toContain('/v1/notes')
+    expect(paths).not.toContain('/notes')
   })
 
   it('creates and reads through the same command and query path the bare one takes', async () => {

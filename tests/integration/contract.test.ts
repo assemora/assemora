@@ -115,11 +115,9 @@ describe('one declaration reaches every subsystem (SPEC.md §98)', () => {
       components: { schemas: Record<string, { properties: Record<string, unknown> }> }
     }>()
 
-    expect(document.paths['/api/auth/login']?.post?.summary).toBe(
-      'Exchanges credentials for a token',
-    )
+    expect(document.paths['/auth/login']?.post?.summary).toBe('Exchanges credentials for a token')
     expect(Object.keys(document.paths)).toEqual(
-      expect.arrayContaining(['/api/articles', '/api/articles/{id}']),
+      expect.arrayContaining(['/articles', '/articles/{id}']),
     )
     expect(Object.keys(document.components.schemas.articles?.properties ?? {})).not.toContain(
       'secretNote',

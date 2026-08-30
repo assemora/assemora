@@ -234,8 +234,8 @@ describe('a model and a resource are the whole configuration (SPEC.md §124)', (
     const paths = Object.keys(document.json<{ paths: Record<string, unknown> }>().paths)
 
     expect(document.statusCode).toBe(200)
-    expect(paths).toContain('/api/notes')
-    expect(paths).toContain('/api/notes/{id}')
+    expect(paths).toContain('/notes')
+    expect(paths).toContain('/notes/{id}')
 
     const jar = cookiesOf(await signIn(server))
     const explorer = await server.inject({
@@ -540,9 +540,9 @@ describe('one door per session command (SPEC.md §85)', () => {
     const document = await serverOf(built).inject({ method: 'GET', url: '/api/openapi.json' })
     const paths = Object.keys(document.json<{ paths: Record<string, unknown> }>().paths)
 
-    expect(paths).not.toContain('/api/commands/auth.login')
-    expect(paths).toContain('/api/auth/login')
-    expect(paths).toContain('/api/commands/entries.create')
+    expect(paths).not.toContain('/commands/auth.login')
+    expect(paths).toContain('/auth/login')
+    expect(paths).toContain('/commands/entries.create')
   })
 })
 
