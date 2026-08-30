@@ -93,5 +93,10 @@ Pages are translatable too: a slug and a block tree each, `pages.translate` star
 the original's blocks, and a translation that is unpublished until somebody says it is
 ready — until then a visitor gets the original rather than an empty page.
 
-Left: the locale in OpenAPI and the generated SDK. A collection is not translatable at all
-and says so; ADR-0028 records why.
+OpenAPI carries the languages as a server variable — which is why the prefix moved out of
+the paths and into `servers`, since a path holding its own base cannot be relative to two
+of them — and the generated SDK types them: `createTypedClient({ url, locale })` and
+`api.inLocale('ru')`, with `Locale` a union of what the deployment serves.
+
+**§131 is built.** The one thing it asks for that is not: a collection (§37) is not
+translatable at all, and ADR-0028 records why.

@@ -228,9 +228,18 @@ segment that is not a language is untouched, so `/api/v1/…` still means a vers
   refuse a translatable model in a one-language deployment — it used to, and that broke
   SPEC.md §9 and §124, which write out a whole application without a word about locales.
 
-Left of §131: the locale in OpenAPI and the generated SDK. A collection (§37) is not
-translatable at all and says so where it is asked: its entries share one JSONB table and
-its stored definition has nowhere to say which fields are worth translating.
+- **OpenAPI carries the languages as a server variable**, and the prefix moved out of the
+  paths to make that expressible: a path holding its own base cannot be relative to both
+  `/api` and `/api/ru`. So a document has `servers: [{url:'/api'}, {url:'/api/{locale}',…}]`
+  and paths like `/articles` — which is how an OpenAPI document is ordinarily written. One
+  language still means one path.
+- **The generated SDK types the languages**: `export type Locale = 'uk' | 'en' | 'ru'`,
+  `createTypedClient({ url, locale })` and `api.inLocale('ru')`, which answers with a
+  second client rather than changing the one a caller holds.
+
+**§131 is built.** The one thing in it that is not, and will not be: a collection (§37) is
+not translatable at all and says so where it is asked — its entries share one JSONB table
+and its stored definition has nowhere to say which fields are worth translating.
 
 Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
 which of its limits are permanent and which were only a schedule, and adds five
