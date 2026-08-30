@@ -18,3 +18,4 @@ apps/playground/storage/
 
 # Local coding-agent configuration. The rules it reads live in docs/rules/.
 .claude/
+.gstack/
