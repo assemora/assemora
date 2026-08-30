@@ -139,11 +139,29 @@ describe.skipIf(!reachable)('a translatable model against PostgreSQL', () => {
   })
 
   it('carries both columns into the real schema, indexed', async () => {
-    const columns = await adapter.introspect()
-    const dishes = columns.tables.find((table) => table.name === 'it_dishes')
+    /**
+     * This table by name, not `introspect()`.
+     *
+     * `introspect()` reads every table in the schema, and the suites share one database
+     * and run beside each other — so it resolved an OID that another file had dropped by
+     * the time the row was read: `could not open relation with OID …`, in a test about
+     * two columns of one table. Asking about `it_dishes` alone is both narrower and what
+     * the test is actually claiming.
+     */
+    const columns = await adapter.raw(
+      `select column_name from information_schema.columns where table_name = 'it_dishes'`,
+    )
+    const indexes = await adapter.raw(
+      `select indexname from pg_indexes where tablename = 'it_dishes'`,
+    )
 
-    expect(dishes?.columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(['locale', 'translationOf']),
+    expect(columns.rows.map((row) => row.column_name)).toEqual(
+      expect.arrayContaining(['locale', 'translation_of']),
+    )
+    // Every read of a translatable model filters on `locale` and the fallback groups by
+    // `translationOf`: an index each is what the feature is.
+    expect(indexes.rows.map((row) => row.indexname)).toEqual(
+      expect.arrayContaining(['it_dishes_locale_idx', 'it_dishes_translation_of_idx']),
     )
   })
 

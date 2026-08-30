@@ -158,7 +158,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
           <Translations
             resource={params.resource}
             id={params.id}
-            entryLocale={(existing.data ?? {}).locale}
+            entryLocale={existing.data?.locale}
           />
         )}
 
