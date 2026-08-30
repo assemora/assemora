@@ -201,6 +201,10 @@ export const model = <
 
   const translates = (options as Readonly<Record<symbol, unknown>>)[TRANSLATABLE] === true
 
+  const updatedAtColumn = Object.entries(columns).find(
+    ([, column]) => column.timestampRole === 'updated',
+  )?.[0]
+
   const softDeleteColumn =
     options.softDeletes === true
       ? 'deletedAt'
@@ -241,6 +245,7 @@ export const model = <
       ),
       ...(softDeleteColumn === undefined ? {} : { softDeleteColumn }),
       ...(translates ? { translatable: true } : {}),
+      ...(updatedAtColumn === undefined ? {} : { updatedAtColumn }),
       ...(perLocale.length === 0
         ? {}
         : { uniqueTogether: perLocale.map((column) => [column.name, 'locale']) }),

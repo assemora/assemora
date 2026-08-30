@@ -368,6 +368,10 @@ export const dynamicResource = (
         return null
       },
 
+      async translations() {
+        return []
+      },
+
       async load(id) {
         return wholeEntry((await load(id)).toJSON()) as unknown as Record<string, unknown>
       },

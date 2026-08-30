@@ -68,6 +68,23 @@ export type Persistence = {
    * one entry are tied together, not something an editor fills in.
    */
   translation(original: unknown, locale: string): Promise<{ readonly id: unknown } | null>
+  /**
+   * Every row of the entry `id` belongs to, in every language (SPEC.md §131).
+   *
+   * The whole entry rather than one row, because the question it answers is about the
+   * entry: which languages this is written in, which are missing, and which were written
+   * before the original last changed. `updatedAt` is `null` on a model that stamps no
+   * time, and then staleness is simply not answerable — which is the truth, and better
+   * than a guess drawn from a column that is not there.
+   */
+  translations(id: unknown): Promise<
+    readonly {
+      readonly id: unknown
+      readonly locale: string
+      readonly isOriginal: boolean
+      readonly updatedAt: string | null
+    }[]
+  >
   /** The stored entry, for a record-level policy check before anything is written. */
   load(id: unknown): Promise<Record<string, unknown>>
   create(values: Record<string, unknown>): Promise<{ id: unknown; after: Record<string, unknown> }>
@@ -394,6 +411,35 @@ export const resource = <
         return found === null
           ? null
           : { id: (found as unknown as Record<string, unknown>)[model.primaryKey] }
+      },
+
+      async translations(id) {
+        if (model.descriptor.translatable !== true) return []
+
+        const named = await model.find(id)
+
+        if (named === null) return []
+
+        const row = snapshot(named)
+        const entry = row.translationOf ?? row[model.primaryKey]
+        const stamped = model.descriptor.updatedAtColumn
+
+        const every = model.allLocales() as unknown as {
+          get(): Promise<Instance<F, C>[]>
+        }
+
+        return (await every.get())
+          .map((one) => snapshot(one))
+          .filter((one) => (one.translationOf ?? one[model.primaryKey]) === entry)
+          .map((one) => ({
+            id: one[model.primaryKey],
+            locale: String(one.locale),
+            isOriginal: one.translationOf === null || one.translationOf === undefined,
+            updatedAt:
+              stamped === undefined || one[stamped] === undefined || one[stamped] === null
+                ? null
+                : new Date(one[stamped] as string | number | Date).toISOString(),
+          }))
       },
 
       async load(id) {

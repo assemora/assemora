@@ -88,6 +88,15 @@ export type TableDescriptor = {
    * silently scoped to it would be a filter nobody wrote.
    */
   readonly translatable?: boolean
+  /**
+   * The column a write stamps with the time, where the model declares one.
+   *
+   * Carried like `softDeleteColumn`, and for a reader rather than for a writer: the data
+   * layer already knows which column `timestamp().updated()` made, and this is how a
+   * layer above finds out. It is what makes "this translation is older than the entry it
+   * translates" answerable without a column of its own (SPEC.md §131).
+   */
+  readonly updatedAtColumn?: string
 }
 
 /**

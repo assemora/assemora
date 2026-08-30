@@ -241,3 +241,70 @@ describe('entries.translate', () => {
     ).rejects.toThrow(ValidationError)
   })
 })
+
+describe('entries.translations', () => {
+  it('answers which languages the entry is written in', async () => {
+    const { app } = build()
+    const { id } = await created(app)
+
+    await speaking(app, 'uk', async () =>
+      app.commands.execute('entries.translate', { resource: 'dishes', id, locale: 'ru' }),
+    )
+
+    const answer = (await speaking(app, 'uk', async () =>
+      app.queries.execute('entries.translations', { resource: 'dishes', id }),
+    )) as {
+      translations: readonly { locale: string; isOriginal: boolean; stale: boolean | null }[]
+    }
+
+    expect(answer.translations.map((one) => one.locale).sort()).toEqual(['ru', 'uk'])
+    expect(answer.translations.find((one) => one.locale === 'uk')?.isOriginal).toBe(true)
+    expect(answer.translations.find((one) => one.locale === 'ru')?.isOriginal).toBe(false)
+  })
+
+  it('answers from either row of the entry', async () => {
+    const { app } = build()
+    const { id } = await created(app)
+
+    const russian = (await speaking(app, 'uk', async () =>
+      app.commands.execute('entries.translate', { resource: 'dishes', id, locale: 'ru' }),
+    )) as { id: string }
+
+    const answer = (await speaking(app, 'ru', async () =>
+      app.queries.execute('entries.translations', { resource: 'dishes', id: russian.id }),
+    )) as { translations: readonly { locale: string }[] }
+
+    expect(answer.translations).toHaveLength(2)
+  })
+
+  it('says it cannot tell whether a translation is stale, rather than guessing', async () => {
+    const { app } = build()
+    const { id } = await created(app)
+
+    await speaking(app, 'uk', async () =>
+      app.commands.execute('entries.translate', { resource: 'dishes', id, locale: 'ru' }),
+    )
+
+    const answer = (await speaking(app, 'uk', async () =>
+      app.queries.execute('entries.translations', { resource: 'dishes', id }),
+    )) as { translations: readonly { locale: string; stale: boolean | null }[] }
+
+    // This model stamps no time, so "out of date" is unanswerable — and `null` is not
+    // `false`: a screen must not print "up to date" when it means "I cannot tell".
+    expect(answer.translations.find((one) => one.locale === 'ru')?.stale).toBeNull()
+  })
+
+  it('answers with nothing for a resource that is not translatable', async () => {
+    const { app } = build()
+
+    const { id } = (await speaking(app, 'uk', async () =>
+      app.commands.execute('entries.create', { resource: 'plain', data: { title: 'Борщ' } }),
+    )) as { id: string }
+
+    const answer = (await speaking(app, 'uk', async () =>
+      app.queries.execute('entries.translations', { resource: 'plain', id }),
+    )) as { translations: readonly unknown[] }
+
+    expect(answer.translations).toEqual([])
+  })
+})
