@@ -81,11 +81,14 @@ The spec also grew five sections it never had — §131 localisation, §132 taxo
 navigation, §134 forms, §135 singletons (ADR-0025). §135 and §133 are in the site-kit
 plan because a package needs them; §132 and §134 are open.
 
-**§131 localisation — the core of it is built** (ADR-0028). Languages are configured on
+**§131 localisation — built, apart from pages** (ADR-0028). Languages are configured on
 `assemora()`, a language is a path segment stripped before routing, `model().translatable()`
 gives a model one row per language, a read is scoped to the language of the operation and
-falls back to the default in one query, and `entries.translate` writes a translation
-through the Command Bus like any other change. Left: Studio's language switcher and
-translation status, the locale in OpenAPI and the generated SDK, and pages — §131 asks for
-a slug and a block tree per locale and that is not built. A collection is not translatable
+falls back to the default in one query, `entries.translate` writes a translation through
+the Command Bus like any other change, and `entries.translations` answers which languages
+an entry is written in. Studio edits in a chosen language, marks a row answered in another
+one, and refuses to present a fallback as a translation.
+
+Left: **pages** — §131 asks for a slug and a block tree per locale and that is not built —
+and the locale in OpenAPI and the generated SDK. A collection is not translatable at all
 and says so; ADR-0028 records why.

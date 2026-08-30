@@ -204,11 +204,22 @@ segment that is not a language is untouched, so `/api/v1/…` still means a vers
   a client as a code and its parameters rather than as an English sentence with the number
   baked in (`site-kits.md` 2.5 — do it before localisation or do it twice).
 
-Left of §131: Studio's language switcher and translation status, the locale in OpenAPI and
-the generated SDK, and **pages** — a slug and a block tree per locale is not built. A
-collection (§37) is not translatable at all and says so where it is asked: its entries
-share one JSONB table and its stored definition has nowhere to say which fields are worth
-translating.
+- Studio edits in a chosen language — from the registry, so an application with no locales
+  sees no switcher. A listing badges a row answered in another language, and the entry form
+  leads with the languages: the row on screen, a link to one that exists (`out of date`
+  where it was written before the original changed), or a button that writes it. A fallback
+  says in as many words that it is the original and that editing it changes what every
+  language falls back to. `entries.translations` is the read behind it, and it takes the
+  same permission reading the entry does.
+- A **reference names the original row** of an entry in every language, so the projection
+  carries `translationOf` beside `locale` and Studio's relation picker works in entry ids:
+  the labels are in the language being edited and the values are the originals. Without it,
+  picking a category while editing in Russian wrote a Russian row's id into a foreign key.
+
+Left of §131: **pages** — a slug and a block tree per locale is not built — and the locale
+in OpenAPI and the generated SDK. A collection (§37) is not translatable at all and says so
+where it is asked: its entries share one JSONB table and its stored definition has nowhere
+to say which fields are worth translating.
 
 Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
 which of its limits are permanent and which were only a schedule, and adds five
