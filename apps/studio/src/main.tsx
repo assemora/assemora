@@ -10,6 +10,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { worthRetrying } from './api/client.ts'
+import { LocaleProvider } from './api/locale.tsx'
 import { SessionProvider } from './api/session.tsx'
 import { router } from './app/router.tsx'
 import './styles.css'
@@ -31,7 +32,9 @@ createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={client}>
       <SessionProvider>
-        <RouterProvider router={router} />
+        <LocaleProvider>
+          <RouterProvider router={router} />
+        </LocaleProvider>
       </SessionProvider>
     </QueryClientProvider>
   </StrictMode>,

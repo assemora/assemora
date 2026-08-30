@@ -7,8 +7,9 @@
 import { Link, type LinkProps, Outlet } from '@tanstack/react-router'
 
 import { useIntrospection } from '../api/introspection.ts'
+import { useLocales } from '../api/locale.tsx'
 import { useSession } from '../api/session.tsx'
-import { Button, Spinner } from '../ui/index.tsx'
+import { Button, Select, Spinner } from '../ui/index.tsx'
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div className="space-y-1">
@@ -27,6 +28,44 @@ const NavLink = ({ children, ...link }: LinkProps & { children: React.ReactNode 
     {children}
   </Link>
 )
+
+/**
+ * Which language Studio is editing in (SPEC.md §131).
+ *
+ * Beside the person's own name rather than on a screen of its own, because it is not a
+ * setting: it decides which rows every listing, every form and every count on the screen
+ * is about. Absent entirely in an application that serves one language — the switcher is
+ * drawn from the registry, so a project that configured no locales sees nothing new.
+ */
+const LanguageChoice = () => {
+  const { locales, locale, defaultLocale, multilingual, choose } = useLocales()
+
+  if (!multilingual || locale === undefined) return null
+
+  return (
+    <div className="space-y-1">
+      <label
+        htmlFor="studio-locale"
+        className="block px-0.5 text-xs font-semibold uppercase tracking-wide text-ink-faint"
+      >
+        Editing in
+      </label>
+      <Select
+        id="studio-locale"
+        value={locale}
+        onChange={(event) => choose(event.target.value)}
+        className="h-8 py-0 text-sm"
+      >
+        {locales.map((code) => (
+          <option key={code} value={code}>
+            {code}
+            {code === defaultLocale ? ' · default' : ''}
+          </option>
+        ))}
+      </Select>
+    </div>
+  )
+}
 
 export const Shell = () => {
   const { viewer, signOut, can } = useSession()
@@ -104,7 +143,9 @@ export const Shell = () => {
           </Section>
         </nav>
 
-        <div className="space-y-2 border-t border-line-soft px-3 pt-4">
+        <div className="space-y-3 border-t border-line-soft px-3 pt-4">
+          <LanguageChoice />
+
           <p className="truncate text-sm font-medium">{viewer?.name}</p>
           <p className="truncate text-xs text-ink-faint">{viewer?.email}</p>
           <Button variant="ghost" size="sm" className="-mx-2" onClick={() => void signOut()}>

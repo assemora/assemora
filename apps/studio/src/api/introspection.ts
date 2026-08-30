@@ -134,6 +134,13 @@ export type ModelDescriptor = {
   readonly module?: string
 }
 
+/** A language this deployment serves (SPEC.md §131). */
+export type LocaleDescriptor = {
+  readonly name: string
+  /** Whether a missing translation falls back to this one. */
+  readonly default: boolean
+}
+
 export type Introspection = {
   readonly resources?: readonly ResourceDescriptor[]
   readonly routes?: readonly RouteDescriptor[]
@@ -142,6 +149,8 @@ export type Introspection = {
   readonly queries?: readonly CommandDescriptor[]
   readonly blocks?: readonly BlockDescriptor[]
   readonly models?: readonly ModelDescriptor[]
+  /** Empty in an application that serves one language, which is most of them. */
+  readonly locales?: readonly LocaleDescriptor[]
 }
 
 export const useIntrospection = (): UseQueryResult<Introspection> =>

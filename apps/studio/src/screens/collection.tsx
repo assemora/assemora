@@ -18,6 +18,7 @@ import {
   useIntrospection,
   valueAt,
 } from '../api/introspection.ts'
+import { useLocales } from '../api/locale.tsx'
 import { Page } from '../app/shell.tsx'
 import { NoEntries } from '../ui/blank.tsx'
 import { Badge, Button, Card, Empty, Failure, Input, Select, Spinner } from '../ui/index.tsx'
@@ -107,6 +108,7 @@ const Cell = ({ field, value }: { field: FieldDescriptor; value: unknown }) => {
 
 const Table = ({ resource, listing }: { resource: ResourceDescriptor; listing: Listing }) => {
   const columns = columnFields(resource)
+  const { locale } = useLocales()
 
   return (
     <table className="w-full text-left text-sm">
@@ -123,15 +125,38 @@ const Table = ({ resource, listing }: { resource: ResourceDescriptor; listing: L
       <tbody>
         {listing.data.map((entry) => {
           const id = String(entry[resource.primaryKey] ?? entry.id)
+          /**
+           * A row answered in another language than the one being edited (SPEC.md §131).
+           *
+           * The listing falls back, which is right — a menu with twenty of its hundred
+           * dishes translated is still a menu. What would be wrong is showing those
+           * eighty rows as though somebody had written them in this language, so the row
+           * says which language it is actually in.
+           */
+          const wrote = entry.locale
+          const fallback =
+            typeof wrote === 'string' && locale !== undefined && wrote !== locale
+              ? wrote
+              : undefined
 
           return (
             <tr
               key={id}
               className="border-b border-line-soft last:border-0 hover:bg-surface-sunken"
             >
-              {columns.map((field) => (
+              {columns.map((field, at) => (
                 <td key={field.name} className="max-w-[22rem] px-4 py-2.5">
-                  <Cell field={field} value={valueAt(entry, field.name)} />
+                  <span className="flex items-center gap-2">
+                    <Cell field={field} value={valueAt(entry, field.name)} />
+                    {at === 0 && fallback !== undefined && (
+                      <span
+                        title={`Not translated — this is the ${fallback} original`}
+                        className="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-ink-faint"
+                      >
+                        {fallback}
+                      </span>
+                    )}
+                  </span>
                 </td>
               ))}
               <td className="px-4 py-2.5 text-right">

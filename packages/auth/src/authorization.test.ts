@@ -300,3 +300,17 @@ describe('agents and API tokens carry their own permissions (SPEC.md §72)', () 
     ).resolves.toBeUndefined()
   })
 })
+
+describe('reading an entry across languages (SPEC.md §131)', () => {
+  it('is the same permission as reading it', () => {
+    const request = {
+      command: 'entries.translations',
+      input: { resource: 'articles' },
+      context: context(),
+    }
+
+    // A role that may read an entry should not need a second grant to be told which
+    // languages it is written in.
+    expect(subjectOf(request)).toEqual({ subject: 'articles', action: 'read' })
+  })
+})

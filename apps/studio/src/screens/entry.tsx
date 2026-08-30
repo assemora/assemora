@@ -14,6 +14,7 @@ import { declaredValues, editableFields, useIntrospection, valueAt } from '../ap
 import { Page } from '../app/shell.tsx'
 import { Button, Card, Failure, Spinner } from '../ui/index.tsx'
 import { FieldInput } from './fields.tsx'
+import { Translations } from './translations.tsx'
 
 type Entry = Record<string, unknown>
 
@@ -151,6 +152,16 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
       }
     >
       <form className="space-y-6" onSubmit={submit}>
+        {/* Above the form and not beside the Save button: which language this row is in
+            decides what saving *means*, so it has to be read before the fields are. */}
+        {mode === 'edit' && params.id !== undefined && (
+          <Translations
+            resource={params.resource}
+            id={params.id}
+            entryLocale={(existing.data ?? {}).locale}
+          />
+        )}
+
         {failure !== undefined && hasMoreToSay(failure, rendered) && (
           <Failure error={failure} except={rendered} />
         )}

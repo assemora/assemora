@@ -441,11 +441,11 @@ const EntryOfResource = ({
         <option value="">{listing.isPending ? 'Loading…' : 'Choose an entry…'}</option>
         {/* An id this page does not hold — an older entry, one another search found —
             is still what the value points at, so it stays offered. */}
-        {id === '' || rows.some((row) => String(row.id) === id) ? null : (
+        {id === '' || rows.some((row) => entryOf(row) === id) ? null : (
           <option value={id}>{id}</option>
         )}
         {rows.map((row) => (
-          <option key={String(row.id)} value={String(row.id)}>
+          <option key={String(row.id)} value={entryOf(row)}>
             {titleOf(resource, row)}
           </option>
         ))}
@@ -453,6 +453,21 @@ const EntryOfResource = ({
     </div>
   )
 }
+
+/**
+ * Which entry a listed row belongs to (SPEC.md §131).
+ *
+ * A reference names the *original* row of an entry, in every language — a Russian dish
+ * names the Ukrainian category, because the category is one entry in three languages and
+ * a foreign key names one row. So a listing read in Russian, which answers with Russian
+ * rows, has to offer their entries: otherwise the value already stored matches nothing
+ * on the list and shows as a bare id, and picking from the list writes a Russian row's
+ * id into a key that must name the original.
+ *
+ * `translationOf` is projected beside `id` on a translatable resource, and absent on
+ * every other, where a row is its own entry.
+ */
+const entryOf = (row: Record<string, unknown>): string => String(row.translationOf ?? row.id)
 
 /** Which entry of which resource a link points at. */
 const EntryPicker = ({

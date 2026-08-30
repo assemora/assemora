@@ -126,6 +126,23 @@ const failureOf = async (response: Response): Promise<ApiFailure> => {
   return { code: 'HTTP_ERROR', message: `The request failed with ${response.status}` }
 }
 
+/**
+ * The language segment every request carries (SPEC.md §131).
+ *
+ * `/api/ru/queries/entries.list` and `/api/queries/entries.list` are the same endpoint —
+ * the segment is stripped before routing and decides which rows the answer holds. The
+ * default language is left off, exactly as it is on the site.
+ *
+ * A module-level value rather than a parameter on every call, for the reason the CSRF
+ * token is read the same way: this is the transport, and it is the same for every
+ * request Studio makes.
+ */
+let spoken = ''
+
+export const speak = (locale: string | undefined, defaultLocale: string | undefined): void => {
+  spoken = locale === undefined || locale === defaultLocale ? '' : `/${locale}`
+}
+
 const request = async (
   method: string,
   path: string,
@@ -134,7 +151,7 @@ const request = async (
 ): Promise<Response> => {
   const token = csrfToken()
 
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(`/api${spoken}${path}`, {
     method,
     // The session is an httpOnly cookie, so it has to be sent explicitly.
     credentials: 'include',

@@ -346,7 +346,21 @@ export const resource = <
        * that silently serves English under a Russian URL with nothing saying so is
        * worse than a 404.
        */
-      ...(model.descriptor.translatable === true ? { locale: row.locale } : {}),
+      ...(model.descriptor.translatable === true
+        ? {
+            locale: row.locale,
+            /**
+             * Which entry this row is one language of, or null where it is the original.
+             *
+             * Projected because a *reference* to this entry names the original, always —
+             * a Russian dish names the Ukrainian category. Without it a form editing in
+             * Russian cannot tell that the category it lists and the category the row
+             * points at are the same entry, and picking one would write the Russian
+             * row's id into a foreign key that must name the original.
+             */
+            translationOf: row.translationOf ?? null,
+          }
+        : {}),
     }
 
     for (const [fieldName, field] of entries) {

@@ -33,7 +33,16 @@ export type CommandSubject = {
 }
 
 /** Listing and fetching are the same right, and a policy says so once. */
-const READING = new Set(['list', 'get'])
+/**
+ * The actions that are reads, whatever the subject.
+ *
+ * `translations` is one: it answers which languages an entry is written in, and a role
+ * that may read an entry should not need a second grant to be told that (SPEC.md §131).
+ * Adding it here rather than granting `entries.translations` separately is what keeps
+ * "may read this" one permission instead of a list that grows with every read anybody
+ * adds.
+ */
+const READING = new Set(['list', 'get', 'translations'])
 
 /**
  * A command name is already a permission name.
