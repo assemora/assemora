@@ -74,6 +74,15 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
   const choose = useCallback(
     (next: string) => {
       localStorage.setItem(STORED, next)
+      /**
+       * Before the invalidation below, not after the re-render it causes.
+       *
+       * `invalidateQueries` starts the refetches synchronously, and the provider has not
+       * re-rendered yet — so the render-time `speak` further up has not run for the new
+       * language. Measured: switching Studio to Russian refetched the page listing in
+       * Ukrainian and showed the Ukrainian rows under a Russian selector.
+       */
+      speak(next, defaultLocale)
       setChosen(next)
       /**
        * Everything, not the content screens.
@@ -85,7 +94,7 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
        */
       void client.invalidateQueries()
     },
-    [client],
+    [client, defaultLocale],
   )
 
   /**
