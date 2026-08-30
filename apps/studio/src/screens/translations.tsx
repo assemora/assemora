@@ -24,12 +24,28 @@ type Translation = {
   readonly stale: boolean | null
 }
 
+/**
+ * The two things that have languages, and what they are called.
+ *
+ * A page is not a resource — it has its own commands and its own screens — so the bar
+ * is told which of the two it is drawing rather than being given four names. There are
+ * exactly two, and there is no third coming: a collection cannot be translatable at all
+ * (ADR-0028).
+ */
+const NAMES = {
+  entry: { read: 'entries.translations', write: 'entries.translate', to: '/content/$resource/$id' },
+  page: { read: 'pages.translations', write: 'pages.translate', to: '/pages/$id' },
+} as const
+
 export const Translations = ({
+  subject = 'entry',
   resource,
   id,
   entryLocale,
 }: {
-  resource: string
+  subject?: keyof typeof NAMES
+  /** The resource an entry belongs to. Absent for a page. */
+  resource?: string
   id: string
   /** The language of the row on screen, which the read projects beside its id. */
   entryLocale: unknown
@@ -38,24 +54,29 @@ export const Translations = ({
   const navigate = useNavigate()
   const client = useQueryClient()
 
+  const names = NAMES[subject]
+  const of = resource === undefined ? { id } : { resource, id }
+
   const known = useQuery({
-    queryKey: ['translations', resource, id],
+    queryKey: ['translations', subject, resource, id],
     queryFn: ({ signal }) =>
-      api.query<{ translations: readonly Translation[] }>(
-        'entries.translations',
-        { resource, id },
-        signal,
-      ),
+      api.query<{ translations: readonly Translation[] }>(names.read, of, signal),
     enabled: multilingual,
   })
 
+  const goTo = async (to: string) =>
+    resource === undefined
+      ? navigate({ to: '/pages/$id', params: { id: to } })
+      : navigate({ to: '/content/$resource/$id', params: { resource, id: to } })
+
   const translate = useMutation({
-    mutationFn: (into: string) =>
-      api.command<{ id: string }>('entries.translate', { resource, id, locale: into }),
+    mutationFn: (into: string) => api.command<{ id: string }>(names.write, { ...of, locale: into }),
     onSuccess: async (made) => {
-      await client.invalidateQueries({ queryKey: ['translations', resource, id] })
-      await client.invalidateQueries({ queryKey: ['collection', resource] })
-      await navigate({ to: '/content/$resource/$id', params: { resource, id: made.id } })
+      await client.invalidateQueries({ queryKey: ['translations', subject, resource, id] })
+      await client.invalidateQueries({
+        queryKey: [resource === undefined ? 'pages' : 'collection'],
+      })
+      await goTo(made.id)
     },
   })
 
@@ -110,9 +131,7 @@ export const Translations = ({
               key={code}
               type="button"
               disabled={here}
-              onClick={() =>
-                void navigate({ to: '/content/$resource/$id', params: { resource, id: row.id } })
-              }
+              onClick={() => void goTo(row.id)}
               className={
                 here
                   ? 'rounded-lg bg-accent-soft px-2.5 py-1 text-sm font-medium text-accent'

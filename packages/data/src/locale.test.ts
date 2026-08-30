@@ -70,7 +70,32 @@ describe('the context decides and the query obeys', () => {
   it('reads a language the caller named, whatever the operation is in', async () => {
     const ast = await speaking('ru', async () => Dish.inLocale('uk').toAst())
 
-    expect(ast.where[0]).toMatchObject({ field: 'locale', value: 'uk' })
+    // The default language also holds the rows written before the deployment named any
+    // languages, which is what the empty string means.
+    expect(ast.where[0]).toMatchObject({ field: 'locale', operator: 'in', value: ['uk', ''] })
+  })
+
+  it('reads only the named language when it is not the default', async () => {
+    const ast = await speaking('uk', async () => Dish.inLocale('ru').toAst())
+
+    expect(ast.where[0]).toMatchObject({ field: 'locale', operator: '=', value: 'ru' })
+  })
+
+  it('reads a row written before the deployment had languages as the default one', async () => {
+    // Written with no language at all, which is what a row created before the
+    // deployment configured any carries.
+    await Dish.create({
+      id: '00000000-0000-4000-8000-000000000004',
+      title: 'Стара страва',
+      visible: true,
+      locale: '',
+      translationOf: null,
+    })
+
+    const rows = await speaking('uk', async () => Dish.where('visible', true).get())
+
+    // Adding `locales` to a project that already had content must not make it vanish.
+    expect(rows.map((row) => row.title)).toContain('Стара страва')
   })
 
   it('reads every translation when asked for all of them', async () => {

@@ -25,6 +25,7 @@ import {
   useBuilder,
 } from '../builder/state.ts'
 import { Badge, Button, Failure, Spinner } from '../ui/index.tsx'
+import { Translations } from './translations.tsx'
 
 export const Builder = () => {
   const { id } = useParams({ from: '/pages/$id' })
@@ -245,6 +246,15 @@ export const Builder = () => {
           </Button>
         </div>
       </header>
+
+      {/* Under the header rather than in it: which language this page is decides what
+          every block on the canvas *is*, so it belongs on a line of its own rather than
+          crowded between Undo and the viewport buttons. */}
+      {page.data !== undefined && (
+        <div className="border-b border-line-soft bg-surface px-4 py-2">
+          <Translations subject="page" id={id} entryLocale={page.data.locale} />
+        </div>
+      )}
 
       {/* An answer, not a refusal: it says what it says at the weight it deserves. */}
       {state.notice !== undefined && (

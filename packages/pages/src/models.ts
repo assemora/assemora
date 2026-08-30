@@ -4,6 +4,11 @@
  * Draft and published trees are stored side by side, so what a visitor sees does not
  * change while an editor is still working. Neither is ever HTML: both are block trees
  * (SPEC.md §54, §125.14).
+ *
+ * Translatable, which is §131's own words for a page: *"a slug and a block tree per
+ * locale"*. Both fall out of one row per language — `slug` becomes unique within a
+ * language rather than globally, so `/uk/about` and `/ru/about` are two pages, and each
+ * carries its own trees, its own status, its own version and its own history.
  */
 import { enumOf, integer, json, model, string, timestamp, uuid } from '@assemora/data'
 import type { BlockTree } from '@assemora/schema'
@@ -30,6 +35,6 @@ export const Page = model('assemora_pages', {
   publishedAt: timestamp().nullable(),
   createdAt: timestamp().created(),
   updatedAt: timestamp().updated(),
-})
+}).translatable()
 
 export const pageModels = [Page] as const

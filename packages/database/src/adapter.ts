@@ -110,6 +110,22 @@ export type TableDescriptor = {
 export const LOCALE_COLUMN = 'locale'
 export const TRANSLATION_OF_COLUMN = 'translationOf'
 
+/**
+ * What `locale` holds on a row written by a deployment that names no languages.
+ *
+ * A translatable model has to work in an application that serves one language — the
+ * framework ships one, `assemora_pages`, and SPEC.md §9 and §124 both write out the
+ * whole configuration of an application without a word about locales. So the column
+ * cannot demand a code nobody has chosen.
+ *
+ * The empty string says exactly that: this row is in the deployment's own language,
+ * whichever that turns out to be. Which is why a read of the *default* language matches
+ * it too — a page written before a site had languages belongs to the language it was
+ * written in, and that is the default. Without that rule, configuring locales on an
+ * existing project would make every row disappear.
+ */
+export const UNSPECIFIED_LOCALE = ''
+
 export type DatabaseSchema = {
   readonly tables: readonly TableDescriptor[]
 }

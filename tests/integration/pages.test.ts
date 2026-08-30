@@ -45,6 +45,17 @@ const newPage = async () =>
     version: number
   }
 
+/** The same, in a named language, for the multilingual suite at the foot of this file. */
+const newPageIn = async (locale: string) =>
+  (await app.run(
+    {
+      source: 'studio',
+      locale,
+      actor: { type: 'user', id: '11111111-1111-4111-8111-111111111111' },
+    },
+    () => app.commands.execute('pages.create', { slug: 'home', title: 'Home' }),
+  )) as { id: string; version: number }
+
 beforeEach(() => {
   clearBlockRegistry()
   clearRestorers()
@@ -440,5 +451,159 @@ describe('revisions and restore (SPEC.md §64, §65)', () => {
     await expect(execute('revisions.restore', { id: history[0]?.id ?? '' })).rejects.toMatchObject({
       code: 'NOT_RESTORABLE',
     })
+  })
+})
+
+describe('a page per language (SPEC.md §131)', () => {
+  /** The same harness, with three languages instead of one. */
+  const multilingual = () => {
+    clearBlockRegistry()
+    clearRestorers()
+    useAdapter(createMemoryAdapter({}))
+
+    app = createApplication({
+      modules: [pages({ blocks: [Hero, Section] }), revisionsModule()],
+      authorization: permitAll(),
+      transactions: dataTransactions(),
+      revisions: revisions(),
+      logger: createLogger(silentWriter),
+      locales: ['uk', 'en'],
+    })
+
+    return app.boot()
+  }
+
+  const speaking = <T>(locale: string, operation: () => Promise<T>): Promise<T> =>
+    app.run(
+      {
+        source: 'studio',
+        locale,
+        actor: { type: 'user', id: '11111111-1111-4111-8111-111111111111' },
+      },
+      operation,
+    )
+
+  const command = (locale: string, name: string, input: Record<string, unknown>) =>
+    speaking(locale, () => app.commands.execute(name, input)) as Promise<Record<string, unknown>>
+
+  const read = (locale: string, input: Record<string, unknown>) =>
+    speaking(locale, () => app.queries.execute('pages.get', input)) as Promise<
+      Record<string, unknown>
+    >
+
+  beforeEach(multilingual)
+
+  it('writes a page in the language it was made in', async () => {
+    const made = await command('uk', 'pages.create', { slug: 'about', title: 'Про нас' })
+    const page = await read('uk', { id: made.id })
+
+    expect(page.locale).toBe('uk')
+    expect(page.translationOf).toBeNull()
+  })
+
+  it('lets two languages share an address, which a globally unique slug could not', async () => {
+    const made = await command('uk', 'pages.create', { slug: 'about', title: 'Про нас' })
+
+    const translated = await command('uk', 'pages.translate', { id: made.id, locale: 'en' })
+
+    expect(translated.slug).toBe('about')
+    expect(translated.locale).toBe('en')
+  })
+
+  it('starts a translation from the original’s blocks, unpublished', async () => {
+    const made = await newPageIn('uk')
+
+    await command('uk', 'blocks.add', { id: made.id, type: 'hero', props: { title: 'Привіт' } })
+    await command('uk', 'pages.publish', { id: made.id })
+
+    const translated = (await command('uk', 'pages.translate', {
+      id: made.id,
+      locale: 'en',
+    })) as { id: string }
+
+    const draft = await read('en', { id: translated.id, mode: 'draft' })
+
+    expect(draft.status).toBe('draft')
+    expect(JSON.stringify(draft.tree)).toContain('Привіт')
+  })
+
+  it('answers a visitor with the original until the translation is published', async () => {
+    const made = await newPageIn('uk')
+
+    await command('uk', 'blocks.add', { id: made.id, type: 'hero', props: { title: 'Привіт' } })
+    await command('uk', 'pages.publish', { id: made.id })
+
+    const before = await read('en', { slug: 'home' })
+
+    // No English row at all yet: the ordinary fallback.
+    expect(before.locale).toBe('uk')
+
+    const translated = (await command('uk', 'pages.translate', {
+      id: made.id,
+      locale: 'en',
+    })) as { id: string }
+
+    const during = await read('en', { slug: 'home' })
+
+    /**
+     * The English row exists now and is a draft. Answering with *it* would put an empty
+     * page under the English address — worse than the fallback it replaced, because a
+     * minute earlier the reader got the original.
+     */
+    expect(during.locale).toBe('uk')
+    expect(JSON.stringify(during.tree)).toContain('Привіт')
+
+    // Publishing the translation is what makes it the English page: nothing about the
+    // *words* had to change for that, which is exactly the state a half-done translation
+    // is in.
+    await command('en', 'pages.publish', { id: translated.id })
+
+    const after = await read('en', { slug: 'home' })
+
+    expect(after.locale).toBe('en')
+  })
+
+  it('says which languages a page is written in', async () => {
+    const made = await newPageIn('uk')
+
+    await command('uk', 'pages.translate', { id: made.id, locale: 'en' })
+
+    const answer = (await speaking('uk', () =>
+      app.queries.execute('pages.translations', { id: made.id }),
+    )) as { translations: readonly { locale: string; isOriginal: boolean }[] }
+
+    expect(answer.translations.map((one) => one.locale).sort()).toEqual(['en', 'uk'])
+    expect(answer.translations.find((one) => one.locale === 'uk')?.isOriginal).toBe(true)
+  })
+
+  it('refuses a second translation into a language that has one', async () => {
+    const made = await newPageIn('uk')
+
+    await command('uk', 'pages.translate', { id: made.id, locale: 'en' })
+
+    await expect(command('uk', 'pages.translate', { id: made.id, locale: 'en' })).rejects.toThrow(
+      /already translated/,
+    )
+  })
+
+  it('refuses a language this deployment does not serve', async () => {
+    const made = await newPageIn('uk')
+
+    await expect(command('uk', 'pages.translate', { id: made.id, locale: 'de' })).rejects.toThrow(
+      /not a language this deployment serves/,
+    )
+  })
+
+  it('hangs a translation of a translation off the original', async () => {
+    const made = await newPageIn('uk')
+    const english = (await command('uk', 'pages.translate', { id: made.id, locale: 'en' })) as {
+      id: string
+    }
+
+    const answer = (await speaking('en', () =>
+      app.queries.execute('pages.translations', { id: english.id }),
+    )) as { translations: readonly { locale: string }[] }
+
+    expect(answer.translations).toHaveLength(2)
   })
 })

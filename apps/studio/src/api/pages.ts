@@ -18,6 +18,10 @@ export type PageSummary = {
   readonly slug: string
   readonly title: string
   readonly status: PageStatus
+  /** Which language it is written in. Absent in an application that serves one. */
+  readonly locale?: string
+  /** The page this is one language of, or null where it is the original. */
+  readonly translationOf?: string | null
   readonly version: number
   readonly publishedAt: string | null
   readonly updatedAt: string
@@ -28,6 +32,8 @@ export type PageDetail = {
   readonly slug: string
   readonly title: string
   readonly status: PageStatus
+  readonly locale?: string
+  readonly translationOf?: string | null
   readonly mode: 'draft' | 'published'
   readonly tree: BlockTree
   readonly meta: Readonly<Record<string, unknown>>

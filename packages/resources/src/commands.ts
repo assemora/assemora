@@ -13,6 +13,7 @@ import {
   isLocale,
   NotFoundError,
 } from '@assemora/core'
+import { UNSPECIFIED_LOCALE } from '@assemora/data'
 import { string, unknown as unknownSchema, uuid } from '@assemora/schema'
 
 import { refuseUnwritableFields } from './agent-fields.js'
@@ -69,7 +70,7 @@ export const CreateEntry = command('entries.create', {
     const written = target[PERSISTENCE].translatable
       ? {
           ...values,
-          locale: currentContext()?.locale ?? currentContext()?.locales?.defaultLocale,
+          locale: currentContext()?.locale ?? UNSPECIFIED_LOCALE,
           translationOf: null,
         }
       : values

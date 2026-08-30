@@ -3,6 +3,7 @@
  */
 import { defineModuleFacet, type ModuleBuilder, module, registerRestorer } from '@assemora/core'
 
+import { UNSPECIFIED_LOCALE } from '@assemora/data'
 import type { BlockTree } from '@assemora/schema'
 import { emptyTree } from '@assemora/schema'
 
@@ -79,6 +80,10 @@ export const pages = (options: PagesModuleOptions = {}): ModuleBuilder =>
             publishedTree: (snapshot.publishedTree ?? null) as BlockTree | null,
             meta: (snapshot.meta ?? {}) as PageMeta,
             version: 1,
+            // From the revision, not from the operation restoring it: a page put back is
+            // the page it was, in the language it was written in (SPEC.md §131).
+            locale: String(snapshot.locale ?? UNSPECIFIED_LOCALE),
+            translationOf: (snapshot.translationOf ?? null) as string | null,
             publishedAt: null,
           })
 

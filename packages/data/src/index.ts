@@ -24,6 +24,12 @@
  * ```
  */
 
+/**
+ * Re-exported rather than reached for directly: the layers that write a row — resources,
+ * pages — may not depend on `@assemora/database` (SPEC.md §8), and what they need is the
+ * value a translatable row carries when a deployment has named no languages.
+ */
+export { UNSPECIFIED_LOCALE } from '@assemora/database'
 export {
   bigint,
   binary,
@@ -66,6 +72,8 @@ export {
   type NoScopes,
   registeredModels,
   type ScopeMap,
+  TRANSLATION_FIELDS,
+  type TranslationFields,
 } from './model.js'
 export { defineModelFacet, type ModelDescriptor } from './module.js'
 // `definePivot` is not exported: `model()` puts the verbs on an instance, and calling

@@ -23,6 +23,16 @@ const project = (page: Awaited<ReturnType<typeof Page.findOrFail>>, mode: PageMo
   slug: page.slug,
   title: page.title,
   status: page.status,
+  /**
+   * Which language this page is actually written in, and which page it is one language
+   * of (SPEC.md §131).
+   *
+   * Beside the id for the reason a resource read carries them: a reader that cannot tell
+   * a translation from a fallback has been handed the wrong answer without being told,
+   * and a link to another language needs the entry rather than the row.
+   */
+  locale: page.locale,
+  translationOf: page.translationOf,
   mode,
   tree: (mode === 'draft' ? page.draftTree : (page.publishedTree ?? emptyTree())) as BlockTree,
   meta: page.meta,
@@ -60,6 +70,8 @@ export const ListPages = query('pages.list', {
         slug: item.slug,
         title: item.title,
         status: item.status,
+        locale: item.locale,
+        translationOf: item.translationOf,
         version: item.version,
         publishedAt: item.publishedAt,
         updatedAt: item.updatedAt,
@@ -85,10 +97,72 @@ export const GetPage = query('pages.get', {
 
     if (found === null) throw new NotFoundError('page', id ?? slug ?? '')
 
+    /**
+     * A translation nobody has published yet is not what a visitor gets (SPEC.md §131).
+     *
+     * `pages.translate` copies the original's blocks so a translator has something to
+     * work on, and leaves the copy unpublished — so between making it and finishing it,
+     * this row exists, has no published tree, and would answer a visitor with an empty
+     * page. Worse than the fallback it replaced: before the translation existed, the
+     * reader got the original.
+     *
+     * So a request for the published page steps back to the original, which is what the
+     * site showed a minute earlier and what it should go on showing until somebody says
+     * the translation is ready.
+     */
+    if ((mode ?? 'published') === 'published' && found.publishedTree === null) {
+      const original = found.translationOf === null ? null : await Page.find(found.translationOf)
+
+      if (original !== null && original.publishedTree !== null) {
+        return project(original, 'published')
+      }
+    }
+
     // Published by default: a visitor's renderer must never show a draft because a
     // parameter was forgotten.
     return project(found, mode ?? 'published')
   },
 })
 
-export const pageQueries = [ListPages, GetPage] as const
+export const ListPageTranslations = query('pages.translations', {
+  description: 'Which languages a page is written in, and which of them are out of date',
+  input: { id: uuid() },
+  handle: async ({ id }, context) => {
+    const named = await Page.find(id)
+
+    if (named === null) throw new NotFoundError('page', id)
+
+    // The page itself decides who may be told about its other languages, the way
+    // `revisions.list` asks about the entity it is the history of (ADR-0015).
+    await context.authorize('pages', 'read', named.toJSON())
+
+    const entry = named.translationOf ?? named.id
+    const every = await Page.allLocales().get()
+    const rows = every.filter((one) => (one.translationOf ?? one.id) === entry)
+    const original = rows.find((one) => one.translationOf === null)
+
+    return {
+      translations: rows.map((one) => ({
+        id: one.id,
+        locale: one.locale,
+        slug: one.slug,
+        status: one.status,
+        isOriginal: one.translationOf === null,
+        updatedAt: one.updatedAt,
+        /**
+         * Written before the original last changed.
+         *
+         * A page stamps `updatedAt` on every write, so unlike a resource this is always
+         * answerable — and it is the question a translator's screen is made of: which of
+         * these has the original moved on from.
+         */
+        stale:
+          one.translationOf === null || original === undefined
+            ? null
+            : new Date(one.updatedAt).getTime() < new Date(original.updatedAt).getTime(),
+      })),
+    }
+  },
+})
+
+export const pageQueries = [ListPages, GetPage, ListPageTranslations] as const

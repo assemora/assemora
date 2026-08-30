@@ -21,6 +21,7 @@ import {
   jsonEquals,
   jsonLike,
   orComparison,
+  UNSPECIFIED_LOCALE,
 } from '@assemora/database'
 
 import type { AnyColumn, ColumnValue } from './columns.js'
@@ -314,10 +315,22 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
     return currentContext()?.locale
   }
 
+  /**
+   * Reading one language, and what counts as being written in it.
+   *
+   * The default language matches rows marked with it *and* rows marked with nothing:
+   * a row written before the deployment named any languages is in the language it was
+   * written in, which is the default. Without that, adding `locales` to a project that
+   * already had content would make all of it vanish (`UNSPECIFIED_LOCALE`).
+   */
   const localeCondition = (): readonly Condition[] => {
     const code = readsIn()
 
-    return code === undefined ? [] : [comparison('locale', '=', code)]
+    if (code === undefined) return []
+
+    return code === currentContext()?.locales?.defaultLocale
+      ? [comparison('locale', 'in', [code, UNSPECIFIED_LOCALE])]
+      : [comparison('locale', '=', code)]
   }
 
   /**
@@ -447,7 +460,9 @@ export const createQuery = <F extends Fields, SN extends string, Row>(
             comparison('locale', '=', code),
             group(
               [
-                comparison('locale', '=', fallbackTo),
+                // The same rule as `localeCondition`: the default language is also where
+                // the rows that name no language belong.
+                comparison('locale', 'in', [fallbackTo, UNSPECIFIED_LOCALE]),
                 ...(covered.length === 0 ? [] : [comparison(key, 'not in', covered)]),
               ],
               'or',

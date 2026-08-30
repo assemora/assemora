@@ -94,7 +94,9 @@ const Row = ({ page }: { page: PageSummary }) => (
         {page.title}
       </Link>
     </td>
-    <td className="px-4 py-2.5 font-mono text-xs text-ink-soft">/{page.slug}</td>
+    <td className="px-4 py-2.5 font-mono text-xs text-ink-soft">
+      {page.locale === undefined || page.locale === '' ? '' : `/${page.locale}`}/{page.slug}
+    </td>
     <td className="px-4 py-2.5">
       <Badge tone={TONE[page.status]}>{page.status}</Badge>
     </td>

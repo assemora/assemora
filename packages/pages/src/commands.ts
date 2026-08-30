@@ -6,12 +6,16 @@
  * with the same validation, the same policies and the same revision (SPEC.md §2).
  */
 import {
+  AssemoraError,
   type CommandContext,
   ConflictError,
   command,
+  currentContext,
+  isLocale,
   NotFoundError,
   ValidationError,
 } from '@assemora/core'
+import { UNSPECIFIED_LOCALE } from '@assemora/data'
 import {
   type BlockTree,
   blockDesignPatch,
@@ -40,6 +44,11 @@ declare module '@assemora/core' {
     'page.created': { readonly pageId: string }
     'page.updated': { readonly pageId: string }
     'page.published': { readonly pageId: string; readonly slug: string }
+    'page.translated': {
+      readonly pageId: string
+      readonly translationOf: string
+      readonly locale: string
+    }
   }
 }
 
@@ -78,6 +87,10 @@ export const CreatePage = command('pages.create', {
       slug,
       title,
       status: 'draft',
+      // The language this is being written in, and nothing it translates. `slug` is
+      // unique within a language, so the same address in another one is another page.
+      locale: currentContext()?.locale ?? UNSPECIFIED_LOCALE,
+      translationOf: null,
       draftTree: emptyTree(),
       publishedTree: null,
       meta: meta ?? {},
@@ -389,6 +402,94 @@ export const DeletePage = command('pages.delete', {
   },
 })
 
+export const TranslatePage = command('pages.translate', {
+  description: 'Writes a page in another language, starting from a copy of this one',
+  input: {
+    id: uuid(),
+    locale: string().min(1),
+    /** Its own address, where the translation wants one. Defaults to the original's. */
+    slug: string().min(1).optional(),
+    title: string().min(1).optional(),
+  },
+  handle: async ({ id, locale, slug, title }, context) => {
+    const served = currentContext()?.locales
+
+    if (!isLocale(served, locale)) {
+      throw new AssemoraError(
+        'UNKNOWN_LOCALE',
+        `"${locale}" is not a language this deployment serves${
+          served === undefined ? '' : ` (${served.locales.join(', ')})`
+        }.`,
+        { status: 400 },
+      )
+    }
+
+    const source = await loadPage(id)
+
+    await context.authorize('pages', 'update', snapshotOf(source))
+
+    if (source.locale === locale) {
+      throw new AssemoraError('ALREADY_IN_LOCALE', `This page is already written in "${locale}".`, {
+        status: 409,
+      })
+    }
+
+    /**
+     * A translation of a translation belongs to the original, or the fallback — which
+     * groups by `translationOf` — would see two pages where the site has one.
+     */
+    const original = source.translationOf ?? id
+
+    const already = await Page.allLocales()
+      .where('translationOf', original)
+      .where('locale', locale)
+      .first()
+
+    if (already !== null) {
+      throw new AssemoraError(
+        'TRANSLATION_EXISTS',
+        `This page is already translated into "${locale}". Edit that translation instead: ${already.id}.`,
+        { status: 409 },
+      )
+    }
+
+    /**
+     * The draft tree, copied — and no published one.
+     *
+     * A translator edits the original's blocks in place, which is the only way a page of
+     * text gets translated at all. It starts unpublished on purpose: a translation that
+     * went live the moment it was made would put the *original's* words under the new
+     * language's address, and say they were a translation. Until it is published,
+     * `pages.get` answers a visitor with the original, which is the truth.
+     */
+    const made = await Page.create({
+      slug: slug ?? source.slug,
+      title: title ?? source.title,
+      status: 'draft',
+      draftTree: source.draftTree,
+      publishedTree: null,
+      meta: source.meta,
+      version: 1,
+      locale,
+      translationOf: original,
+      createdBy: context.actor?.id ?? null,
+      updatedBy: context.actor?.id ?? null,
+      publishedAt: null,
+    })
+
+    // Its own history, because a translation is a row (SPEC.md §64, §131).
+    context.revise({
+      entityType: 'pages',
+      entityId: made.id,
+      before: null,
+      after: snapshotOf(made),
+    })
+    context.emit('page.translated', { pageId: made.id, translationOf: original, locale })
+
+    return { id: made.id, slug: made.slug, locale, version: made.version }
+  },
+})
+
 export const pageCommands = [
   CreatePage,
   UpdatePage,
@@ -403,4 +504,5 @@ export const pageCommands = [
   DuplicateBlock,
   HideBlock,
   DesignBlock,
+  TranslatePage,
 ] as const
