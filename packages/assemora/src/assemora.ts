@@ -684,7 +684,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
         }
 
         if (settings.frontend !== undefined) {
-          await mountPreview(served.server, settings.frontend, logger)
+          await mountPreview(served.server, settings.frontend, logger, app.registry)
         }
       }
 

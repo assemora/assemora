@@ -151,6 +151,13 @@ export type Introspection = {
   readonly models?: readonly ModelDescriptor[]
   /** Empty in an application that serves one language, which is most of them. */
   readonly locales?: readonly LocaleDescriptor[]
+  /**
+   * Where this application serves its own frontend — one entry, whose name is the path.
+   *
+   * The builder canvas frames it, and it is not always `/preview`: an application whose
+   * site *is* the frontend serves it at the origin root.
+   */
+  readonly frontend?: readonly { readonly name: string }[]
 }
 
 export const useIntrospection = (): UseQueryResult<Introspection> =>

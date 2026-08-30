@@ -15,10 +15,30 @@
  */
 import { stat } from 'node:fs/promises'
 
-import type { Logger } from '@assemora/core'
+import type { Logger, RegistryEntry, SchemaRegistry } from '@assemora/core'
 import type { HttpServer } from '@assemora/http'
 
 import type { ResolvedFrontend } from './options.js'
+
+/**
+ * Where this application's own frontend is served.
+ *
+ * In the registry because Studio has to know it and cannot be told any other way: it is
+ * a pre-built artifact shipped in a package, so a build-time constant would be one value
+ * for every deployment, and its builder canvas frames *this* frontend at whatever path
+ * this deployment put it. `/preview` was that constant, and it stopped being true the
+ * moment an application served its site at the origin root.
+ *
+ * One entry, whose name is the path — the same shape the languages take, and for the
+ * same reason: a deployment fact several subsystems read, described once.
+ */
+export type FrontendDescriptor = RegistryEntry
+
+declare module '@assemora/core' {
+  interface RegistrySections {
+    frontend: FrontendDescriptor
+  }
+}
 
 /** A directory that is not there yet, or a `dist` nobody built. */
 const isBuilt = async (root: string): Promise<boolean> =>
@@ -36,7 +56,10 @@ export const mountPreview = async (
   server: HttpServer,
   frontend: ResolvedFrontend,
   logger: Logger,
+  registry?: SchemaRegistry,
 ): Promise<void> => {
+  registry?.register('frontend', { name: frontend.path })
+
   if (!(await isBuilt(frontend.root))) {
     logger.warn('The frontend bundle is missing, so the builder canvas has nothing to frame', {
       root: frontend.root,

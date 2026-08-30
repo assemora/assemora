@@ -1133,6 +1133,17 @@ describe('the frontend the builder canvas frames (SPEC.md §59, §85)', () => {
     )
   })
 
+  it('tells Studio where it is, because the canvas has to frame it', async () => {
+    const root = await bundle('<!doctype html><title>Preview</title>')
+    // Not the default. Studio hard-coded `/preview`, so an application that serves its
+    // site at the origin root framed a 404 in an iframe with nothing saying why.
+    const built = build({ modules: [notes()], frontend: { root, path: '/' } })
+
+    await built.boot()
+
+    expect(built.app.registry.describe().frontend).toEqual([{ name: '/' }])
+  })
+
   it('does not let an origin frame Studio because it may call the API', async () => {
     const root = await bundle('<!doctype html><title>Preview</title>')
     const studio = await bundle('<!doctype html><title>Studio</title>')

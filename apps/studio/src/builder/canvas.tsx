@@ -14,6 +14,8 @@ import { type BlockRect, type KeyPress, sendToCanvas } from '@assemora/react'
 import type { BlockTree } from '@assemora/schema'
 import { type Ref, useCallback, useEffect, useRef, useState } from 'react'
 
+import { useIntrospection } from '../api/introspection.ts'
+
 import { dismissOn } from './dismiss.ts'
 import { type InsertionPoint, insertionPoints } from './insertion.ts'
 import {
@@ -242,6 +244,16 @@ export const Canvas = ({
   onKeyPress(press: KeyPress): void
   onInsert(type: string, placement: { parentId?: string; index: number }): void
 }) => {
+  /**
+   * Where this application serves its own frontend, from the registry.
+   *
+   * `/preview` was hard-coded here, and it is only the default: an application whose
+   * site *is* the frontend serves it at the origin root, and then `/preview` is a 404
+   * in an iframe with nothing saying why.
+   */
+  const introspection = useIntrospection()
+  const frontend = introspection.data?.frontend?.[0]?.name ?? '/preview'
+
   const frame = useRef<HTMLIFrameElement>(null)
   const [rects, setRects] = useState<readonly BlockRect[]>([])
   const [ready, setReady] = useState(false)
@@ -372,7 +384,7 @@ export const Canvas = ({
           ref={frame}
           title="Page preview"
           className="size-full border-0"
-          src={`/preview?page=${pageId}&mode=draft&editing=1&editor=${encodeURIComponent(location.origin)}`}
+          src={`${frontend}${frontend.includes('?') ? '&' : '?'}page=${pageId}&mode=draft&editing=1&editor=${encodeURIComponent(location.origin)}`}
         />
 
         {/* Studio's own chrome, on a layer of its own: it never touches the page. */}
