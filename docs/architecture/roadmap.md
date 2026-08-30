@@ -89,6 +89,9 @@ the Command Bus like any other change, and `entries.translations` answers which 
 an entry is written in. Studio edits in a chosen language, marks a row answered in another
 one, and refuses to present a fallback as a translation.
 
-Left: **pages** — §131 asks for a slug and a block tree per locale and that is not built —
-and the locale in OpenAPI and the generated SDK. A collection is not translatable at all
+Pages are translatable too: a slug and a block tree each, `pages.translate` starting from
+the original's blocks, and a translation that is unpublished until somebody says it is
+ready — until then a visitor gets the original rather than an empty page.
+
+Left: the locale in OpenAPI and the generated SDK. A collection is not translatable at all
 and says so; ADR-0028 records why.

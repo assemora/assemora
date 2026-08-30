@@ -216,10 +216,21 @@ segment that is not a language is untouched, so `/api/v1/…` still means a vers
   the labels are in the language being edited and the values are the originals. Without it,
   picking a category while editing in Russian wrote a Russian row's id into a foreign key.
 
-Left of §131: **pages** — a slug and a block tree per locale is not built — and the locale
-in OpenAPI and the generated SDK. A collection (§37) is not translatable at all and says so
-where it is asked: its entries share one JSONB table and its stored definition has nowhere
-to say which fields are worth translating.
+- **A page is translatable**: a slug and a block tree per language, which is §131's own
+  wording. `pages.translate` copies the original's blocks and leaves the copy unpublished,
+  and `pages.get` steps back to the original for a translation nobody has published —
+  otherwise the minute after making one, a visitor got an empty page where a minute
+  earlier they got the original.
+- A translatable row in a deployment that names no languages carries `UNSPECIFIED_LOCALE`,
+  the empty string. A read of the **default** language matches it too, because a row
+  written before a site had languages is in the language it was written in. Without that,
+  adding `locales` to a project with content would make all of it vanish. Core does *not*
+  refuse a translatable model in a one-language deployment — it used to, and that broke
+  SPEC.md §9 and §124, which write out a whole application without a word about locales.
+
+Left of §131: the locale in OpenAPI and the generated SDK. A collection (§37) is not
+translatable at all and says so where it is asked: its entries share one JSONB table and
+its stored definition has nowhere to say which fields are worth translating.
 
 Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
 which of its limits are permanent and which were only a schedule, and adds five
