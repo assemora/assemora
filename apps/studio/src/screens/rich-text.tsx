@@ -55,32 +55,39 @@ export const RichTextInput = ({
   const box = useRef<HTMLDivElement>(null)
   const saved = useRef<Range | null>(null)
   /**
-   * What the box is born holding.
+   * What the box is born holding, and what it last said.
    *
-   * Frozen at mount and never updated, which is the point: bound to the live value, React
-   * would rewrite the DOM on every render and put the caret back at the start after every
-   * keystroke. Later changes from outside go through the effect below, which compares
-   * first. Rendering it here rather than only in the effect means the first paint is
-   * already the article, and that the component says something when rendered without a
-   * DOM at all.
+   * `born` is frozen at mount: bound to the live value, React would rewrite the node on
+   * every render and put the caret back at the start after every keystroke. Rendering it
+   * once means the first paint is already the article, and that the component says
+   * something when rendered without a DOM at all.
+   *
+   * `spoken` is the harder half. The effect below has to tell *our own* change from one
+   * that came from outside — a record loading, a language switching, a draft discarded —
+   * and it cannot do that by comparing against the DOM. A state update is deferred and
+   * the effect runs after the commit, so by then the box may already hold the next
+   * keystroke while `value` still holds the last one. Comparing against the DOM, the
+   * effect sees a difference that is only time, writes the older text back, and the caret
+   * goes to the start — which is exactly what it did.
+   *
+   * So it compares against the last thing this component emitted. Equal means the value
+   * is our own echo, however far ahead the box has run; different means somebody else
+   * changed it, and only then is the node written.
    */
   const born = useRef(value)
+  const spoken = useRef(value)
   const address = useRef<HTMLInputElement>(null)
   const [linking, setLinking] = useState(false)
   const [href, setHref] = useState('')
 
-  /**
-   * The value goes into the DOM only when it is not already there.
-   *
-   * A `contenteditable` cannot be controlled the way an input is: writing `innerHTML` on
-   * every render puts the caret back at the start after every keystroke. So this compares
-   * first, which means it updates when the form loads a record or a draft is discarded,
-   * and stays out of the way while somebody types.
-   */
+  /** Only a change from outside reaches the node. See `spoken` above for why. */
   useEffect(() => {
     const node = box.current
 
-    if (node !== null && node.innerHTML !== value) node.innerHTML = value
+    if (node === null || value === spoken.current) return
+
+    spoken.current = value
+    node.innerHTML = value
   }, [value])
 
   // The cursor goes where the work is. `autoFocus` would say the same thing, and is the
@@ -93,7 +100,10 @@ export const RichTextInput = ({
   const said = (): void => {
     const node = box.current
 
-    if (node !== null) onChange(node.innerHTML)
+    if (node === null) return
+
+    spoken.current = node.innerHTML
+    onChange(spoken.current)
   }
 
   /** Runs a command against the text, then reports what the text became. */
