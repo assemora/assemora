@@ -18,7 +18,7 @@
  * SPEC.md §61's: the theme decides how a thing looks, and a colour picker here is the CSS
  * editor arriving through the field layer.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 const BUTTON =
   'inline-flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-sm text-ink-soft transition hover:bg-surface-sunken'
@@ -55,33 +55,36 @@ export const RichTextInput = ({
   const box = useRef<HTMLDivElement>(null)
   const saved = useRef<Range | null>(null)
   /**
-   * What the box is born holding, and what it last said.
+   * The last thing this component put in the box, or said about it.
    *
-   * `born` is frozen at mount: bound to the live value, React would rewrite the node on
-   * every render and put the caret back at the start after every keystroke. Rendering it
-   * once means the first paint is already the article, and that the component says
-   * something when rendered without a DOM at all.
-   *
-   * `spoken` is the harder half. The effect below has to tell *our own* change from one
-   * that came from outside — a record loading, a language switching, a draft discarded —
-   * and it cannot do that by comparing against the DOM. A state update is deferred and
-   * the effect runs after the commit, so by then the box may already hold the next
-   * keystroke while `value` still holds the last one. Comparing against the DOM, the
-   * effect sees a difference that is only time, writes the older text back, and the caret
-   * goes to the start — which is exactly what it did.
+   * The effect below has to tell *our own* change from one that came from outside — a
+   * record loading, a language switching, a draft discarded — and it cannot do that by
+   * comparing against the DOM. A state update is deferred and the effect runs after the
+   * commit, so by then the box may already hold the next keystroke while `value` still
+   * holds the last one; comparing against the DOM, the effect sees a difference that is
+   * only time, writes the older text back, and the caret goes to the start.
    *
    * So it compares against the last thing this component emitted. Equal means the value
-   * is our own echo, however far ahead the box has run; different means somebody else
-   * changed it, and only then is the node written.
+   * is our own echo, however far ahead the box has run. `null` at the start, so the first
+   * run always writes: that is how the article gets into an empty box.
    */
-  const born = useRef(value)
-  const spoken = useRef(value)
+  const spoken = useRef<string | null>(null)
   const address = useRef<HTMLInputElement>(null)
   const [linking, setLinking] = useState(false)
   const [href, setHref] = useState('')
 
-  /** Only a change from outside reaches the node. See `spoken` above for why. */
-  useEffect(() => {
+  /**
+   * The value reaches the node here and nowhere else, and never through React.
+   *
+   * `dangerouslySetInnerHTML` was the obvious way to render it and is the wrong one:
+   * React re-applies it on a commit that touches the element even when the string has not
+   * changed, so every keystroke put the box back to what it held at mount. Measured, not
+   * reasoned about — three characters typed into a harness came back as none.
+   *
+   * `useLayoutEffect` rather than `useEffect` because this is the browser's own DOM being
+   * corrected: after paint, the box would show empty for a frame when a record loads.
+   */
+  useLayoutEffect(() => {
     const node = box.current
 
     if (node === null || value === spoken.current) return
@@ -204,11 +207,8 @@ export const RichTextInput = ({
         )}
       </div>
 
-      {/* Two rules are answered here rather than obeyed. `useSemanticElements` wants a
-          textarea, which holds text and not structure — a heading in one is the four
-          characters `<h2>`. `noDangerouslySetInnerHtml` is right about every other use and
-          wrong about this one: what is handed to the editor is the field's own value, on
-          its way back to the field. */}
+      {/* `useSemanticElements` wants a textarea, which holds text and not structure — a
+          heading in one is the four characters `<h2>`. */}
       {/* biome-ignore lint/a11y/useSemanticElements: a textarea holds text, not structure */}
       <div
         ref={box}
@@ -219,8 +219,6 @@ export const RichTextInput = ({
         suppressContentEditableWarning
         role="textbox"
         aria-multiline="true"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: the editor is handed the field's own value
-        dangerouslySetInnerHTML={{ __html: born.current }}
         onInput={said}
         onBlur={said}
         /**
