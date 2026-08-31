@@ -45,6 +45,19 @@ export type ResourceOptions = {
    * may read is not a title (SPEC.md §35, §58).
    */
   readonly titleField?: string
+  /**
+   * The heading Studio files this resource under — `'Блог'`, `'Shop'`, `'Menu'`.
+   *
+   * ```ts
+   * resource(Article, { … }, { label: 'Статті', group: 'Блог' })
+   * ```
+   *
+   * Resources with the same group are listed together, in the order they were
+   * registered, and the groups themselves in the order they first appear — which is the
+   * order the modules are listed in, and therefore a decision somebody already made.
+   * Unsaid, the resource stays under the general heading with everything else.
+   */
+  readonly group?: string
   readonly perPage?: number
   readonly maxPerPage?: number
 }
@@ -203,6 +216,7 @@ export const resource = <
     api: { ...DEFAULT_API, ...options.api },
     ...(options.defaultSort === undefined ? {} : { defaultSort: options.defaultSort }),
     ...(options.titleField === undefined ? {} : { titleField: options.titleField }),
+    ...(options.group === undefined ? {} : { group: options.group }),
     perPage,
   }
 

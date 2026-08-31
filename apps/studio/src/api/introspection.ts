@@ -90,6 +90,8 @@ export type ResourceDescriptor = {
   readonly defaultSort?: string
   /** The field that names an entry, where the resource declared one. */
   readonly titleField?: string
+  /** The heading the sidebar files it under, where the application named one. */
+  readonly group?: string
   readonly perPage: number
 }
 

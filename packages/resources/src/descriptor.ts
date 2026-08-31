@@ -69,6 +69,17 @@ export type ResourceDescriptor = {
    * makes every list in Studio read `091`, `001`, `144`.
    */
   readonly titleField?: string
+  /**
+   * The heading this resource is filed under in Studio (SPEC.md §58).
+   *
+   * An application of any size grows more resources than a flat list can carry: a menu, a
+   * shop and a blog put fifteen entries under one word, and finding the one you want
+   * becomes reading. A group is the application's own division of itself, said where the
+   * resource is declared, and it reaches Studio the way everything else does — through
+   * the registry, as data. Unsaid, the resource keeps the general heading, so a project
+   * that never groups anything looks exactly as it did.
+   */
+  readonly group?: string
   readonly perPage: number
 }
 

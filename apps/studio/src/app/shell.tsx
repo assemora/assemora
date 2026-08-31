@@ -6,7 +6,7 @@
  */
 import { Link, type LinkProps, Outlet } from '@tanstack/react-router'
 
-import { useIntrospection } from '../api/introspection.ts'
+import { type ResourceDescriptor, useIntrospection } from '../api/introspection.ts'
 import { useLocales } from '../api/locale.tsx'
 import { useSession } from '../api/session.tsx'
 import { Button, Select, Spinner } from '../ui/index.tsx'
@@ -71,6 +71,35 @@ export const Shell = () => {
   const { viewer, signOut, can } = useSession()
   const introspection = useIntrospection()
   const resources = introspection.data?.resources ?? []
+
+  /**
+   * The resources, under the headings the application filed them under (SPEC.md §58).
+   *
+   * A project of any size outgrows one list: a menu, a shop and a blog put fifteen
+   * entries under `Content` and finding the one you want becomes reading. `group` is the
+   * application's own division of itself, declared on the resource and carried here by
+   * the registry like everything else — Studio invents nothing and knows no project.
+   *
+   * Order is not sorted. Within a group it is the order the resources were registered,
+   * and the groups follow the order they first appear in, which is the order the modules
+   * are listed in `app.ts` — a decision somebody already made, and a better one than
+   * alphabetical, which would file `Articles` above `Menu` for no reason anybody meant.
+   *
+   * Ungrouped resources keep `Content`, so a project that groups nothing looks exactly as
+   * it did, and one that groups only its blog does not have its menu disappear.
+   */
+  const grouped = new Map<string, ResourceDescriptor[]>()
+
+  for (const resource of resources) {
+    const heading = resource.group ?? ''
+    const kept = grouped.get(heading) ?? []
+
+    kept.push(resource)
+    grouped.set(heading, kept)
+  }
+
+  const ungrouped = grouped.get('') ?? []
+  const groups = [...grouped.entries()].filter(([heading]) => heading !== '')
   const hasTheme =
     introspection.data?.commands?.some((command) => command.name === 'theme.update') === true
   // An application without `collections()` cannot make one, and somebody who may not
@@ -93,29 +122,48 @@ export const Shell = () => {
             <NavLink to="/">Dashboard</NavLink>
           </Section>
 
-          <Section title="Content">
-            {introspection.isLoading && (
-              <div className="px-3 py-1.5">
-                <Spinner label="" />
-              </div>
-            )}
-            {resources.map((resource) => (
-              <NavLink
-                key={resource.name}
-                to="/content/$resource"
-                params={{ resource: resource.name }}
-              >
-                {resource.label}
-              </NavLink>
-            ))}
-            {/* The collections above are whatever the registry holds, declared and
-                stored alike; this is where a stored one is made (SPEC.md §37). */}
-            {hasCollections && (
-              <NavLink to="/collections">
-                <span className="text-ink-faint">Manage collections</span>
-              </NavLink>
-            )}
-          </Section>
+          {/* `Content` still exists while anything is in it, or while the collections
+              link needs somewhere to live. A project that groups everything it declares
+              does not get an empty heading over a lone link. */}
+          {(introspection.isLoading || ungrouped.length > 0 || hasCollections) && (
+            <Section title="Content">
+              {introspection.isLoading && (
+                <div className="px-3 py-1.5">
+                  <Spinner label="" />
+                </div>
+              )}
+              {ungrouped.map((resource) => (
+                <NavLink
+                  key={resource.name}
+                  to="/content/$resource"
+                  params={{ resource: resource.name }}
+                >
+                  {resource.label}
+                </NavLink>
+              ))}
+              {/* The collections above are whatever the registry holds, declared and
+                  stored alike; this is where a stored one is made (SPEC.md §37). */}
+              {hasCollections && (
+                <NavLink to="/collections">
+                  <span className="text-ink-faint">Manage collections</span>
+                </NavLink>
+              )}
+            </Section>
+          )}
+
+          {groups.map(([heading, inside]) => (
+            <Section key={heading} title={heading}>
+              {inside.map((resource) => (
+                <NavLink
+                  key={resource.name}
+                  to="/content/$resource"
+                  params={{ resource: resource.name }}
+                >
+                  {resource.label}
+                </NavLink>
+              ))}
+            </Section>
+          ))}
 
           <Section title="Pages">
             <NavLink to="/pages">All pages</NavLink>

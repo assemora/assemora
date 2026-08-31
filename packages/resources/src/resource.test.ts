@@ -404,6 +404,20 @@ describe('what an entry is called (SPEC.md §35, §58)', () => {
     expect(Articles.descriptor.titleField).toBeUndefined()
   })
 
+  it('carries the heading Studio files it under, because the registry is how Studio learns', () => {
+    const Filed = resource(
+      Article,
+      { title: text(), slug: slug('title') },
+      { name: 'filed', group: 'Блог' },
+    )
+
+    expect(Filed.descriptor.group).toBe('Блог')
+  })
+
+  it('leaves the group unsaid, so a project that groups nothing looks as it did', () => {
+    expect(Articles.descriptor.group).toBeUndefined()
+  })
+
   it('refuses a field the resource does not declare, and lists the ones it does', () => {
     expect(() =>
       resource(Article, { title: text() }, { name: 'unnamed', titleField: 'headline' }),
