@@ -25,6 +25,7 @@ import {
 } from '../api/introspection.ts'
 import { Badge, Button, Field, Input, Select, Textarea } from '../ui/index.tsx'
 import { MediaPicker } from './media-picker.tsx'
+import { RichTextInput } from './rich-text.tsx'
 
 /**
  * What the application said about one value, keyed by the path *under* it.
@@ -1171,11 +1172,15 @@ const Control = ({
         />
       )
 
+    // Written as text, not as tags: a textarea here meant typing <p> and <strong> by
+    // hand on a screen made for the person who runs the business.
     case 'richText':
+      return <RichTextInput value={asText(value)} onChange={onChange} />
+
     case 'textarea':
       return (
         <Textarea
-          rows={field.kind === 'richText' ? 12 : 4}
+          rows={4}
           value={asText(value)}
           onChange={(event) => onChange(event.target.value)}
         />
