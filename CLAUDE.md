@@ -507,6 +507,38 @@ Known gaps, each with a reason rather than an oversight:
   `sync` following ADR-0012's generic CRUD is the shape; which side of a mutual
   relation owns the fact, and what a policy on a link means, have to be decided first.
 
+**SPEC.md §81 notifications — done, as a module (ADR-0029).** §81 names notifications once,
+in a list of what an event is for, and stops there. `@assemora/notifications` is the contract
+behind the word: `notification('orders.placed', { input, render })` is the fourth member of the
+family beside `command()`, `query()` and `job()`; a recipient and a delivery are resources, so
+the address book, the log, REST, OpenAPI, the SDK and the MCP tools follow from one declaration;
+and a channel is a driver, with `telegram()` the first one and the only file that knows Telegram
+exists.
+
+- **The package registers no policy**, which is the whole of item 0.0 taken seriously: an
+  installed dependency must not open an application. `notifications.send` is therefore refused
+  until the application says who may announce, and the rule it writes is one line —
+  `send: ({ context }) => context.source === 'job'`. `context.source` is set by the door a call
+  came through and no client can choose it, so a guest placing an order causes a notification
+  while `POST /api/commands/notifications.send` is refused.
+- **The payload is a schema.** A topic validates what it is sent before anybody is told anything,
+  so no caller — a handler, an operator, an agent — can put arbitrary prose into a staff channel.
+  `render` is server-side and never leaves the process, which is the ADR-0027 line about a
+  function not surviving `JSON.stringify` used deliberately rather than worked around.
+- **A message is text and only text**: no parse mode, no markup. Every value in it came from what
+  a stranger typed into a checkout, and escaping value by value has to be right every time.
+- **Sending and delivering are two commands with the network call in between.**
+  `notifications.send` renders once and writes a pending row per address inside the caller's
+  transaction; the jobs are held until the outermost commit, so a rolled-back order tells nobody.
+  The job sends and then executes `notifications.record`, so the row it changes goes through the
+  Command Bus like every other row. A rejection (`chat not found`) is recorded and not retried; an
+  unreachable channel is recorded and rethrown, and the queue decides when.
+- **A delivery that failed is a row, not a silence.** A recipient pointing at a channel this
+  deployment was not given is a failed delivery naming the missing channel — the difference
+  between "the kitchen was not told" and "nobody knows whether the kitchen was told". What it does
+  not do is expire: the rendered text holds a telephone number and an address, and retention is a
+  decision nobody has made.
+
 **Site kits, Tier 1.1 and 1.2 — done.** A body limit is a number the application sets,
 and a relation is chosen rather than typed.
 

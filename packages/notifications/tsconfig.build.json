@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-d.ts"],
+  "references": [
+    { "path": "../schema/tsconfig.build.json" },
+    { "path": "../core/tsconfig.build.json" },
+    { "path": "../data/tsconfig.build.json" },
+    { "path": "../resources/tsconfig.build.json" }
+  ]
+}

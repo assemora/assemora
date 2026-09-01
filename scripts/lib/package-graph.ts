@@ -23,6 +23,7 @@ export type PackageName =
   | 'audit'
   | 'change-sets'
   | 'theme'
+  | 'notifications'
   | 'mcp'
   | 'sdk'
   | 'react'
@@ -49,6 +50,11 @@ export const allowedDependencies: Record<PackageName, readonly PackageName[]> = 
   audit: ['schema', 'core', 'data'],
   'change-sets': ['schema', 'core', 'data'],
   theme: ['schema', 'core', 'data'],
+  // Outbound notifications (SPEC.md §81). It declares nouns of its own — recipients,
+  // deliveries — so it sits where `pages` sits: on the resource layer, and no higher.
+  // It reaches no server: a channel is a driver it is handed, the way media is handed
+  // a storage driver.
+  notifications: ['schema', 'core', 'data', 'resources'],
   mcp: ['schema', 'core'],
   sdk: ['schema'],
   react: ['schema'],

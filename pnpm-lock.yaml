@@ -549,6 +549,28 @@ importers:
         specifier: 24.13.3
         version: 24.13.3
 
+  packages/notifications:
+    dependencies:
+      '@assemora/core':
+        specifier: workspace:*
+        version: link:../core
+      '@assemora/data':
+        specifier: workspace:*
+        version: link:../data
+      '@assemora/resources':
+        specifier: workspace:*
+        version: link:../resources
+      '@assemora/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@assemora/database':
+        specifier: workspace:*
+        version: link:../database
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+
   packages/openapi:
     dependencies:
       '@assemora/core':
