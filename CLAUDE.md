@@ -480,7 +480,20 @@ Known gaps, each with a reason rather than an oversight:
   free-form fields is a convention call nobody has made.
 - `revisions.undo` of a *deletion* re-creates the entry under a new id, because the
   resource restorer goes through `PERSISTENCE.create`. A second undo then cannot find
-  it.
+  it — and on a translatable resource the new id is worse than an inconvenience: every
+  translation names the original by `translationOf`, so restoring a deleted original
+  leaves all of its languages hanging off an id that no longer exists. Restoring the row
+  under the id it had is what would fix both, and the restorer has nowhere to say it.
+  Found on six deleted promotions in a real project; recovered by reinserting the
+  revision snapshots with their own ids, which is a repair no command can perform.
+- The same restore *refused outright* until this was fixed: the restorer projects a
+  snapshot down to the resource's declared fields, and `locale` is a column
+  `.translatable()` adds rather than a field, so it was dropped and the `not null`
+  column then failed validation with "locale is required". A deleted entry of a
+  translatable resource could not be restored at all — not from Studio, not over MCP,
+  not from the CLI. It now carries `locale` and `translationOf` from the snapshot, the
+  way `entries.create` adds them after validation, and from the snapshot rather than
+  the context: a Russian translation restored by a Ukrainian editor comes back Russian.
 - Studio's sidebar derives every item from the registry except Media, which is
   hard-coded — so a project without `media()` shows a link to nothing.
 - `.with('posts')` does not add the relation to the instance type. ADR-0010 erased the

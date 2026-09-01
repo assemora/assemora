@@ -11,6 +11,7 @@ import {
   createApplication,
   module,
   permitAll,
+  restorerFor,
   ValidationError,
 } from '@assemora/core'
 import { dataTransactions, model, string, useAdapter, uuid } from '@assemora/data'
@@ -306,5 +307,97 @@ describe('entries.translations', () => {
     )) as { translations: readonly unknown[] }
 
     expect(answer.translations).toEqual([])
+  })
+})
+
+/**
+ * Putting a deleted translatable entry back (SPEC.md §65, §131).
+ *
+ * The restorer projects a snapshot down to the resource's declared fields, and `locale`
+ * is not one of them — it is a column `.translatable()` adds. So it was dropped, and the
+ * insert refused with "locale: This field is required": a deleted entry of a translatable
+ * resource could not be restored at all, from Studio, from MCP or from the CLI. Found the
+ * hard way, on six deleted promotions in a real project.
+ *
+ * The restorer is exercised directly rather than through `revisions.undo`, because that
+ * command lives one package up and this is where the projection is decided.
+ */
+describe('restoring a deleted entry of a translatable resource', () => {
+  const restore = async (
+    app: ReturnType<typeof build>['app'],
+    id: string,
+    snapshot: Record<string, unknown>,
+  ) => {
+    const restorer = restorerFor('dishes')
+
+    if (restorer === undefined) throw new Error('the resource registered no restorer')
+
+    return app.run({ source: 'internal', locale: 'uk' }, () => restorer(id, snapshot))
+  }
+
+  it('puts it back rather than refusing that it has no language', async () => {
+    const { app, revisions } = build()
+    const { id } = await created(app)
+
+    await speaking(app, 'uk', async () =>
+      app.commands.execute('entries.delete', { resource: 'dishes', id }),
+    )
+
+    const deletion = revisions.entries.find(
+      (revision) => revision.entityId === id && revision.after === null,
+    )
+
+    expect(deletion).toBeDefined()
+
+    const back = await restore(app, id, deletion?.before as Record<string, unknown>)
+
+    expect(back?.id).toBeDefined()
+
+    const listed = (await speaking(app, 'uk', async () =>
+      app.queries.execute('entries.list', { resource: 'dishes' }),
+    )) as { data: readonly Record<string, unknown>[] }
+
+    expect(listed.data).toHaveLength(1)
+    expect(listed.data[0]?.title).toBe('Борщ')
+  })
+
+  /**
+   * The language of the row, not the language of whoever is restoring. A Russian
+   * translation brought back as Ukrainian is a second entry in the wrong language, and
+   * one brought back with `translationOf: null` is cut loose from the entry it belongs
+   * to — the original would then have no Russian, and the Russian would be an original.
+   */
+  it('brings a translation back in its own language, still attached to its original', async () => {
+    const { app, revisions } = build()
+    const { id } = await created(app)
+
+    const translated = (await speaking(app, 'uk', async () =>
+      app.commands.execute('entries.translate', {
+        resource: 'dishes',
+        id,
+        locale: 'ru',
+        data: { title: 'Борщ по-русски' },
+      }),
+    )) as { id: string }
+
+    await speaking(app, 'ru', async () =>
+      app.commands.execute('entries.delete', { resource: 'dishes', id: translated.id }),
+    )
+
+    const deletion = revisions.entries.find(
+      (revision) => revision.entityId === translated.id && revision.after === null,
+    )
+
+    // Restored from a Ukrainian context on purpose: the snapshot decides, not the caller.
+    await restore(app, translated.id, deletion?.before as Record<string, unknown>)
+
+    const inRussian = (await speaking(app, 'ru', async () =>
+      app.queries.execute('entries.list', { resource: 'dishes' }),
+    )) as { data: readonly Record<string, unknown>[] }
+
+    expect(inRussian.data).toHaveLength(1)
+    expect(inRussian.data[0]?.locale).toBe('ru')
+    expect(inRussian.data[0]?.translationOf).toBe(id)
+    expect(inRussian.data[0]?.title).toBe('Борщ по-русски')
   })
 })
