@@ -19,3 +19,7 @@ apps/playground/storage/
 # Local coding-agent configuration. The rules it reads live in docs/rules/.
 .claude/
 .gstack/
+
+# Design canvas exports handed over for a redesign. Artefacts to read, not sources
+# to lint: they carry `{{ ... }}` template expressions no parser here understands.
+design_handoff_studio_redesign/
