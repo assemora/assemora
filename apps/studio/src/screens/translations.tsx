@@ -13,6 +13,7 @@ import { useNavigate } from '@tanstack/react-router'
 
 import { api } from '../api/client.ts'
 import { useLocales } from '../api/locale.tsx'
+import { useT } from '../i18n/translate.tsx'
 import { Button } from '../ui/index.tsx'
 
 type Translation = {
@@ -53,6 +54,7 @@ export const Translations = ({
   const { locales, locale, multilingual } = useLocales()
   const navigate = useNavigate()
   const client = useQueryClient()
+  const t = useT()
 
   const names = NAMES[subject]
   const of = resource === undefined ? { id } : { resource, id }
@@ -103,7 +105,7 @@ export const Translations = ({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-          Languages
+          {t('translations.languages')}
         </span>
 
         {locales.map((code) => {
@@ -120,8 +122,8 @@ export const Translations = ({
                 onClick={() => translate.mutate(code)}
               >
                 {translate.isPending && translate.variables === code
-                  ? `Translating into ${code}…`
-                  : `Translate into ${code}`}
+                  ? t('translations.translating', { locale: code })
+                  : t('translations.translateInto', { locale: code })}
               </Button>
             )
           }
@@ -143,7 +145,9 @@ export const Translations = ({
                   null on a model that stamps no time, and "I cannot tell" must not be
                   printed as "current". */}
               {row.stale === true && (
-                <span className="ml-1.5 text-sm font-semibold text-danger">out of date</span>
+                <span className="ml-1.5 text-sm font-semibold text-danger">
+                  {t('translations.stale')}
+                </span>
               )}
             </button>
           )
@@ -152,15 +156,13 @@ export const Translations = ({
 
       {isFallback && (
         <div className="rounded-lg border border-line bg-surface-sunken px-4 py-3 text-base">
-          <p className="font-medium">
-            This is the {showing} original, not a {locale} translation.
-          </p>
-          <p className="mt-0.5 text-ink-soft">
-            Editing here changes what every language falls back to. To write it in {locale},
-            translate it — the translation starts as a copy of this.
-          </p>
+          <p className="font-medium">{t('translations.isOriginal', { origin: showing, locale })}</p>
+          <p className="mt-0.5 text-ink-soft">{t('translations.fallbackWarning', { locale })}</p>
           <p className="mt-2 text-sm text-ink-faint">
-            {translations.length} of {locales.length} languages written
+            {t('translations.written', {
+              written: translations.length,
+              count: locales.length,
+            })}
           </p>
         </div>
       )}

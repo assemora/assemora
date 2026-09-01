@@ -12,6 +12,7 @@
 import { Link, type LinkProps, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   Bell,
+  Check,
   ChevronRight,
   ChevronsUpDown,
   FileText,
@@ -32,6 +33,9 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { type ResourceDescriptor, useIntrospection } from '../api/introspection.ts'
 import { useLocales } from '../api/locale.tsx'
 import { useSession } from '../api/session.tsx'
+import { LANGUAGE_NAMES } from '../i18n/languages.ts'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useLanguage, useT } from '../i18n/translate.tsx'
 import { join, Spinner } from '../ui/index.tsx'
 import { Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 import { Logo } from '../ui/logo.tsx'
@@ -139,6 +143,7 @@ export const Shell = () => {
   const { viewer, signOut, can } = useSession()
   const introspection = useIntrospection()
   const navigate = useNavigate()
+  const t = useT()
   const resources = introspection.data?.resources ?? []
 
   const [rail, setRail] = useState(false)
@@ -217,7 +222,7 @@ export const Shell = () => {
           {rail ? (
             <>
               <nav aria-label="Studio" className="flex flex-col items-center gap-1.5">
-                <RailLink to="/" icon={<Zap className="size-5" />} label="Dashboard" />
+                <RailLink to="/" icon={<Zap className="size-5" />} label={t('nav.dashboard')} />
                 <RailRule />
                 {resources.map((resource) => (
                   <RailLink
@@ -232,31 +237,47 @@ export const Shell = () => {
                   <RailLink
                     to="/collections"
                     icon={<Network className="size-5" />}
-                    label="Manage collections"
+                    label={t('nav.manageCollections')}
                   />
                 )}
                 <RailRule />
-                <RailLink to="/pages" icon={<FileText className="size-5" />} label="Pages" />
-                <RailLink to="/media" icon={<ImageIcon className="size-5" />} label="Media" />
+                <RailLink
+                  to="/pages"
+                  icon={<FileText className="size-5" />}
+                  label={t('nav.pages')}
+                />
+                <RailLink
+                  to="/media"
+                  icon={<ImageIcon className="size-5" />}
+                  label={t('nav.media')}
+                />
                 {hasTheme && (
                   <>
                     <RailRule />
-                    <RailLink to="/design" icon={<Palette className="size-5" />} label="Theme" />
+                    <RailLink
+                      to="/design"
+                      icon={<Palette className="size-5" />}
+                      label={t('nav.theme')}
+                    />
                   </>
                 )}
                 <RailRule />
                 <RailLink
                   to="/proposals"
                   icon={<Sparkles className="size-5" />}
-                  label="Proposals"
+                  label={t('nav.proposals')}
                   badge
                 />
                 <RailRule />
-                <RailLink to="/users" icon={<UsersIcon className="size-5" />} label="Users" />
+                <RailLink
+                  to="/users"
+                  icon={<UsersIcon className="size-5" />}
+                  label={t('nav.users')}
+                />
                 <RailLink
                   to="/developer"
                   icon={<Terminal className="size-5" />}
-                  label="Developer"
+                  label={t('nav.developer')}
                 />
               </nav>
 
@@ -264,8 +285,8 @@ export const Shell = () => {
                 <button
                   ref={profile}
                   type="button"
-                  aria-label={viewer?.name ?? 'Account'}
-                  title={viewer?.name ?? 'Account'}
+                  aria-label={viewer?.name ?? t('account.menu')}
+                  title={viewer?.name ?? t('account.menu')}
                   aria-expanded={profileOpen}
                   onClick={() => setProfileOpen((open) => !open)}
                   className="rounded-full hover:ring-2 hover:ring-accent-tint"
@@ -279,7 +300,7 @@ export const Shell = () => {
               <nav aria-label="Studio" className="flex flex-col gap-5">
                 <ul className="flex list-none flex-col gap-0.5 p-0">
                   <NavLink to="/" icon={<Zap className="size-[18px]" />}>
-                    Dashboard
+                    {t('nav.dashboard')}
                   </NavLink>
                 </ul>
 
@@ -288,7 +309,7 @@ export const Shell = () => {
                     everything it declares does not get an empty heading over a lone
                     link. */}
                 {(introspection.isLoading || ungrouped.length > 0 || hasCollections) && (
-                  <Group title="Content">
+                  <Group title={t('nav.content')}>
                     {introspection.isLoading && (
                       <li className="px-2 py-1.5">
                         <Spinner label="" />
@@ -305,7 +326,7 @@ export const Shell = () => {
                           <span aria-hidden className="w-[18px] shrink-0 text-center">
                             <FileText className="size-[18px]" />
                           </span>
-                          <span className="min-w-0 truncate">Collections</span>
+                          <span className="min-w-0 truncate">{t('nav.collections')}</span>
                           <ChevronRight
                             aria-hidden
                             className={join(
@@ -337,7 +358,7 @@ export const Shell = () => {
                           {hasCollections && (
                             <SubLink to="/collections/new">
                               <Plus aria-hidden className="mr-1.5 size-4" />
-                              New collection
+                              {t('collections.new')}
                             </SubLink>
                           )}
                         </ul>
@@ -345,11 +366,11 @@ export const Shell = () => {
                     )}
                     {hasCollections && (
                       <NavLink to="/collections" icon={<Network className="size-[18px]" />}>
-                        Manage collections
+                        {t('nav.manageCollections')}
                       </NavLink>
                     )}
                     <NavLink to="/media" icon={<ImageIcon className="size-[18px]" />}>
-                      Media
+                      {t('nav.media')}
                     </NavLink>
                   </Group>
                 )}
@@ -369,9 +390,9 @@ export const Shell = () => {
                   </Group>
                 ))}
 
-                <Group title="Pages">
+                <Group title={t('nav.pages')}>
                   <NavLink to="/pages" icon={<FileText className="size-[18px]" />}>
-                    All pages
+                    {t('nav.allPages')}
                   </NavLink>
                 </Group>
 
@@ -379,25 +400,25 @@ export const Shell = () => {
                     them — the registry decides, the way it decides the collections
                     above. */}
                 {hasTheme && (
-                  <Group title="Design">
+                  <Group title={t('nav.design')}>
                     <NavLink to="/design" icon={<Palette className="size-[18px]" />}>
-                      Theme
+                      {t('nav.theme')}
                     </NavLink>
                   </Group>
                 )}
 
-                <Group title="AI">
+                <Group title={t('nav.ai')}>
                   <NavLink to="/proposals" icon={<Sparkles className="size-[18px]" />}>
-                    Proposals
+                    {t('nav.proposals')}
                   </NavLink>
                 </Group>
 
-                <Group title="Settings">
+                <Group title={t('nav.settings')}>
                   <NavLink to="/users" icon={<UsersIcon className="size-[18px]" />}>
-                    Users
+                    {t('nav.users')}
                   </NavLink>
                   <NavLink to="/developer" icon={<Terminal className="size-[18px]" />}>
-                    Developer
+                    {t('nav.developer')}
                   </NavLink>
                 </Group>
               </nav>
@@ -475,12 +496,13 @@ const ChromeBar = ({
   names: ReadonlyMap<string, string>
 }) => {
   const crumbs = useCrumbs(names)
+  const t = useT()
 
   return (
     <header className="flex h-13 shrink-0 items-center gap-2 bg-chrome px-3 text-chrome-ink">
       <button
         type="button"
-        aria-label={rail ? 'Expand the sidebar' : 'Collapse the sidebar'}
+        aria-label={rail ? t('chrome.expandSidebar') : t('chrome.collapseSidebar')}
         aria-expanded={!rail}
         onClick={onToggleRail}
         className="grid size-8 place-items-center rounded-lg opacity-70 hover:bg-white/10 hover:opacity-100"
@@ -508,7 +530,7 @@ const ChromeBar = ({
         className="ml-auto flex h-8 items-center gap-2 rounded-full border border-white/15 bg-white/5 pr-2 pl-3 text-base hover:border-white/25 hover:bg-white/10"
       >
         <Search aria-hidden className="size-5 opacity-65" />
-        <span className="opacity-70">Search</span>
+        <span className="opacity-70">{t('common.search')}</span>
         <span className="rounded-md bg-white/10 px-1.5 py-0.5 font-mono text-xs opacity-80">
           ⌘K
         </span>
@@ -516,7 +538,7 @@ const ChromeBar = ({
 
       <button
         type="button"
-        aria-label="Notifications"
+        aria-label={t('chrome.notifications')}
         className="relative grid size-8 place-items-center rounded-lg opacity-70 hover:bg-white/10 hover:opacity-100"
       >
         <Bell aria-hidden className="size-5" />
@@ -534,28 +556,42 @@ const ChromeBar = ({
  * source for something the router already knows, and the two drift the first time
  * somebody adds a route.
  */
-const CRUMBS: Record<string, string> = {
-  content: 'Content',
-  collections: 'Collections',
-  pages: 'Pages',
-  media: 'Media',
-  design: 'Design',
-  proposals: 'Proposals',
-  users: 'Users',
-  developer: 'Developer',
-  new: 'New',
-  history: 'History',
-}
+const CRUMBS = {
+  content: 'nav.content',
+  collections: 'nav.collections',
+  pages: 'nav.pages',
+  media: 'nav.media',
+  design: 'nav.design',
+  proposals: 'nav.proposals',
+  users: 'nav.users',
+  developer: 'nav.developer',
+  new: 'crumb.new',
+  history: 'crumb.history',
+} as const satisfies Record<string, MessageKey>
 
 const useCrumbs = (names: ReadonlyMap<string, string>): string[] => {
   const path = useRouterState({ select: (state) => state.location.pathname })
+  const t = useT()
 
   return path
     .split('/')
     .filter(Boolean)
     .slice(0, 2)
-    .map((segment) => CRUMBS[segment] ?? names.get(segment) ?? segment)
+    .map((segment) => {
+      const crumb = CRUMBS[segment as keyof typeof CRUMBS]
+
+      // A segment Studio does not name is a resource, and a resource is called what the
+      // application calls it — in the language the application wrote it in.
+      return crumb === undefined ? (names.get(segment) ?? segment) : t(crumb)
+    })
 }
+
+/** The small caps over a group of menu rows. */
+const MenuHeading = ({ children }: { children: ReactNode }) => (
+  <p className="mx-2.5 mt-1 mb-1 text-xs font-[650] tracking-[0.08em] text-ink-subdued uppercase">
+    {children}
+  </p>
+)
 
 const ProfileMenu = ({
   open,
@@ -569,9 +605,11 @@ const ProfileMenu = ({
   onSignOut(): void
 }) => {
   const { locales, locale, defaultLocale, multilingual, choose } = useLocales()
+  const { languages, language, choose: speak } = useLanguage()
+  const t = useT()
 
   return (
-    <Menu open={open} trigger={trigger} onDismiss={onDismiss} width={232} label="Account">
+    <Menu open={open} trigger={trigger} onDismiss={onDismiss} width={232} label={t('account.menu')}>
       {/*
        * Which language Studio is editing in (SPEC.md §131).
        *
@@ -583,9 +621,7 @@ const ProfileMenu = ({
        */}
       {multilingual && locale !== undefined && (
         <>
-          <p className="mx-2.5 mt-1 mb-1 text-xs font-[650] tracking-[0.08em] text-ink-subdued uppercase">
-            Editing in
-          </p>
+          <MenuHeading>{t('account.editingIn')}</MenuHeading>
           {locales.map((code) => (
             <MenuItem
               key={code}
@@ -596,15 +632,45 @@ const ProfileMenu = ({
             >
               <span className={code === locale ? 'font-[650]' : undefined}>{code}</span>
               {code === defaultLocale && (
-                <span className="ml-auto text-sm text-ink-subdued">default</span>
+                <span className="ml-auto text-sm text-ink-subdued">{t('common.default')}</span>
               )}
             </MenuItem>
           ))}
           <MenuSeparator />
         </>
       )}
+
+      {/*
+       * The other language on this menu, and the reason both are on it.
+       *
+       * Above is which language the *content* is in — a fact about the deployment, and
+       * the thing every listing on the screen is about. This is which language *Studio*
+       * is in, which is a fact about the person reading it. They are next to each other
+       * so that the difference is visible, and they are two controls because a shop in
+       * Ukrainian is routinely filled in by somebody who reads English, and the reverse
+       * is just as ordinary.
+       */}
+      <MenuHeading>{t('account.interface')}</MenuHeading>
+      {languages.map((code) => (
+        <MenuItem
+          key={code}
+          onClick={() => {
+            speak(code)
+            onDismiss()
+          }}
+        >
+          <span className={code === language ? 'font-[650]' : undefined}>
+            {LANGUAGE_NAMES[code]}
+          </span>
+          {code === language && (
+            <Check aria-hidden className="ml-auto size-4 shrink-0 text-ink-soft" />
+          )}
+        </MenuItem>
+      ))}
+      <MenuSeparator />
+
       <MenuItem icon={<LogOut className="size-[18px]" />} onClick={onSignOut}>
-        Sign out
+        {t('account.signOut')}
       </MenuItem>
     </Menu>
   )

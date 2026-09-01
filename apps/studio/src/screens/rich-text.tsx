@@ -35,6 +35,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { MediaItem } from '../api/media.ts'
+import { useT } from '../i18n/translate.tsx'
 import { join } from '../ui/index.tsx'
 import { MediaPicker } from './media-picker.tsx'
 
@@ -133,6 +134,7 @@ export const RichTextInput = ({
   value: string
   onChange(value: string): void
 }) => {
+  const t = useT()
   const box = useRef<HTMLDivElement>(null)
   const saved = useRef<Range | null>(null)
   /**
@@ -258,29 +260,41 @@ export const RichTextInput = ({
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-surface focus-within:border-line-strong">
       <div className="flex min-h-8 flex-wrap items-center gap-0.5 border-b border-line bg-canvas px-2 py-1.5 text-ink-strong">
-        <Tool title="Heading" active={marks.block === 'h2'} onClick={heading('h2')}>
+        <Tool title={t('richText.heading')} active={marks.block === 'h2'} onClick={heading('h2')}>
           <span className="text-base font-[650]">H2</span>
         </Tool>
-        <Tool title="Subheading" active={marks.block === 'h3'} onClick={heading('h3')}>
+        <Tool
+          title={t('richText.subheading')}
+          active={marks.block === 'h3'}
+          onClick={heading('h3')}
+        >
           <span className="text-base font-[650]">H3</span>
         </Tool>
 
         <Separator />
 
-        <Tool title="Bold" active={marks.bold} onClick={apply('bold')}>
+        <Tool title={t('richText.bold')} active={marks.bold} onClick={apply('bold')}>
           <Bold aria-hidden className="size-[18px]" />
         </Tool>
-        <Tool title="Italic" active={marks.italic} onClick={apply('italic')}>
+        <Tool title={t('richText.italic')} active={marks.italic} onClick={apply('italic')}>
           <Italic aria-hidden className="size-[18px]" />
         </Tool>
-        <Tool title="Bulleted list" active={marks.bullets} onClick={apply('insertUnorderedList')}>
+        <Tool
+          title={t('richText.bullets')}
+          active={marks.bullets}
+          onClick={apply('insertUnorderedList')}
+        >
           <List aria-hidden className="size-[18px]" />
         </Tool>
-        <Tool title="Numbered list" active={marks.numbers} onClick={apply('insertOrderedList')}>
+        <Tool
+          title={t('richText.numbers')}
+          active={marks.numbers}
+          onClick={apply('insertOrderedList')}
+        >
           <ListOrdered aria-hidden className="size-[18px]" />
         </Tool>
         <Tool
-          title="Quote"
+          title={t('richText.quote')}
           active={marks.block === 'blockquote'}
           onClick={apply('formatBlock', marks.block === 'blockquote' ? 'p' : 'blockquote')}
         >
@@ -290,7 +304,7 @@ export const RichTextInput = ({
         <Separator />
 
         <Tool
-          title="Link"
+          title={t('richText.link')}
           active={linking}
           onMouseDown={() => {
             // Kept before focus moves to the input: `createLink` needs a selection, and by
@@ -303,10 +317,10 @@ export const RichTextInput = ({
         >
           <Link2 aria-hidden className="size-[18px]" />
         </Tool>
-        <Tool title="Remove link" onClick={apply('unlink')}>
+        <Tool title={t('richText.unlink')} onClick={apply('unlink')}>
           <Link2Off aria-hidden className="size-[18px]" />
         </Tool>
-        <Tool title="Image" onClick={() => setPicking(true)}>
+        <Tool title={t('richText.image')} onClick={() => setPicking(true)}>
           <ImageIcon aria-hidden className="size-[18px]" />
         </Tool>
 

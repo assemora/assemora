@@ -14,6 +14,8 @@ import { useState } from 'react'
 
 import { api } from '../api/client.ts'
 import type { Paged } from '../api/pages.ts'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useDates, useT } from '../i18n/translate.tsx'
 import { Badge, Button, Card, Empty, Failure, Spinner } from '../ui/index.tsx'
 import { Screen, ScreenBody, ScreenHead, ScreenTitle, Tabs } from '../ui/layout.tsx'
 
@@ -49,16 +51,30 @@ const TONE = {
 
 /** `''` is "all": the query drops the filter rather than sending an empty status. */
 const STATUSES = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'applied', label: 'Applied' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: '', label: 'All' },
-] as const
+  { value: 'pending', label: 'proposals.status.pending' },
+  { value: 'applied', label: 'proposals.status.applied' },
+  { value: 'rejected', label: 'proposals.status.rejected' },
+  { value: '', label: 'proposals.status.all' },
+] as const satisfies readonly { value: string; label: MessageKey }[]
 
-const ACTOR = { agent: 'Agent', user: 'Person', api: 'API token' } as const
+/** Every state a proposal can be shown in, including the two it is only ever put into. */
+const STATE = {
+  pending: 'proposals.status.pending',
+  applied: 'proposals.status.applied',
+  rejected: 'proposals.status.rejected',
+  expired: 'proposals.status.expired',
+  conflicted: 'proposals.status.conflicted',
+} as const satisfies Record<ChangeSetRow['status'], MessageKey>
+
+const ACTOR = {
+  agent: 'history.actor.agent',
+  user: 'history.actor.person',
+  api: 'history.actor.token',
+} as const satisfies Record<string, MessageKey>
 
 const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
   const client = useQueryClient()
+  const t = useT()
   const [outcome, setOutcome] = useState<string>()
 
   const proposal = useQuery({
@@ -85,11 +101,13 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
           <p className="mt-0.5 text-sm text-ink-faint">
             {proposal.data === undefined
               ? null
-              : `${proposal.data.changes.length} ${
-                  proposal.data.changes.length === 1 ? 'change' : 'changes'
-                } · proposed by ${
-                  ACTOR[proposal.data.actorType as keyof typeof ACTOR] ?? 'somebody'
-                }`}
+              : `${t('proposals.changeCount', {
+                  count: proposal.data.changes.length,
+                })} · ${t('proposals.proposedBy', {
+                  who: t(
+                    ACTOR[proposal.data.actorType as keyof typeof ACTOR] ?? 'proposals.somebody',
+                  ),
+                })}`}
           </p>
         </header>
 
@@ -100,18 +118,13 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
 
           {outcome === 'conflicted' && (
             <Card className="mb-3 border-danger/30 bg-danger-soft p-3">
-              <p className="text-base text-danger">
-                Somebody changed one of these since it was proposed, so nothing was applied. Ask for
-                it again against what the page says now.
-              </p>
+              <p className="text-base text-danger">{t('proposals.conflicted')}</p>
             </Card>
           )}
 
           {outcome === 'expired' && (
             <Card className="mb-3 bg-surface-sunken p-3">
-              <p className="text-base text-ink-soft">
-                This proposal expired before anybody decided.
-              </p>
+              <p className="text-base text-ink-soft">{t('proposals.expired')}</p>
             </Card>
           )}
 
@@ -133,24 +146,24 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
           {open ? (
             <>
               <Button disabled={decide.isPending} onClick={() => decide.mutate('apply')}>
-                {decide.isPending ? 'Applying…' : 'Apply'}
+                {decide.isPending ? t('proposals.applying') : t('proposals.apply')}
               </Button>
               <Button
                 variant="secondary"
                 disabled={decide.isPending}
                 onClick={() => decide.mutate('reject')}
               >
-                Reject
+                {t('proposals.reject')}
               </Button>
             </>
           ) : (
             <Badge tone={TONE[(outcome ?? proposal.data?.status ?? 'pending') as 'pending']}>
-              {outcome ?? proposal.data?.status}
+              {t(STATE[(outcome ?? proposal.data?.status ?? 'pending') as 'pending'])}
             </Badge>
           )}
 
           <Button variant="ghost" className="ml-auto" onClick={onClose}>
-            Close
+            {t('common.close')}
           </Button>
         </footer>
       </Card>
@@ -159,6 +172,8 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
 }
 
 export const ChangeSets = () => {
+  const t = useT()
+  const dates = useDates()
   const [status, setStatus] = useState('pending')
   const [reviewing, setReviewing] = useState<string>()
 
@@ -173,11 +188,16 @@ export const ChangeSets = () => {
       <ScreenHead>
         <ScreenTitle
           icon={<Sparkles className="size-5" />}
-          title="Proposals"
-          description="What agents have asked for. Nothing changes until you apply it"
+          title={t('nav.proposals')}
+          description={t('proposals.lede')}
           count={listing.data?.total}
         />
-        <Tabs value={status} options={STATUSES} onChange={setStatus} label="Proposal statuses" />
+        <Tabs
+          value={status}
+          options={STATUSES.map((entry) => ({ value: entry.value, label: t(entry.label) }))}
+          onChange={setStatus}
+          label={t('proposals.statuses')}
+        />
       </ScreenHead>
 
       <ScreenBody className="pt-6 pb-10">
@@ -191,9 +211,7 @@ export const ChangeSets = () => {
           )}
 
           {listing.data?.data.length === 0 && (
-            <Empty title="Nothing proposed">
-              An agent connected over MCP proposes changes here, and they wait for you.
-            </Empty>
+            <Empty title={t('proposals.none')}>{t('proposals.noneBody')}</Empty>
           )}
 
           {listing.data?.data.map((proposal) => (
@@ -206,12 +224,12 @@ export const ChangeSets = () => {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-base font-medium">{proposal.title}</p>
                 <p className="text-sm text-ink-faint">
-                  {proposal.changes} {proposal.changes === 1 ? 'change' : 'changes'} ·{' '}
-                  {ACTOR[proposal.actorType as keyof typeof ACTOR] ?? 'somebody'} ·{' '}
-                  {new Date(proposal.createdAt).toLocaleString()}
+                  {t('proposals.changeCount', { count: proposal.changes })} ·{' '}
+                  {t(ACTOR[proposal.actorType as keyof typeof ACTOR] ?? 'proposals.somebody')} ·{' '}
+                  {dates.dateTime(proposal.createdAt)}
                 </p>
               </div>
-              <Badge tone={TONE[proposal.status]}>{proposal.status}</Badge>
+              <Badge tone={TONE[proposal.status]}>{t(STATE[proposal.status])}</Badge>
             </button>
           ))}
         </Card>

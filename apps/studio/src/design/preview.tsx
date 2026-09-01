@@ -23,6 +23,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
 
 import type { TokenValue } from '../api/theme.ts'
+import { useT, useWoven } from '../i18n/translate.tsx'
 import { namesIn, type TokenMap } from './draft.ts'
 import { COLORS, GROUPS, keyOf, RADIUS, SPACING } from './tokens.ts'
 
@@ -57,76 +58,81 @@ const SURFACE: CSSProperties = {
   lineHeight: 'var(--leading-normal)',
 }
 
-const Sample = () => (
-  <div style={{ ...SURFACE, padding: 'var(--space-sm)' }} className="space-y-3">
-    <h3
-      style={{
-        fontFamily: 'var(--font-heading)',
-        fontSize: 'var(--text-title)',
-        fontWeight: 'var(--weight-bold)',
-        lineHeight: 'var(--leading-tight)',
-      }}
-    >
-      A page heading
-    </h3>
+const Sample = () => {
+  const t = useT()
 
-    <p style={{ color: 'var(--ink-soft)', fontSize: 'var(--text-sm)' }}>
-      Body text, at the size and line height the theme decides. A block never says any of this: it
-      names a token, and this answers.
-    </p>
-
-    <div
-      style={{
-        background: 'var(--surface-sunken)',
-        border: '1px solid var(--line)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-xs)',
-      }}
-    >
-      <p style={{ fontSize: 'var(--text-sm)' }}>A sunken surface, the way a card sits on a page.</p>
-    </div>
-
-    <span
-      style={{
-        display: 'inline-block',
-        background: 'var(--brand)',
-        color: 'var(--surface)',
-        borderRadius: 'var(--radius-md)',
-        fontSize: 'var(--text-sm)',
-        fontWeight: 'var(--weight-semibold)',
-        padding: '0.5rem 1rem',
-      }}
-    >
-      A button
-    </span>
-  </div>
-)
-
-/** Three blocks, at three steps of the scale, so a step is a distance rather than a word. */
-const Spacings = () => (
-  <div style={SURFACE}>
-    {(['sm', 'lg', '2xl'] as const).map((step) => (
-      <div
-        key={step}
+  return (
+    <div style={{ ...SURFACE, padding: 'var(--space-sm)' }} className="space-y-3">
+      <h3
         style={{
-          paddingTop: `var(${SPACING.property(step)})`,
-          paddingBottom: `var(${SPACING.property(step)})`,
-          borderTop: '1px solid var(--line)',
+          fontFamily: 'var(--font-heading)',
+          fontSize: 'var(--text-title)',
+          fontWeight: 'var(--weight-bold)',
+          lineHeight: 'var(--leading-tight)',
         }}
       >
-        <p
+        {t('preview.heading')}
+      </h3>
+
+      <p style={{ color: 'var(--ink-soft)', fontSize: 'var(--text-sm)' }}>{t('preview.body')}</p>
+
+      <div
+        style={{
+          background: 'var(--surface-sunken)',
+          border: '1px solid var(--line)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-xs)',
+        }}
+      >
+        <p style={{ fontSize: 'var(--text-sm)' }}>{t('preview.sunken')}</p>
+      </div>
+
+      <span
+        style={{
+          display: 'inline-block',
+          background: 'var(--brand)',
+          color: 'var(--surface)',
+          borderRadius: 'var(--radius-md)',
+          fontSize: 'var(--text-sm)',
+          fontWeight: 'var(--weight-semibold)',
+          padding: '0.5rem 1rem',
+        }}
+      >
+        {t('preview.button')}
+      </span>
+    </div>
+  )
+}
+
+/** Three blocks, at three steps of the scale, so a step is a distance rather than a word. */
+const Spacings = () => {
+  const t = useT()
+
+  return (
+    <div style={SURFACE}>
+      {(['sm', 'lg', '2xl'] as const).map((step) => (
+        <div
+          key={step}
           style={{
-            background: 'var(--surface-sunken)',
-            fontSize: 'var(--text-sm)',
-            padding: '0.25rem 0.5rem',
+            paddingTop: `var(${SPACING.property(step)})`,
+            paddingBottom: `var(${SPACING.property(step)})`,
+            borderTop: '1px solid var(--line)',
           }}
         >
-          space above and below: {step}
-        </p>
-      </div>
-    ))}
-  </div>
-)
+          <p
+            style={{
+              background: 'var(--surface-sunken)',
+              fontSize: 'var(--text-sm)',
+              padding: '0.25rem 0.5rem',
+            }}
+          >
+            {t('preview.spaceStep', { step })}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const Radii = ({ names }: { names: readonly string[] }) => (
   <div className="flex flex-wrap items-end gap-2 p-3">
@@ -160,6 +166,8 @@ const Palette = ({ names }: { names: readonly string[] }) => (
 
 export const Preview = ({ tokens, cssVersion }: { tokens: TokenMap; cssVersion?: string }) => {
   const root = useRef<HTMLDivElement>(null)
+  const t = useT()
+  const woven = useWoven()
 
   useEffect(() => {
     const node = root.current
@@ -183,22 +191,22 @@ export const Preview = ({ tokens, cssVersion }: { tokens: TokenMap; cssVersion?:
     <div ref={root} className="divide-y divide-line overflow-hidden rounded-xl border border-line">
       <Sample />
       <div>
-        <Label>Spacing</Label>
+        <Label>{t('design.group.spacing')}</Label>
         <Spacings />
       </div>
       <div>
-        <Label>Corners</Label>
+        <Label>{t('preview.corners')}</Label>
         <Radii names={namesIn(tokens, RADIUS)} />
       </div>
       <div>
-        <Label>Every colour</Label>
+        <Label>{t('preview.everyColour')}</Label>
         <Palette names={namesIn(tokens, COLORS)} />
       </div>
       {cssVersion !== undefined && (
         <p className="p-3 text-sm text-ink-faint">
-          The stylesheet this renders to is served under{' '}
-          <code className="font-mono">{cssVersion}</code>, which changes when and only when the CSS
-          does — so a cached copy is never the wrong one.
+          {woven('preview.stylesheet', {
+            version: <code className="font-mono">{cssVersion}</code>,
+          })}
         </p>
       )}
     </div>

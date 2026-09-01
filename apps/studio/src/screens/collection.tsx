@@ -39,6 +39,7 @@ import {
   valueAt,
 } from '../api/introspection.ts'
 import { useLocales } from '../api/locale.tsx'
+import { useDates, useT } from '../i18n/translate.tsx'
 import { NoEntries } from '../ui/blank.tsx'
 import {
   Badge,
@@ -78,13 +79,16 @@ type Listing = {
 /* ------------------------------------------------------------------------------ cells */
 
 const Cell = ({ field, value }: { field: FieldDescriptor; value: unknown }) => {
+  const t = useT()
+  const dates = useDates()
+
   if (value === null || value === undefined) return <span className="text-ink-faint">—</span>
 
   if (field.kind === 'boolean') {
     return value === true ? (
-      <Star aria-label="Yes" className="size-5 text-accent" fill="currentColor" />
+      <Star aria-label={t('cell.yes')} className="size-5 text-accent" fill="currentColor" />
     ) : (
-      <Star aria-label="No" className="size-5 text-line" />
+      <Star aria-label={t('cell.no')} className="size-5 text-line" />
     )
   }
 
@@ -130,13 +134,13 @@ const Cell = ({ field, value }: { field: FieldDescriptor; value: unknown }) => {
           ? link.label
           : typeof link.url === 'string'
             ? link.url
-            : `→ ${String(link.entry?.resource ?? 'an entry')}`}
+            : `→ ${String(link.entry?.resource ?? t('cell.anEntry'))}`}
       </span>
     )
   }
 
   if (field.kind === 'datetime' || field.kind === 'date') {
-    return <span>{new Date(String(value)).toLocaleDateString()}</span>
+    return <span>{dates.date(String(value))}</span>
   }
 
   if (field.kind === 'media') {
@@ -172,12 +176,13 @@ const RowMenu = ({
 }) => {
   const trigger = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
+  const t = useT()
 
   return (
     <>
       <IconButton
         ref={trigger}
-        label="Actions"
+        label={t('row.actions')}
         className="ml-auto opacity-60 hover:opacity-100"
         onClick={() => setOpen((showing) => !showing)}
       >
@@ -189,7 +194,7 @@ const RowMenu = ({
         open={open}
         trigger={trigger}
         onDismiss={() => setOpen(false)}
-        label="Entry actions"
+        label={t('row.entryActions')}
         width={200}
       >
         <MenuItem
@@ -199,7 +204,7 @@ const RowMenu = ({
             onEdit()
           }}
         >
-          Edit
+          {t('row.edit')}
         </MenuItem>
         {onDuplicate !== undefined && (
           <MenuItem
@@ -209,7 +214,7 @@ const RowMenu = ({
               onDuplicate()
             }}
           >
-            Duplicate
+            {t('row.duplicate')}
           </MenuItem>
         )}
         {onDelete !== undefined && (
@@ -223,7 +228,7 @@ const RowMenu = ({
                 onDelete()
               }}
             >
-              Delete
+              {t('common.delete')}
             </MenuItem>
           </>
         )}
@@ -235,22 +240,26 @@ const RowMenu = ({
 /** Uneven widths, so a loading table reads as content arriving and not as a pattern. */
 const SKELETON = ['38%', '26%', '33%', '29%', '35%', '23%'] as const
 
-const Loading = ({ resource }: { resource: string }) => (
-  <div>
-    <div className="flex h-9 items-center gap-3 border-b border-line px-4 text-sm font-[650] tracking-[0.01em] text-ink-subdued">
-      <Loader aria-hidden className="size-3.5 animate-spin" />
-      Reading entries from the {resource} adapter
-    </div>
-    {SKELETON.map((width) => (
-      <div key={width} className="flex h-[49px] items-center gap-4 border-b border-hairline px-4">
-        <span aria-hidden className="size-4 shrink-0 rounded bg-canvas" />
-        <Skeleton width={width} />
-        <span aria-hidden className="ml-auto h-6 w-[76px] shrink-0 rounded-lg bg-canvas" />
-        <span aria-hidden className="h-2.5 w-11 shrink-0 rounded-md bg-canvas" />
+const Loading = ({ resource }: { resource: string }) => {
+  const t = useT()
+
+  return (
+    <div>
+      <div className="flex h-9 items-center gap-3 border-b border-line px-4 text-sm font-[650] tracking-[0.01em] text-ink-subdued">
+        <Loader aria-hidden className="size-3.5 animate-spin" />
+        {t('collection.reading', { resource })}
       </div>
-    ))}
-  </div>
-)
+      {SKELETON.map((width) => (
+        <div key={width} className="flex h-[49px] items-center gap-4 border-b border-hairline px-4">
+          <span aria-hidden className="size-4 shrink-0 rounded bg-canvas" />
+          <Skeleton width={width} />
+          <span aria-hidden className="ml-auto h-6 w-[76px] shrink-0 rounded-lg bg-canvas" />
+          <span aria-hidden className="h-2.5 w-11 shrink-0 rounded-md bg-canvas" />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 /* ---------------------------------------------------------------------------- screen */
 
@@ -260,6 +269,7 @@ export const Collection = () => {
   const queries = useQueryClient()
   const introspection = useIntrospection()
   const { locale } = useLocales()
+  const t = useT()
   const resource = introspection.data?.resources?.find((entry) => entry.name === name)
 
   const [search, setSearch] = useState('')
@@ -322,9 +332,9 @@ export const Collection = () => {
         <ScreenBody>
           <Empty
             icon={<SearchX className="size-[22px]" />}
-            title={`No collection called “${name}”`}
+            title={t('collection.unknown', { name })}
           >
-            The application does not describe a resource by that name.
+            {t('collection.unknownBody')}
           </Empty>
         </ScreenBody>
       </Screen>
@@ -374,7 +384,10 @@ export const Collection = () => {
           title={resource.label}
           count={blank ? undefined : listing.data?.total}
           actions={
-            !blank && resource.api.create && <Button onClick={create}>Create {singular}</Button>
+            !blank &&
+            resource.api.create && (
+              <Button onClick={create}>{t('entries.blank.create', { name: singular })}</Button>
+            )
           }
         />
 
@@ -393,8 +406,8 @@ export const Collection = () => {
                   />
                   <input
                     type="search"
-                    placeholder="Search…"
-                    aria-label={`Search ${resource.label}`}
+                    placeholder={t('collection.searchPlaceholder')}
+                    aria-label={t('collection.searchLabel', { name: resource.label })}
                     value={search}
                     onChange={(event) => {
                       setPage(1)
@@ -413,7 +426,7 @@ export const Collection = () => {
                     className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-soft"
                   />
                   <Select
-                    aria-label="Sort order"
+                    aria-label={t('collection.sortOrder')}
                     className="h-8 w-56 pl-10"
                     value={sort}
                     onChange={(event) => {
@@ -421,7 +434,7 @@ export const Collection = () => {
                       setSort(event.target.value)
                     }}
                   >
-                    <option value="">Default order</option>
+                    <option value="">{t('collection.defaultOrder')}</option>
                     {sortable.flatMap((field) => [
                       <option key={field.name} value={field.name}>
                         {labelOf(field)} ↑
@@ -438,7 +451,7 @@ export const Collection = () => {
             <div className="pt-4 pb-3">
               <div className="drop flex min-h-11 flex-wrap items-center gap-2 rounded-[10px] border border-line bg-surface-raised py-1.5 pr-2 pl-3.5">
                 <span className="text-base font-[650] tabular-nums whitespace-nowrap">
-                  {selected.length} selected
+                  {t('collection.selected', { count: selected.length })}
                 </span>
                 <span aria-hidden className="mx-1 h-5 w-px bg-line" />
                 {resource.api.delete && (
@@ -450,11 +463,11 @@ export const Collection = () => {
                     onClick={() => setConfirming(selected)}
                   >
                     <Trash2 aria-hidden className="size-4" />
-                    Delete
+                    {t('common.delete')}
                   </Button>
                 )}
                 <IconButton
-                  label="Clear the selection"
+                  label={t('collection.clearSelection')}
                   size={30}
                   className="ml-auto"
                   onClick={() => setSelected([])}
@@ -491,14 +504,14 @@ export const Collection = () => {
             ) : (
               <Empty
                 icon={<SearchX className="size-[22px]" />}
-                title={`Nothing matches “${search}”`}
+                title={t('collection.noMatch', { search })}
                 action={
                   <Button variant="secondary" onClick={() => setSearch('')}>
-                    Clear search
+                    {t('collection.clearSearch')}
                   </Button>
                 }
               >
-                Only the fields the resource declares searchable are looked at.
+                {t('collection.searchableOnly')}
               </Empty>
             )
           ) : (
@@ -507,7 +520,7 @@ export const Collection = () => {
                 <tr className="border-b border-line">
                   <Th width="48px" className="pr-0 pl-4">
                     <Checkbox
-                      label="Select every entry on this page"
+                      label={t('collection.selectAll')}
                       checked={all}
                       mixed={chosen.length > 0 && !all}
                       onChange={(next) => setSelected(next ? rows.map(idOf) : [])}
@@ -548,7 +561,7 @@ export const Collection = () => {
                           />
                         )}
                         <Checkbox
-                          label={`Select entry ${id}`}
+                          label={t('collection.selectOne', { id })}
                           checked={picked}
                           onChange={(next) =>
                             setSelected((current) =>
@@ -570,7 +583,7 @@ export const Collection = () => {
                               </span>
                               {fallback !== undefined && (
                                 <span
-                                  title={`Not translated — this is the ${fallback} original`}
+                                  title={t('collection.notTranslated', { locale: fallback })}
                                   className="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-xs font-semibold tracking-wide text-ink-faint uppercase"
                                 >
                                   {fallback}
@@ -599,10 +612,10 @@ export const Collection = () => {
           <Empty
             icon={<TriangleAlert className="size-[22px]" />}
             tone="danger"
-            title="Entries could not be loaded"
-            action={<Button onClick={() => void listing.refetch()}>Retry</Button>}
+            title={t('collection.loadFailed')}
+            action={<Button onClick={() => void listing.refetch()}>{t('common.retry')}</Button>}
           >
-            Nothing was written, and no entry was changed.
+            {t('collection.loadFailedBody')}
           </Empty>
         )}
       </ScreenBody>
@@ -611,10 +624,11 @@ export const Collection = () => {
         <ScreenFoot>
           <span className="tabular-nums">
             {listing.data.total === 0
-              ? 'No entries'
-              : `Page ${listing.data.page} of ${listing.data.lastPage} · ${listing.data.total} ${
-                  listing.data.total === 1 ? 'entry' : 'entries'
-                }`}
+              ? t('collection.noEntries')
+              : `${t('paging.page', {
+                  page: listing.data.page,
+                  last: listing.data.lastPage,
+                })} · ${t('collection.entryCount', { count: listing.data.total })}`}
           </span>
           <div className="flex gap-2">
             <Button
@@ -622,14 +636,14 @@ export const Collection = () => {
               disabled={listing.data.page <= 1}
               onClick={() => setPage((current) => current - 1)}
             >
-              Previous
+              {t('paging.previous')}
             </Button>
             <Button
               variant="secondary"
               disabled={listing.data.page >= listing.data.lastPage}
               onClick={() => setPage((current) => current + 1)}
             >
-              Next
+              {t('paging.next')}
             </Button>
           </div>
         </ScreenFoot>
@@ -647,14 +661,14 @@ export const Collection = () => {
         open={confirming !== undefined}
         title={
           doomed.length === 1
-            ? `Delete “${nameOf(doomed[0] as Record<string, unknown>)}”?`
-            : `Delete ${doomed.length} entries?`
+            ? t('entries.delete.one', { name: nameOf(doomed[0] as Record<string, unknown>) })
+            : t('entries.delete.many', { count: doomed.length })
         }
         onClose={() => setConfirming(undefined)}
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirming(undefined)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="destructive"
@@ -666,15 +680,17 @@ export const Collection = () => {
                 remove.mutate(ids)
               }}
             >
-              {doomed.length === 1 ? 'Delete' : `Delete ${doomed.length}`}
+              {doomed.length === 1
+                ? t('common.delete')
+                : t('entries.delete.count', { count: doomed.length })}
             </Button>
           </>
         }
       >
         <p>
-          {doomed.length === 1 ? 'It leaves' : 'They leave'} {resource.label} immediately. The
-          revision history keeps what {doomed.length === 1 ? 'it held' : 'they held'}, so a restore
-          is still possible.
+          {doomed.length === 1
+            ? t('entries.delete.bodyOne', { name: resource.label })
+            : t('entries.delete.bodyMany', { name: resource.label })}
         </p>
 
         {/* Named while there are few enough to read. Past that a count is the honest

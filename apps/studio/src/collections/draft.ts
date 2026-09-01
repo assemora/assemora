@@ -30,6 +30,7 @@
  * `@assemora/data`, not to this form.
  */
 import type { CollectionDefinition, FieldShapeSpec, FieldSpec } from '../api/collections.ts'
+import type { Translate } from '../i18n/messages.ts'
 import { needOf } from './contract.ts'
 
 export type FieldDraft = {
@@ -120,10 +121,19 @@ export const draftOf = (definition: CollectionDefinition): CollectionDraft => ({
   fields: definition.fields.map((spec) => fieldDraftOf(spec, 'stored')),
 })
 
-export const emptyDraft = (key: string): CollectionDraft => ({
+/**
+ * A definition with nothing in it — including no first row.
+ *
+ * A blank row used to be laid out for you, which reads as "fill this in" and skips past
+ * the question a new collection actually opens with: what shape is this? An empty list
+ * is where the presets live (`design_handoff_studio_redesign` §3), and pressing one is
+ * how most collections should start. Every issue it raises is `blank`, so a person
+ * opening the screen is told nothing until they try to save.
+ */
+export const emptyDraft = (): CollectionDraft => ({
   name: '',
   label: '',
-  fields: [blankField(key)],
+  fields: [],
 })
 
 /** What a row's control may change. Neither the key nor the stored name is one. */
@@ -389,6 +399,14 @@ export type DraftIssue = {
 }
 
 export type DraftContext = {
+  /**
+   * How a refusal is said, in the language Studio is being read in.
+   *
+   * Handed in rather than reached for, because this file is not a component: the rules
+   * below are the same rules whatever language they are announced in, and a pure
+   * function that could call a hook would be a component pretending not to be one.
+   */
+  readonly t: Translate
   /** The stored definition, when this is an edit. */
   readonly stored: CollectionDefinition | undefined
   /** Every resource name already in use, source declarations included. */
@@ -424,14 +442,21 @@ const fieldIssues = (
       seen.set(fieldName, (seen.get(fieldName) ?? 0) + 1)
 
       if (fieldName === '') {
-        issues.push({ key: field.key, message: 'Every field needs a name.', blank: true })
+        issues.push({
+          key: field.key,
+          message: context.t('collections.issue.fieldNeedsName'),
+          blank: true,
+        })
       } else if (!new RegExp(context.fieldNamePattern).test(fieldName)) {
         issues.push({
           key: field.key,
-          message: `“${fieldName}” is not a name a field can have. Start with a letter, then letters, numbers and underscores.`,
+          message: context.t('collections.issue.badFieldName', { name: fieldName }),
         })
       } else if ((seen.get(fieldName) ?? 0) > 1) {
-        issues.push({ key: field.key, message: `Another field is already called “${fieldName}”.` })
+        issues.push({
+          key: field.key,
+          message: context.t('collections.issue.duplicateField', { name: fieldName }),
+        })
       }
     }
 
@@ -449,29 +474,29 @@ const kindIssues = (field: FieldDraft, context: DraftContext): DraftIssue[] => {
     return [
       {
         key: field.key,
-        message: `A ${field.kind} field needs at least one option.`,
+        message: context.t('collections.issue.needsOptions', { kind: field.kind }),
         blank: true,
       },
     ]
   }
 
   if (need === 'source' && field.source === '') {
-    return [{ key: field.key, message: 'A slug field needs a source field.', blank: true }]
+    return [{ key: field.key, message: context.t('collections.issue.needsSource'), blank: true }]
   }
 
   if (need === 'target' && field.target === '') {
-    return [{ key: field.key, message: 'A relation field needs a target resource.', blank: true }]
+    return [{ key: field.key, message: context.t('collections.issue.needsTarget'), blank: true }]
   }
 
   if (need === 'fields') {
     return field.fields.length === 0
-      ? [{ key: field.key, message: 'A group needs at least one field.', blank: true }]
+      ? [{ key: field.key, message: context.t('collections.issue.needsFields'), blank: true }]
       : fieldIssues(field.fields, context, true)
   }
 
   if (need === 'element') {
     return field.element === undefined
-      ? [{ key: field.key, message: 'A repeater needs to say what one item is.', blank: true }]
+      ? [{ key: field.key, message: context.t('collections.issue.needsElement'), blank: true }]
       : fieldIssues([field.element], context, false)
   }
 
@@ -491,21 +516,29 @@ export const issuesOf = (draft: CollectionDraft, context: DraftContext): readonl
   const name = draft.name.trim()
 
   if (name === '') {
-    issues.push({ about: 'name', message: 'A collection needs a name.', blank: true })
+    issues.push({
+      about: 'name',
+      message: context.t('collections.issue.needsName'),
+      blank: true,
+    })
   } else if (!new RegExp(context.namePattern).test(name)) {
     issues.push({
       about: 'name',
-      message: `“${name}” is not a name a collection can have. Start with a lower-case letter, then letters, numbers and underscores.`,
+      message: context.t('collections.issue.badName', { name }),
     })
   } else if (context.stored === undefined && context.taken.includes(name)) {
     issues.push({
       about: 'name',
-      message: `“${name}” is already a resource in this application. Choose another name.`,
+      message: context.t('collections.issue.nameTaken', { name }),
     })
   }
 
   if (draft.fields.length === 0) {
-    issues.push({ about: 'fields', message: 'A collection needs at least one field.', blank: true })
+    issues.push({
+      about: 'fields',
+      message: context.t('collections.issue.needsAField'),
+      blank: true,
+    })
   }
 
   for (const field of draft.fields) {
@@ -519,7 +552,7 @@ export const issuesOf = (draft: CollectionDraft, context: DraftContext): readonl
     ) {
       issues.push({
         key: field.key,
-        message: `A field called “${fieldName}” was removed while this collection held entries, and their values are still stored under that name. Choose another name, or empty the collection first.`,
+        message: context.t('collections.issue.droppedName', { name: fieldName }),
       })
     }
   }

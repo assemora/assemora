@@ -9,6 +9,7 @@ import { ImagePlus } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { isImage, type MediaItem, readableSize, useMedia, useUpload } from '../api/media.ts'
+import { useT } from '../i18n/translate.tsx'
 import { Button, Empty, Failure, Spinner } from '../ui/index.tsx'
 import { useDismiss } from '../ui/overlay.tsx'
 
@@ -22,6 +23,7 @@ export const MediaPicker = ({
   const [page, setPage] = useState(1)
   const media = useMedia(page)
   const uploading = useUpload()
+  const t = useT()
   const input = useRef<HTMLInputElement>(null)
   const panel = useRef<HTMLDivElement>(null)
 
@@ -37,11 +39,11 @@ export const MediaPicker = ({
         ref={panel}
         role="dialog"
         aria-modal="true"
-        aria-label="Choose a file"
+        aria-label={t('media.choose')}
         className="rise flex max-h-[80dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[18px] bg-surface shadow-dialog"
       >
         <header className="flex shrink-0 items-center justify-between border-b border-hairline px-5 py-3">
-          <h2 className="text-section font-[650]">Choose a file</h2>
+          <h2 className="text-section font-[650]">{t('media.choose')}</h2>
           <div className="flex items-center gap-2">
             <input
               ref={input}
@@ -59,10 +61,10 @@ export const MediaPicker = ({
               busy={uploading.isPending}
               onClick={() => input.current?.click()}
             >
-              {uploading.isPending ? 'Uploading…' : 'Upload'}
+              {uploading.isPending ? t('media.uploading') : t('media.upload')}
             </Button>
             <Button variant="ghost" onClick={onClose}>
-              Close
+              {t('common.close')}
             </Button>
           </div>
         </header>
@@ -73,8 +75,8 @@ export const MediaPicker = ({
           {uploading.isError && <Failure error={uploading.error} />}
 
           {media.data?.data.length === 0 && (
-            <Empty icon={<ImagePlus className="size-[22px]" />} title="The library is empty">
-              Upload a file to use it here.
+            <Empty icon={<ImagePlus className="size-[22px]" />} title={t('media.empty')}>
+              {t('media.pickerEmptyBody')}
             </Empty>
           )}
 
@@ -94,12 +96,12 @@ export const MediaPicker = ({
                   />
                 ) : (
                   <span className="grid aspect-square w-full place-items-center rounded bg-surface-sunken text-sm text-ink-faint">
-                    {item.mimeType.split('/')[1] ?? 'file'}
+                    {item.mimeType.split('/')[1] ?? t('media.file')}
                   </span>
                 )}
                 <span className="block truncate text-sm font-semibold">{item.filename}</span>
                 <span className="block font-mono text-xs text-ink-faint">
-                  {readableSize(item.size)}
+                  {readableSize(item.size, t)}
                 </span>
               </button>
             ))}
@@ -108,23 +110,21 @@ export const MediaPicker = ({
 
         {media.data !== undefined && media.data.lastPage > 1 && (
           <footer className="flex shrink-0 items-center justify-between border-t border-hairline px-5 py-3 text-base text-ink-soft">
-            <span>
-              Page {media.data.page} of {media.data.lastPage}
-            </span>
+            <span>{t('paging.page', { page: media.data.page, last: media.data.lastPage })}</span>
             <div className="flex gap-2">
               <Button
                 variant="secondary"
                 disabled={page <= 1}
                 onClick={() => setPage((current) => current - 1)}
               >
-                Previous
+                {t('paging.previous')}
               </Button>
               <Button
                 variant="secondary"
                 disabled={page >= media.data.lastPage}
                 onClick={() => setPage((current) => current + 1)}
               >
-                Next
+                {t('paging.next')}
               </Button>
             </div>
           </footer>

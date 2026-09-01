@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useIntrospection } from '../api/introspection.ts'
+import { useT } from '../i18n/translate.tsx'
 import { join } from '../ui/index.tsx'
 import { useDismiss } from '../ui/overlay.tsx'
 
@@ -43,6 +44,7 @@ export const Palette = ({
   onGo(to: LinkProps): void
 }) => {
   const introspection = useIntrospection()
+  const t = useT()
   const panel = useRef<HTMLDivElement>(null)
   const box = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
@@ -71,69 +73,69 @@ export const Palette = ({
     return [
       {
         key: 'dashboard',
-        label: 'Dashboard',
-        where: 'Overview',
+        label: t('nav.dashboard'),
+        where: t('palette.overview'),
         icon: <Zap className="size-5" />,
         to: { to: '/' },
       },
       ...resources.map((resource) => ({
         key: `resource:${resource.name}`,
         label: resource.label,
-        where: 'Content',
+        where: t('nav.content'),
         icon: <FileText className="size-5" />,
         to: { to: '/content/$resource', params: { resource: resource.name } } as LinkProps,
       })),
       {
         key: 'collections',
-        label: 'Manage collections',
-        where: 'Content',
+        label: t('nav.manageCollections'),
+        where: t('nav.content'),
         icon: <Network className="size-5" />,
         to: { to: '/collections' },
       },
       {
         key: 'pages',
-        label: 'All pages',
-        where: 'Pages',
+        label: t('nav.allPages'),
+        where: t('nav.pages'),
         icon: <FileText className="size-5" />,
         to: { to: '/pages' },
       },
       {
         key: 'media',
-        label: 'Media',
-        where: 'Library',
+        label: t('nav.media'),
+        where: t('palette.library'),
         icon: <ImageIcon className="size-5" />,
         to: { to: '/media' },
       },
       {
         key: 'design',
-        label: 'Theme',
-        where: 'Design',
+        label: t('nav.theme'),
+        where: t('nav.design'),
         icon: <PaletteIcon className="size-5" />,
         to: { to: '/design' },
       },
       {
         key: 'proposals',
-        label: 'Proposals',
-        where: 'AI',
+        label: t('nav.proposals'),
+        where: t('nav.ai'),
         icon: <Sparkles className="size-5" />,
         to: { to: '/proposals' },
       },
       {
         key: 'users',
-        label: 'Users',
-        where: 'Settings',
+        label: t('nav.users'),
+        where: t('nav.settings'),
         icon: <Users className="size-5" />,
         to: { to: '/users' },
       },
       {
         key: 'developer',
-        label: 'Developer',
-        where: 'Settings',
+        label: t('nav.developer'),
+        where: t('nav.settings'),
         icon: <Terminal className="size-5" />,
         to: { to: '/developer' },
       },
     ]
-  }, [introspection.data])
+  }, [introspection.data, t])
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -159,7 +161,7 @@ export const Palette = ({
         ref={panel}
         role="dialog"
         aria-modal="true"
-        aria-label="Search Studio"
+        aria-label={t('palette.label')}
         className="rise h-fit w-full max-w-[560px] overflow-hidden rounded-[18px] bg-surface shadow-dialog"
       >
         <div className="flex h-14 items-center gap-3 border-b border-hairline px-4">
@@ -167,7 +169,7 @@ export const Palette = ({
           <input
             ref={box}
             value={query}
-            placeholder="Search collections, pages, settings…"
+            placeholder={t('palette.placeholder')}
             onChange={(event) => {
               setQuery(event.target.value)
               setCursor(0)
@@ -196,7 +198,7 @@ export const Palette = ({
         <div className="max-h-[50vh] overflow-auto p-2">
           {matches.length === 0 ? (
             <p className="px-2.5 py-8 text-center text-base text-ink-soft">
-              Nothing matches “{query}”.
+              {t('palette.nothing', { query })}
             </p>
           ) : (
             matches.map((destination, index) => (

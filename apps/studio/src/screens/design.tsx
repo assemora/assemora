@@ -38,6 +38,8 @@ import {
   type TokenGroup,
   TYPOGRAPHY,
 } from '../design/tokens.ts'
+import type { Translate } from '../i18n/messages.ts'
+import { useDates, useT, useWoven } from '../i18n/translate.tsx'
 import { Badge, Button, Card, Empty, Failure, Field, Input, Spinner } from '../ui/index.tsx'
 import { SaveBar, Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 
@@ -45,16 +47,18 @@ const written = (value: TokenValue): string =>
   Array.isArray(value) ? value.join(', ') : String(value)
 
 /** What one staged change will do, said in the words of the thing it changes. */
-const describe = (draft: ThemeDraft, key: string): string => {
+const describe = (draft: ThemeDraft, key: string, t: Translate): string => {
   const staged = draft.edits.get(key)
 
   if (staged !== null && staged !== undefined) return written(staged)
 
   const fallback = draft.defaults.get(key)
 
-  if (fallback !== undefined) return `back to ${written(fallback)}`
+  if (fallback !== undefined) return t('design.backTo', { value: written(fallback) })
 
-  return groupOfKey(key)?.keys === undefined ? 'removed from the theme' : 'back to the default'
+  return groupOfKey(key)?.keys === undefined
+    ? t('design.removedFromTheme')
+    : t('design.backToDefault')
 }
 
 /**
@@ -68,6 +72,7 @@ const errorsFor = (draft: ThemeDraft, key: string): readonly string[] | undefine
   draft.fields[key] ?? draft.fields[`body.${key}`]
 
 const Row = ({ draft, group, name }: { draft: ThemeDraft; group: TokenGroup; name: string }) => {
+  const t = useT()
   const key = keyOf(group, name)
   const staged = draft.edits.has(key)
   const overridden = draft.overridden.has(key)
@@ -78,13 +83,17 @@ const Row = ({ draft, group, name }: { draft: ThemeDraft; group: TokenGroup; nam
     <div className="grid grid-cols-[8rem_minmax(0,1fr)_5rem] items-start gap-3 py-2">
       <div className="space-y-1 pt-2">
         <code className="block break-all font-mono text-sm">{name}</code>
-        {staged ? <Badge tone="accent">unsaved</Badge> : overridden && <Badge>changed</Badge>}
+        {staged ? (
+          <Badge tone="accent">{t('design.unsaved')}</Badge>
+        ) : (
+          overridden && <Badge>{t('design.changed')}</Badge>
+        )}
       </div>
 
       <div className="space-y-1">
         {value === undefined && staged ? (
           // Staged for removal: there is nothing to edit, only something to take back.
-          <p className="py-2 text-base text-ink-faint">{describe(draft, key)}</p>
+          <p className="py-2 text-base text-ink-faint">{describe(draft, key, t)}</p>
         ) : (
           <TokenInput kind={group.kind} value={value} onChange={(next) => draft.set(key, next)} />
         )}
@@ -98,21 +107,17 @@ const Row = ({ draft, group, name }: { draft: ThemeDraft; group: TokenGroup; nam
       <div className="pt-1 text-right">
         {staged ? (
           <Button variant="ghost" size="sm" onClick={() => draft.revert(key)}>
-            Undo
+            {t('design.undo')}
           </Button>
         ) : (
           overridden && (
             <Button
               variant="ghost"
               size="sm"
-              title={
-                draft.defaults.has(key)
-                  ? 'Stop overriding it and take the default back'
-                  : 'Take this token out of the theme'
-              }
+              title={draft.defaults.has(key) ? t('design.resetTitle') : t('design.removeTitle')}
               onClick={() => draft.clear(key)}
             >
-              {draft.defaults.has(key) ? 'Reset' : 'Remove'}
+              {draft.defaults.has(key) ? t('design.reset') : t('common.remove')}
             </Button>
           )
         )}
@@ -132,14 +137,15 @@ const AddToken = ({
   taken: readonly string[]
 }) => {
   const [name, setName] = useState('')
+  const t = useT()
   const trimmed = name.trim()
+  const wrong = nameProblem(group, trimmed)
   const problem =
-    nameProblem(group, trimmed) ??
-    (taken.includes(trimmed) ? 'The theme already has a token by that name' : undefined)
+    wrong !== undefined ? t(wrong) : taken.includes(trimmed) ? t('design.nameTaken') : undefined
 
   return (
     <div className="flex items-end gap-2 border-t border-hairline pt-3">
-      <Field label="New token" {...(problem === undefined ? {} : { errors: [problem] })}>
+      <Field label={t('design.newToken')} {...(problem === undefined ? {} : { errors: [problem] })}>
         <Input
           value={name}
           placeholder="brand-accent"
@@ -157,7 +163,7 @@ const AddToken = ({
           setName('')
         }}
       >
-        Add
+        {t('row.add')}
       </Button>
     </div>
   )
@@ -178,24 +184,25 @@ const Group = ({
   const names =
     group.keys ??
     [...new Set([...namesIn(draft.base, group), ...namesIn(draft.tokens, group)])].sort()
+  const t = useT()
 
   return (
     <Card className="space-y-1 p-5">
       <div className="flex flex-wrap items-baseline gap-2">
         {nested === true ? (
-          <h3 className="font-medium">{group.title}</h3>
+          <h3 className="font-medium">{t(group.title)}</h3>
         ) : (
-          <h2 className="font-medium">{group.title}</h2>
+          <h2 className="font-medium">{t(group.title)}</h2>
         )}
         {group.keys === undefined ? (
-          <Badge>your own names</Badge>
+          <Badge>{t('design.openNames')}</Badge>
         ) : (
-          <Badge tone="accent">fixed names</Badge>
+          <Badge tone="accent">{t('design.fixedNames')}</Badge>
         )}
       </div>
       <p className="pb-2 text-base text-ink-soft">
-        {group.help}
-        {group.keys !== undefined && ' — a block names these, so none can be added or removed'}
+        {t(group.help)}
+        {group.keys !== undefined && t('design.fixedNamesWhy')}
       </p>
 
       <div className="divide-y divide-hairline">
@@ -204,35 +211,41 @@ const Group = ({
         ))}
       </div>
 
-      {names.length === 0 && <p className="py-3 text-base text-ink-faint">Nothing here yet.</p>}
+      {names.length === 0 && (
+        <p className="py-3 text-base text-ink-faint">{t('fields.nothingHereYet')}</p>
+      )}
 
       {group.keys === undefined && <AddToken draft={draft} group={group} taken={names} />}
     </Card>
   )
 }
 
-const Pending = ({ draft }: { draft: ThemeDraft }) => (
-  <Card className="space-y-2 border-accent/30 bg-accent-wash p-4">
-    <p className="text-base font-medium text-accent-ink">
-      {draft.edits.size} unsaved {draft.edits.size === 1 ? 'change' : 'changes'}
-    </p>
-    <ul className="space-y-1">
-      {[...draft.edits.keys()].map((key) => (
-        <li key={key} className="flex items-baseline gap-2 text-base">
-          <code className="font-mono text-sm">{key}</code>
-          <span className="text-ink-soft">→ {describe(draft, key)}</span>
-          <button
-            type="button"
-            className="text-sm text-ink-faint underline transition hover:text-ink"
-            onClick={() => draft.revert(key)}
-          >
-            undo
-          </button>
-        </li>
-      ))}
-    </ul>
-  </Card>
-)
+const Pending = ({ draft }: { draft: ThemeDraft }) => {
+  const t = useT()
+
+  return (
+    <Card className="space-y-2 border-accent/30 bg-accent-wash p-4">
+      <p className="text-base font-medium text-accent-ink">
+        {t('design.unsavedCount', { count: draft.edits.size })}
+      </p>
+      <ul className="space-y-1">
+        {[...draft.edits.keys()].map((key) => (
+          <li key={key} className="flex items-baseline gap-2 text-base">
+            <code className="font-mono text-sm">{key}</code>
+            <span className="text-ink-soft">→ {describe(draft, key, t)}</span>
+            <button
+              type="button"
+              className="text-sm text-ink-faint underline transition hover:text-ink"
+              onClick={() => draft.revert(key)}
+            >
+              {t('design.undoQuiet')}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
 
 /**
  * An application without `theme()` has no tokens to edit.
@@ -240,35 +253,37 @@ const Pending = ({ draft }: { draft: ThemeDraft }) => (
  * Asked of the registry rather than of a failed request, so the answer is a sentence
  * about the application rather than a 404 somebody has to interpret.
  */
-const NotInstalled = () => (
-  <Page icon={<Palette className="size-5" />} title="Design">
-    <Card className="p-6">
-      <Empty title="This application has no theme">
-        <p>
-          Add <code className="font-mono">theme()</code> to its modules and the five groups of
-          tokens appear here.
-        </p>
-        <pre className="mt-3 rounded-lg bg-surface-sunken p-3 text-left font-mono text-sm">
-          {`import { theme } from '@assemora/theme'\n\nexport default createApplication({ modules: [theme(), pages()] })`}
-        </pre>
-      </Empty>
-    </Card>
-  </Page>
-)
+const NotInstalled = () => {
+  const t = useT()
+  const woven = useWoven()
+
+  return (
+    <Page icon={<Palette className="size-5" />} title={t('nav.design')}>
+      <Card className="p-6">
+        <Empty title={t('design.noTheme')}>
+          <p>{woven('design.noThemeBody', { call: <code className="font-mono">theme()</code> })}</p>
+          <pre className="mt-3 rounded-lg bg-surface-sunken p-3 text-left font-mono text-sm">
+            {`import { theme } from '@assemora/theme'\n\nexport default createApplication({ modules: [theme(), pages()] })`}
+          </pre>
+        </Empty>
+      </Card>
+    </Page>
+  )
+}
 
 export const Design = () => {
   const draft = useThemeDraft()
   const introspection = useIntrospection()
   const { can } = useSession()
+  const t = useT()
+  const woven = useWoven()
+  const dates = useDates()
   const editable = can('theme.update')
 
   // Leaving with staged edits loses them, so leaving asks. `enableBeforeUnload` puts
   // the same question in the browser's own words for a reload or a closed tab, and
   // neither is registered at all while there is nothing to lose.
-  const confirmLeaving = useCallback(
-    () => !window.confirm('Your theme changes have not been saved. Leave the screen anyway?'),
-    [],
-  )
+  const confirmLeaving = useCallback(() => !window.confirm(t('design.confirmLeave')), [t])
 
   useBlocker({
     disabled: draft.edits.size === 0,
@@ -282,7 +297,7 @@ export const Design = () => {
 
   if (draft.state === undefined) {
     return (
-      <Page icon={<Palette className="size-5" />} title="Design">
+      <Page icon={<Palette className="size-5" />} title={t('nav.design')}>
         {draft.isPending ? <Spinner /> : <Failure error={draft.error} />}
       </Page>
     )
@@ -295,9 +310,7 @@ export const Design = () => {
     // stops existing is a colour a block's background can still name (SPEC.md §61).
     if (
       gone.length > 0 &&
-      !window.confirm(
-        `Saving takes ${gone.join(', ')} out of the theme. A block whose background names one is drawn with no background at all. The change is a revision, so undo puts it back.`,
-      )
+      !window.confirm(t('design.confirmRemoval', { names: gone.join(', ') }))
     ) {
       return
     }
@@ -312,11 +325,11 @@ export const Design = () => {
       <ScreenHead>
         <ScreenTitle
           icon={<Palette className="size-5" />}
-          title="Design"
-          description="The tokens every page is drawn from. A block picks a name; this decides what it looks like"
+          title={t('nav.design')}
+          description={t('design.lede')}
           badge={
             draft.state.version === 0 ? (
-              <Badge>never edited</Badge>
+              <Badge>{t('design.neverEdited')}</Badge>
             ) : (
               <Badge>v{draft.state.version}</Badge>
             )
@@ -329,9 +342,7 @@ export const Design = () => {
           <Card className="mb-4 flex items-start gap-3 border-danger/30 bg-danger-soft p-4">
             <div className="flex-1 space-y-1">
               <p className="text-base font-medium text-danger">
-                {draft.conflict
-                  ? 'Somebody else has changed the theme since this screen read it. Reloading takes their version and drops the changes listed below.'
-                  : draft.failure}
+                {draft.conflict ? t('design.conflict') : draft.failure}
               </p>
               {Object.entries(draft.fields).map(([field, messages]) => (
                 <p key={field} className="text-sm text-danger">
@@ -344,7 +355,7 @@ export const Design = () => {
               size="sm"
               onClick={draft.conflict ? draft.reload : draft.dismiss}
             >
-              {draft.conflict ? 'Reload' : 'Dismiss'}
+              {draft.conflict ? t('builder.reload') : t('common.dismiss')}
             </Button>
           </Card>
         )}
@@ -352,8 +363,9 @@ export const Design = () => {
         {!editable && (
           <Card className="mb-4 p-4">
             <p className="text-base text-ink-soft">
-              You can read the theme but not change it. Editing needs the{' '}
-              <code className="font-mono">theme.update</code> permission.
+              {woven('design.readOnly', {
+                permission: <code className="font-mono">theme.update</code>,
+              })}
             </p>
           </Card>
         )}
@@ -366,11 +378,8 @@ export const Design = () => {
 
             <div className="space-y-4 pt-2">
               <div className="px-1">
-                <h2 className="font-medium">Typography</h2>
-                <p className="text-base text-ink-soft">
-                  Four maps rather than one, so every entry holds a single kind of value and is
-                  checked as that kind
-                </p>
+                <h2 className="font-medium">{t('design.typography')}</h2>
+                <p className="text-base text-ink-soft">{t('design.typographyHelp')}</p>
               </div>
               {TYPOGRAPHY.map((group) => (
                 <Group key={group.title} draft={draft} group={group} nested />
@@ -385,10 +394,12 @@ export const Design = () => {
           <div className="sticky top-6 space-y-2">
             <Preview tokens={draft.tokens} cssVersion={draft.state.cssVersion} />
             <p className="text-sm text-ink-faint">
-              Drawn from the tokens above, under the names the generated stylesheet declares —{' '}
-              {GROUPS.length} groups, {draft.tokens.size} tokens.
+              {t('design.previewNote', {
+                groups: GROUPS.length,
+                tokens: draft.tokens.size,
+              })}
               {draft.updatedAt !== null &&
-                ` Last saved ${new Date(draft.updatedAt).toLocaleString()}.`}
+                ` ${t('design.lastSaved', { when: dates.dateTime(draft.updatedAt) })}`}
             </p>
           </div>
         </div>
@@ -402,8 +413,8 @@ export const Design = () => {
         dirty={changed.length > 0}
         summary={
           changed.length === 0
-            ? 'No unsaved changes'
-            : `${changed.length} unsaved ${changed.length === 1 ? 'token' : 'tokens'}`
+            ? t('entry.noChanges')
+            : t('design.unsavedTokens', { count: changed.length })
         }
         {...(changed.length > 0 ? { detail: changed.join(' \u00b7 ') } : {})}
       >
@@ -412,10 +423,10 @@ export const Design = () => {
           disabled={changed.length === 0 || draft.busy}
           onClick={draft.discard}
         >
-          Discard
+          {t('entry.discard')}
         </Button>
         <Button busy={draft.busy} disabled={changed.length === 0 || !editable} onClick={save}>
-          Save changes
+          {t('entry.saveChanges')}
         </Button>
       </SaveBar>
     </Screen>

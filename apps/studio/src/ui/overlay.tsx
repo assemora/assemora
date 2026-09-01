@@ -8,7 +8,7 @@
  * than it needs. A fixed `top` is what put a row menu half under the table's own edge.
  */
 
-import { X } from 'lucide-react'
+import { Check, ChevronDown, X } from 'lucide-react'
 import {
   type ReactNode,
   type RefObject,
@@ -19,14 +19,27 @@ import {
   useState,
 } from 'react'
 
+import { useT, useWoven } from '../i18n/translate.tsx'
 import { Button, join } from './index.tsx'
 
 export type MenuPlacement = {
   left: number
+  /** What the panel should be: the width asked for, or the trigger's when stretched. */
+  width: number
   top: number
   maxHeight: number
   flipped: boolean
 }
+
+/**
+ * Which edge a panel is hung from.
+ *
+ * A menu is `end`: it hangs from the trigger's right edge at a width of its own, because
+ * a 28px icon button says nothing about how wide its menu should be. A picker is
+ * `stretch`: it *is* the field, so it takes the field's left edge and the field's width,
+ * and the number passed becomes a floor rather than the answer.
+ */
+export type MenuAlign = 'end' | 'stretch'
 
 /** The gap the design leaves between a trigger and the menu it opens. */
 const GAP = 6
@@ -46,9 +59,11 @@ export const useMenuPlacement = (
   open: boolean,
   width: number,
   wanted = 260,
+  align: MenuAlign = 'end',
 ): MenuPlacement => {
   const [placement, setPlacement] = useState<MenuPlacement>({
     left: 0,
+    width,
     top: 0,
     maxHeight: wanted,
     flipped: false,
@@ -62,14 +77,22 @@ export const useMenuPlacement = (
     const below = window.innerHeight - box.bottom - GAP - 8
     const above = box.top - GAP - 8
     const flipped = below < Math.min(wanted, MINIMUM) && above > below
+    const across = align === 'stretch' ? Math.max(width, box.width) : width
 
     setPlacement({
-      left: Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8)),
+      left: Math.max(
+        8,
+        Math.min(
+          align === 'stretch' ? box.left : box.right - across,
+          window.innerWidth - across - 8,
+        ),
+      ),
+      width: across,
       top: flipped ? Math.max(8, box.top - GAP) : box.bottom + GAP,
       maxHeight: Math.max(120, Math.min(wanted, flipped ? above : below)),
       flipped,
     })
-  }, [trigger, width, wanted])
+  }, [trigger, width, wanted, align])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -166,7 +189,7 @@ export const Menu = ({
       className="drop fixed z-50 overflow-auto rounded-xl border border-line bg-surface p-1.5 shadow-menu"
       style={{
         left: placement.left,
-        width,
+        width: placement.width,
         maxHeight: placement.maxHeight,
         ...(placement.flipped
           ? { bottom: window.innerHeight - placement.top }
@@ -214,6 +237,151 @@ export const MenuHeading = ({ children }: { children: ReactNode }) => (
   </p>
 )
 
+/* --------------------------------------------------------------------------- picker */
+
+export type PickerOption = {
+  readonly value: string
+  /** The machine's own word for it — `richText` — so it is set in mono. */
+  readonly label: string
+  /** One line saying what a value of this kind is. */
+  readonly help?: string
+  readonly icon?: ReactNode
+}
+
+export type PickerGroup = {
+  readonly label: string
+  readonly options: readonly PickerOption[]
+}
+
+/**
+ * A dropdown whose options are explained (`design_handoff_studio_redesign` §3).
+ *
+ * `Select` is the native control and is the right one almost everywhere: the platform's
+ * behaviour on a phone, with a keyboard and under a screen reader is better than
+ * anything written here. It cannot do one thing, and the Kind dropdown needs exactly
+ * that thing — an option that is an icon, a machine name and a sentence about what it
+ * means. `<option>` holds text.
+ *
+ * So this exists for the one place where the *explanation* is the point: somebody
+ * choosing between `text`, `richText` and `markdown` is choosing between three words
+ * they have no reason to know apart. Everywhere the options speak for themselves,
+ * `Select` stays.
+ *
+ * Positioned against the viewport and flipped above the trigger when the space below is
+ * short, for the reason every menu here is: this list sits inside a scroller, and a
+ * panel positioned inside one is clipped by the edge it needs to cross.
+ */
+export const Picker = ({
+  value,
+  groups,
+  onChange,
+  label,
+  disabled = false,
+  invalid = false,
+}: {
+  value: string
+  groups: readonly PickerGroup[]
+  onChange(value: string): void
+  /** What the control is, for a screen reader: the field's own label. */
+  label: string
+  disabled?: boolean
+  invalid?: boolean
+}) => {
+  const trigger = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const placement = useMenuPlacement(trigger, open, 244, 306, 'stretch')
+
+  useDismiss(open, () => setOpen(false), panel, trigger)
+
+  const chosen = groups.flatMap((group) => group.options).find((option) => option.value === value)
+
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen((showing) => !showing)}
+        className={join(
+          'flex h-9 w-full items-center gap-2 rounded-lg border bg-surface px-2.5 text-left text-base',
+          'disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-ink-disabled',
+          invalid ? 'ring-field-danger' : 'ring-field border-line hover:border-line-strong',
+        )}
+      >
+        {chosen?.icon !== undefined && (
+          <span aria-hidden className="shrink-0 text-ink-soft">
+            {chosen.icon}
+          </span>
+        )}
+        <span className="min-w-0 truncate">{chosen?.label ?? value}</span>
+        <ChevronDown aria-hidden className="ml-auto size-[18px] shrink-0 text-ink-soft" />
+      </button>
+
+      {open && (
+        <div
+          ref={panel}
+          role="listbox"
+          aria-label={label}
+          className="drop fixed z-50 overflow-auto rounded-xl border border-line bg-surface p-1.5 shadow-menu"
+          style={{
+            left: placement.left,
+            width: placement.width,
+            maxHeight: placement.maxHeight,
+            ...(placement.flipped
+              ? { bottom: window.innerHeight - placement.top }
+              : { top: placement.top }),
+          }}
+        >
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p className="mx-2 mt-1.5 mb-1 text-xs font-[650] tracking-[0.06em] text-ink-faint uppercase">
+                {group.label}
+              </p>
+              {group.options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === value}
+                  onClick={() => {
+                    onChange(option.value)
+                    setOpen(false)
+                  }}
+                  className={join(
+                    'flex w-full items-center gap-2.5 rounded-lg p-2 text-left',
+                    option.value === value ? 'bg-canvas' : 'hover:bg-canvas',
+                  )}
+                >
+                  {option.icon !== undefined && (
+                    <span aria-hidden className="shrink-0 text-ink-soft">
+                      {option.icon}
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <span className="block font-mono text-sm text-ink">{option.label}</span>
+                    {option.help !== undefined && (
+                      <span className="mt-px block text-xs leading-[1.35] text-ink-subdued">
+                        {option.help}
+                      </span>
+                    )}
+                  </span>
+                  {option.value === value && (
+                    <Check aria-hidden className="ml-auto size-4 shrink-0 text-ink-strong" />
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 /**
  * A question that stops everything until it is answered.
  *
@@ -236,6 +404,7 @@ export const Dialog = ({
   children?: ReactNode
 }) => {
   const panel = useRef<HTMLDivElement>(null)
+  const t = useT()
 
   useDismiss(open, onClose, panel)
 
@@ -259,7 +428,7 @@ export const Dialog = ({
         <div className="mt-5 flex justify-end gap-2">
           {footer ?? (
             <Button variant="secondary" onClick={onClose}>
-              Close
+              {t('common.close')}
             </Button>
           )}
         </div>
@@ -293,6 +462,8 @@ export const ConfirmByTyping = ({
   children?: ReactNode
 }) => {
   const [typed, setTyped] = useState('')
+  const t = useT()
+  const woven = useWoven()
 
   useEffect(() => {
     if (!open) setTyped('')
@@ -306,7 +477,7 @@ export const ConfirmByTyping = ({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="destructive" disabled={typed !== word} onClick={onConfirm}>
             {action}
@@ -316,7 +487,9 @@ export const ConfirmByTyping = ({
     >
       {children}
       <label className="mt-4 block text-base font-semibold text-ink">
-        Type <span className="font-mono text-sm text-danger">{word}</span> to confirm
+        {woven('common.confirmByTyping', {
+          word: <span className="font-mono text-sm text-danger">{word}</span>,
+        })}
         <input
           value={typed}
           onChange={(event) => setTyped(event.target.value)}
@@ -346,31 +519,35 @@ export const Toast = ({
   action?: { label: string; onClick(): void }
   onDismiss?(): void
   children: ReactNode
-}) => (
-  <div
-    role="status"
-    className="rise fixed bottom-4 left-4 z-50 flex items-center gap-2.5 rounded-[10px] bg-chrome px-3 py-2.5 text-base text-chrome-ink shadow-menu"
-  >
-    {icon !== undefined && <span className="text-accent-soft">{icon}</span>}
-    {children}
-    {action !== undefined && (
-      <button
-        type="button"
-        onClick={action.onClick}
-        className="ml-2 font-semibold text-sm text-ink-faint hover:text-white"
-      >
-        {action.label}
-      </button>
-    )}
-    {onDismiss !== undefined && (
-      <button
-        type="button"
-        aria-label="Dismiss"
-        onClick={onDismiss}
-        className="ml-1 opacity-55 hover:opacity-100"
-      >
-        <X aria-hidden className="size-4" />
-      </button>
-    )}
-  </div>
-)
+}) => {
+  const t = useT()
+
+  return (
+    <div
+      role="status"
+      className="rise fixed bottom-4 left-4 z-50 flex items-center gap-2.5 rounded-[10px] bg-chrome px-3 py-2.5 text-base text-chrome-ink shadow-menu"
+    >
+      {icon !== undefined && <span className="text-accent-soft">{icon}</span>}
+      {children}
+      {action !== undefined && (
+        <button
+          type="button"
+          onClick={action.onClick}
+          className="ml-2 font-semibold text-sm text-ink-faint hover:text-white"
+        >
+          {action.label}
+        </button>
+      )}
+      {onDismiss !== undefined && (
+        <button
+          type="button"
+          aria-label={t('common.dismiss')}
+          onClick={onDismiss}
+          className="ml-1 opacity-55 hover:opacity-100"
+        >
+          <X aria-hidden className="size-4" />
+        </button>
+      )}
+    </div>
+  )
+}

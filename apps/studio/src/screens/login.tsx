@@ -20,7 +20,10 @@ import { type FormEvent, useState } from 'react'
 
 import { ApiError, unshownMessages } from '../api/client.ts'
 import { useSession } from '../api/session.tsx'
-import { Button } from '../ui/index.tsx'
+import { LANGUAGE_NAMES } from '../i18n/languages.ts'
+import type { Translate } from '../i18n/messages.ts'
+import { useLanguage, useT } from '../i18n/translate.tsx'
+import { Button, Segmented } from '../ui/index.tsx'
 import { Logo } from '../ui/logo.tsx'
 
 /**
@@ -35,13 +38,13 @@ import { Logo } from '../ui/logo.tsx'
  * after a wrong password: a rate limit (SPEC.md §85), which needs waiting rather than
  * retrying, and a validation failure, which needs a different address typed in.
  */
-export const signInFailure = (error: unknown): string => {
-  if (!(error instanceof ApiError)) return 'Could not sign in. Please try again.'
-  if (error.status === 401) return 'That email and password do not match.'
+export const signInFailure = (error: unknown, t: Translate): string => {
+  if (!(error instanceof ApiError)) return t('login.failed')
+  if (error.status === 401) return t('login.mismatch')
 
   const said = [error.message, ...unshownMessages(error)].filter((line) => line !== '')
 
-  return said.length === 0 ? 'Could not sign in. Please try again.' : said.join(' ')
+  return said.length === 0 ? t('login.failed') : said.join(' ')
 }
 
 /**
@@ -52,13 +55,15 @@ export const signInFailure = (error: unknown): string => {
  * "12 480 entries" to a stranger has answered a question nobody was allowed to ask.
  */
 const FACTS = [
-  { label: 'Mutations', value: 'One path' },
-  { label: 'Schema', value: 'One source' },
-  { label: 'Clients', value: 'Four' },
+  { label: 'login.fact.mutations', value: 'login.fact.mutationsValue' },
+  { label: 'login.fact.schema', value: 'login.fact.schemaValue' },
+  { label: 'login.fact.clients', value: 'login.fact.clientsValue' },
 ] as const
 
 export const Login = () => {
   const { signIn } = useSession()
+  const t = useT()
+  const { languages, language, choose } = useLanguage()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [reveal, setReveal] = useState(false)
@@ -73,7 +78,7 @@ export const Login = () => {
     try {
       await signIn({ email, password })
     } catch (error) {
-      setFailure(signInFailure(error))
+      setFailure(signInFailure(error, t))
     } finally {
       setBusy(false)
     }
@@ -91,10 +96,8 @@ export const Login = () => {
             </span>
           </div>
 
-          <h1 className="mt-7 text-title font-[650] tracking-[-0.01em]">Sign in to Studio</h1>
-          <p className="mt-2 text-base text-ink-soft">
-            Editors, reviewers and owners use the same door.
-          </p>
+          <h1 className="mt-7 text-title font-[650] tracking-[-0.01em]">{t('login.title')}</h1>
+          <p className="mt-2 text-base text-ink-soft">{t('login.lede')}</p>
 
           {failure !== undefined && (
             <div
@@ -109,7 +112,7 @@ export const Login = () => {
 
           <form className="mt-[22px] flex flex-col gap-3.5" onSubmit={submit}>
             <label className="block text-base font-semibold">
-              Email
+              {t('login.email')}
               <input
                 type="email"
                 name="email"
@@ -123,7 +126,7 @@ export const Login = () => {
             </label>
 
             <label className="block text-base font-semibold">
-              Password
+              {t('login.password')}
               <span className="relative mt-1.5 block">
                 <input
                   type={reveal ? 'text' : 'password'}
@@ -137,7 +140,7 @@ export const Login = () => {
                 />
                 <button
                   type="button"
-                  aria-label={reveal ? 'Hide the password' : 'Show the password'}
+                  aria-label={reveal ? t('login.hide') : t('login.show')}
                   onClick={() => setReveal((shown) => !shown)}
                   className="absolute top-[5px] right-[5px] grid size-[26px] place-items-center rounded-[7px] text-ink-subdued hover:bg-surface-raised hover:text-ink-strong"
                 >
@@ -151,13 +154,29 @@ export const Login = () => {
             </label>
 
             <Button type="submit" size="lg" className="mt-1 w-full" busy={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
+              {busy ? t('login.busy') : t('login.submit')}
             </Button>
           </form>
 
-          <p className="mt-6 text-sm text-ink-subdued">
-            Trouble signing in? A workspace owner can re-send your invite.
-          </p>
+          <p className="mt-6 text-sm text-ink-subdued">{t('login.trouble')}</p>
+
+          {/*
+           * The one screen where the language has to be choosable before anything else.
+           *
+           * Studio opens in whatever the browser says the person reads, which is a guess
+           * — and this is the first screen it is made on, in front of somebody who
+           * cannot reach the account menu because they are not signed in yet. A person
+           * who has to read English to find out how to stop reading English has been
+           * given no choice at all.
+           */}
+          <div className="mt-5">
+            <Segmented
+              label={t('account.interface')}
+              value={language}
+              options={languages.map((code) => ({ value: code, label: LANGUAGE_NAMES[code] }))}
+              onChange={choose}
+            />
+          </div>
         </div>
       </section>
 
@@ -172,20 +191,19 @@ export const Login = () => {
 
           <div className="mt-auto">
             <p className="max-w-[22ch] text-[34px] leading-[1.1] font-[650] tracking-[-0.025em] text-chrome-ink">
-              The content layer your build already trusts.
+              {t('login.claim')}
             </p>
             <p className="mt-[18px] max-w-[46ch] text-md leading-[1.55] text-ink-faint">
-              One declaration produces the editor, the API and the types. Nothing drifts, because
-              nothing is written twice.
+              {t('login.claimBody')}
             </p>
           </div>
 
           <dl className="mt-10 grid grid-cols-3 gap-5 border-t border-white/10 pt-6">
             {FACTS.map((fact) => (
               <div key={fact.label}>
-                <dt className="text-sm text-ink-faint">{fact.label}</dt>
+                <dt className="text-sm text-ink-faint">{t(fact.label)}</dt>
                 <dd className="mt-1 text-[17px] font-[650] tracking-[-0.01em] text-chrome-ink tabular-nums">
-                  {fact.value}
+                  {t(fact.value)}
                 </dd>
               </div>
             ))}

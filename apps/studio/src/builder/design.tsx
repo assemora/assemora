@@ -14,7 +14,8 @@ import {
   VIEWPORTS,
 } from '@assemora/schema'
 
-import { Field, Select } from '../ui/index.tsx'
+import { useT } from '../i18n/translate.tsx'
+import { Checkbox, Field, Select } from '../ui/index.tsx'
 
 type Change = (patch: Readonly<Record<string, unknown>>) => void
 
@@ -28,31 +29,35 @@ const Choice = ({
   value: string | undefined
   options: readonly string[]
   onChange(value: string | null): void
-}) => (
-  <Field label={label}>
-    <Select
-      value={value ?? ''}
-      onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
-    >
-      <option value="">Theme default</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-      {/*
-       * A token this block names that the theme no longer declares.
-       *
-       * It stays on screen and stays selected, because it is what the block actually
-       * says — dropping it would read as "theme default" and quietly rewrite the
-       * block the next time anybody touched another control.
-       */}
-      {value === undefined || options.includes(value) ? null : (
-        <option value={value}>{value} — not in the theme</option>
-      )}
-    </Select>
-  </Field>
-)
+}) => {
+  const t = useT()
+
+  return (
+    <Field label={label}>
+      <Select
+        value={value ?? ''}
+        onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
+      >
+        <option value="">{t('design.themeDefault')}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+        {/*
+         * A token this block names that the theme no longer declares.
+         *
+         * It stays on screen and stays selected, because it is what the block actually
+         * says — dropping it would read as "theme default" and quietly rewrite the
+         * block the next time anybody touched another control.
+         */}
+        {value === undefined || options.includes(value) ? null : (
+          <option value={value}>{t('design.notInTheme', { token: value })}</option>
+        )}
+      </Select>
+    </Field>
+  )
+}
 
 export const DesignControls = ({
   design,
@@ -62,73 +67,75 @@ export const DesignControls = ({
   design: BlockDesign
   backgrounds: readonly string[]
   onChange: Change
-}) => (
-  <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-3">
-      <Choice
-        label="Space above"
-        value={design.spacingTop}
-        options={SPACING_SCALE}
-        onChange={(spacingTop) => onChange({ spacingTop })}
-      />
-      <Choice
-        label="Space below"
-        value={design.spacingBottom}
-        options={SPACING_SCALE}
-        onChange={(spacingBottom) => onChange({ spacingBottom })}
-      />
-    </div>
+}) => {
+  const t = useT()
 
-    <div className="grid grid-cols-2 gap-3">
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <Choice
+          label={t('design.spaceAbove')}
+          value={design.spacingTop}
+          options={SPACING_SCALE}
+          onChange={(spacingTop) => onChange({ spacingTop })}
+        />
+        <Choice
+          label={t('design.spaceBelow')}
+          value={design.spacingBottom}
+          options={SPACING_SCALE}
+          onChange={(spacingBottom) => onChange({ spacingBottom })}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Choice
+          label={t('design.width')}
+          value={design.width}
+          options={BLOCK_WIDTHS}
+          onChange={(width) => onChange({ width })}
+        />
+        <Choice
+          label={t('design.container')}
+          value={design.container}
+          options={CONTAINER_WIDTHS}
+          onChange={(container) => onChange({ container })}
+        />
+      </div>
+
       <Choice
-        label="Width"
-        value={design.width}
-        options={BLOCK_WIDTHS}
-        onChange={(width) => onChange({ width })}
+        label={t('design.alignment')}
+        value={design.align}
+        options={BLOCK_ALIGNMENTS}
+        onChange={(align) => onChange({ align })}
       />
+
       <Choice
-        label="Container"
-        value={design.container}
-        options={CONTAINER_WIDTHS}
-        onChange={(container) => onChange({ container })}
+        label={t('design.background')}
+        value={design.background}
+        options={backgrounds}
+        onChange={(background) => onChange({ background })}
       />
-    </div>
 
-    <Choice
-      label="Alignment"
-      value={design.align}
-      options={BLOCK_ALIGNMENTS}
-      onChange={(align) => onChange({ align })}
-    />
-
-    <Choice
-      label="Background"
-      value={design.background}
-      options={backgrounds}
-      onChange={(background) => onChange({ background })}
-    />
-
-    <Field label="Hidden on" help="Responsive visibility. The block stays in the tree">
-      <div className="flex gap-3 pt-1">
-        {VIEWPORTS.map((viewport) => (
-          <label key={viewport} className="flex items-center gap-1.5 text-base text-ink-soft">
-            <input
-              type="checkbox"
-              className="size-4 accent-accent"
+      <Field label={t('design.hiddenOn')} help={t('design.hiddenOnHelp')}>
+        <div className="flex gap-3 pt-1">
+          {VIEWPORTS.map((viewport) => (
+            <Checkbox
+              key={viewport}
               checked={design.hiddenOn?.includes(viewport) === true}
-              onChange={(event) => {
+              onChange={(hidden) => {
                 const current = new Set(design.hiddenOn ?? [])
 
-                if (event.target.checked) current.add(viewport)
+                if (hidden) current.add(viewport)
                 else current.delete(viewport)
 
                 onChange({ hiddenOn: current.size === 0 ? null : [...current] })
               }}
-            />
-            {viewport}
-          </label>
-        ))}
-      </div>
-    </Field>
-  </div>
-)
+            >
+              {viewport}
+            </Checkbox>
+          ))}
+        </div>
+      </Field>
+    </div>
+  )
+}

@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react'
 
 import { type RouteDescriptor, useIntrospection } from '../api/introspection.ts'
+import { useT } from '../i18n/translate.tsx'
 import { Badge, Button, Card, Failure, Field, Input, Spinner, Textarea } from '../ui/index.tsx'
 
 const METHOD_TONE = {
@@ -38,6 +39,7 @@ const Try = ({ route }: { route: RouteDescriptor }) => {
   const [body, setBody] = useState('{}')
   const [attempt, setAttempt] = useState<Attempt>()
   const [busy, setBusy] = useState(false)
+  const t = useT()
   const names = parameterNames(route.path)
 
   const send = async () => {
@@ -99,7 +101,7 @@ const Try = ({ route }: { route: RouteDescriptor }) => {
         </div>
       )}
 
-      <Field label="Query string">
+      <Field label={t('explorer.queryString')}>
         <Input
           placeholder="page=1&search=engine"
           value={query}
@@ -108,7 +110,7 @@ const Try = ({ route }: { route: RouteDescriptor }) => {
       </Field>
 
       {route.method !== 'get' && (
-        <Field label="Body">
+        <Field label={t('explorer.body')}>
           <Textarea
             className="font-mono text-sm"
             rows={6}
@@ -119,14 +121,16 @@ const Try = ({ route }: { route: RouteDescriptor }) => {
       )}
 
       <Button size="sm" onClick={() => void send()} disabled={busy}>
-        {busy ? 'Sending…' : 'Send'}
+        {busy ? t('explorer.sending') : t('explorer.send')}
       </Button>
 
       {attempt !== undefined && (
         <div className="space-y-2 rounded-lg border border-line bg-surface-sunken p-3">
           <div className="flex items-center gap-2 text-base">
             <Badge tone={attempt.status < 400 ? 'positive' : 'danger'}>{attempt.status}</Badge>
-            <span className="text-ink-soft">{attempt.duration} ms</span>
+            <span className="text-ink-soft">
+              {t('explorer.duration', { ms: attempt.duration })}
+            </span>
             <span className="text-ink-faint">{attempt.headers['content-type']}</span>
           </div>
           <pre className="max-h-72 overflow-auto font-mono text-sm">{attempt.body}</pre>
@@ -153,6 +157,7 @@ const Schema = ({
 
 export const Explorer = () => {
   const introspection = useIntrospection()
+  const t = useT()
   const [filter, setFilter] = useState('')
   const [open, setOpen] = useState<string>()
 
@@ -178,13 +183,13 @@ export const Explorer = () => {
       <div className="mb-4 flex items-center gap-3">
         <Input
           type="search"
-          placeholder="Filter by path or tag…"
+          placeholder={t('explorer.filter')}
           className="max-w-sm"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
         <span className="text-base text-ink-soft">
-          {routes.length} endpoints, all of them described by the application itself
+          {t('explorer.endpoints', { count: routes.length })}
         </span>
         <a
           href="/api/openapi.json"
@@ -213,16 +218,22 @@ export const Explorer = () => {
                 <span className="min-w-0 flex-1 truncate text-base text-ink-soft">
                   {route.description}
                 </span>
-                {route.auth && <Badge>auth</Badge>}
+                {route.auth && <Badge>{t('explorer.auth')}</Badge>}
               </button>
 
               {expanded && (
                 <div className="space-y-4 border-t border-line px-4 py-4">
-                  {route.params !== undefined && <Schema title="Params" schema={route.params} />}
-                  {route.query !== undefined && <Schema title="Query" schema={route.query} />}
-                  {route.body !== undefined && <Schema title="Body" schema={route.body} />}
+                  {route.params !== undefined && (
+                    <Schema title={t('explorer.params')} schema={route.params} />
+                  )}
+                  {route.query !== undefined && (
+                    <Schema title={t('explorer.query')} schema={route.query} />
+                  )}
+                  {route.body !== undefined && (
+                    <Schema title={t('explorer.body')} schema={route.body} />
+                  )}
                   {route.response !== undefined && (
-                    <Schema title="Response" schema={route.response} />
+                    <Schema title={t('explorer.response')} schema={route.response} />
                   )}
 
                   {route.errors.length > 0 && (

@@ -15,16 +15,18 @@ import { type CollectionSummary, useCollections } from '../api/collections.ts'
 import { useIntrospection } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
 import { Page } from '../app/shell.tsx'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useT } from '../i18n/translate.tsx'
 import { NoCollections } from '../ui/blank.tsx'
 import { Badge, Button, Card, Counter, Failure, Spinner } from '../ui/index.tsx'
 
 /** Which of the generated CRUD operations a resource answers to (SPEC.md §43). */
 const OPERATIONS = [
-  ['create', 'created'],
-  ['read', 'read'],
-  ['update', 'updated'],
-  ['delete', 'deleted'],
-] as const satisfies readonly (readonly [keyof CollectionSummary['api'], string])[]
+  ['create', 'collections.can.created'],
+  ['read', 'collections.can.read'],
+  ['update', 'collections.can.updated'],
+  ['delete', 'collections.can.deleted'],
+] as const satisfies readonly (readonly [keyof CollectionSummary['api'], MessageKey])[]
 
 /** A heading over one half of the screen, with how much is under it. */
 const Section = ({
@@ -50,6 +52,7 @@ const Section = ({
 
 export const Collections = () => {
   const { can } = useSession()
+  const t = useT()
   const navigate = useNavigate()
   const collections = useCollections()
   const introspection = useIntrospection()
@@ -84,12 +87,12 @@ export const Collections = () => {
   return (
     <Page
       icon={<Network className="size-5" />}
-      title="Collections"
-      description="A collection is a resource made here rather than written in TypeScript. Both kinds are equal once they exist"
+      title={t('nav.collections')}
+      description={t('collections.lede')}
       // On a fresh install the empty state carries this button itself, where the
       // sentence explaining it is. Two identical primary buttons on one screen is one of
       // them being ignored.
-      actions={!fresh && canCreate && <Button onClick={create}>New collection</Button>}
+      actions={!fresh && canCreate && <Button onClick={create}>{t('collections.new')}</Button>}
     >
       {collections.isError && <Failure error={collections.error} />}
 
@@ -109,17 +112,16 @@ export const Collections = () => {
 
       {!fresh && collections.isSuccess && (
         <>
-          <Section title="Made here" count={made.length}>
+          <Section title={t('collections.madeHere')} count={made.length}>
             {made.length === 0 ? (
               <Card className="px-6 py-10 text-center">
-                <p className="text-base font-[650]">Nothing has been made here yet</p>
+                <p className="text-base font-[650]">{t('collections.noneMadeHere')}</p>
                 <p className="mx-auto mt-1.5 max-w-prose text-base text-ink-soft">
-                  A collection made here is stored as a row rather than a source file, so Studio can
-                  change its fields. Everything else about it is the same as the ones below.
+                  {t('collections.noneMadeHereBody')}
                 </p>
                 {canCreate && (
                   <div className="mt-5">
-                    <Button onClick={create}>New collection</Button>
+                    <Button onClick={create}>{t('collections.new')}</Button>
                   </div>
                 )}
               </Card>
@@ -128,10 +130,10 @@ export const Collections = () => {
                 <table className="w-full text-left text-base">
                   <thead>
                     <tr className="border-b border-line text-sm font-[650] tracking-[0.01em] text-ink-soft">
-                      <th className="px-4 py-2.5">Collection</th>
-                      <th className="px-4 py-2.5">Name</th>
-                      <th className="px-4 py-2.5">Fields</th>
-                      <th className="px-4 py-2.5">Entries can be</th>
+                      <th className="px-4 py-2.5">{t('collections.column.collection')}</th>
+                      <th className="px-4 py-2.5">{t('collections.column.name')}</th>
+                      <th className="px-4 py-2.5">{t('collections.column.fields')}</th>
+                      <th className="px-4 py-2.5">{t('collections.column.entriesCan')}</th>
                       <th className="w-0 px-4 py-2.5" />
                     </tr>
                   </thead>
@@ -158,7 +160,7 @@ export const Collections = () => {
                           <div className="flex flex-wrap gap-1">
                             {OPERATIONS.filter(([operation]) => collection.api[operation]).map(
                               ([operation, done]) => (
-                                <Badge key={operation}>{done}</Badge>
+                                <Badge key={operation}>{t(done)}</Badge>
                               ),
                             )}
                           </div>
@@ -169,7 +171,7 @@ export const Collections = () => {
                             params={{ name: collection.name }}
                             className="text-base font-[550] text-link hover:text-link-hover hover:underline"
                           >
-                            Fields
+                            {t('collections.column.fields')}
                           </Link>
                         </td>
                       </tr>
@@ -185,9 +187,9 @@ export const Collections = () => {
               seventeen names in the smallest type on the page, under everything else. */}
           {declared.length > 0 && (
             <Section
-              title="Declared in this application’s source"
+              title={t('collections.declared')}
               count={declared.length}
-              note="Their fields are a TypeScript declaration, which is what produces the record type, the API types and the SDK — so Studio can read them but never rewrite them, and they are changed by editing the application and restarting it. Everything else is the same: the same screens, the same policies, revisions and audit, and the same tools over MCP. A new collection may not take one of these names."
+              note={t('collections.declaredNote')}
             >
               <Card className="overflow-hidden">
                 <ul className="list-none p-0">
@@ -213,14 +215,14 @@ export const Collections = () => {
                             search={{ view: 'resources' as const }}
                             className="shrink-0 text-base font-[550] text-link hover:text-link-hover hover:underline"
                           >
-                            Fields
+                            {t('collections.column.fields')}
                           </Link>
                           <Link
                             to="/content/$resource"
                             params={{ resource: resource.name }}
                             className="shrink-0 text-base font-[550] text-link hover:text-link-hover hover:underline"
                           >
-                            Entries
+                            {t('collections.entries')}
                           </Link>
                         </>
                       )}

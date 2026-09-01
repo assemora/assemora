@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { CollectionDefinition } from '../api/collections.ts'
+import { translator } from '../i18n/messages.ts'
 import {
   FIELD_NAME_PATTERN,
   groupedKinds,
@@ -63,6 +64,9 @@ const nested: CollectionDefinition = {
 }
 
 const context = {
+  // English, because these assertions are about which refusal is raised rather than
+  // about how it reads. The catalogue's own suite covers the other two languages.
+  t: translator('en'),
   stored: undefined,
   taken: ['articles'],
   dropped: [],
@@ -95,7 +99,10 @@ describe('a draft of a stored definition', () => {
       'quote',
       'rating',
     ])
-    expect(emptyDraft('one').fields.map((field) => field.stored)).toEqual([undefined])
+    // A new collection starts with no rows at all — the presets are what fills it — and
+    // a row that was not read from a definition is the one that carries no stored name.
+    expect(emptyDraft().fields).toEqual([])
+    expect(blankField('one').stored).toBeUndefined()
   })
 
   it('gives every row a key that survives a rename', () => {
@@ -300,7 +307,7 @@ describe('what is refused, said before it is sent', () => {
   })
 
   it('calls a fresh form’s issues blank, so opening one is not being shouted at', () => {
-    const fresh = issuesOf(emptyDraft('new:0'), context)
+    const fresh = issuesOf(emptyDraft(), context)
 
     expect(fresh.length).toBeGreaterThan(0)
     expect(fresh.every((issue) => issue.blank === true)).toBe(true)
@@ -380,7 +387,13 @@ describe('the kinds offered', () => {
   it('are grouped for reading, with anything unrecognised still offered', () => {
     const groups = groupedKinds(['text', 'array', 'wormhole'])
 
-    expect(groups.map((group) => group.label)).toEqual(['Text', 'Several values', 'Other'])
+    // The key rather than the words: a heading is drawn in whatever language Studio is
+    // being read in, and what this pins is which group a kind lands in.
+    expect(groups.map((group) => group.label)).toEqual([
+      'collections.kinds.text',
+      'collections.kinds.several',
+      'collections.kinds.other',
+    ])
     expect(groups.flatMap((group) => group.kinds)).toEqual(['text', 'array', 'wormhole'])
   })
 })

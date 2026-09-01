@@ -23,7 +23,8 @@ import {
   useIntrospection,
   valueAt,
 } from '../api/introspection.ts'
-import { Badge, Button, Field, Input, Select, Switch, Textarea } from '../ui/index.tsx'
+import { useT } from '../i18n/translate.tsx'
+import { Badge, Button, Checkbox, Field, Input, Select, Switch, Textarea } from '../ui/index.tsx'
 import { MediaPicker } from './media-picker.tsx'
 import { RichTextInput } from './rich-text.tsx'
 
@@ -104,6 +105,7 @@ const MediaInput = ({
   onChange(value: unknown): void
 }) => {
   const [picking, setPicking] = useState(false)
+  const t = useT()
   const id = asText(value)
 
   return (
@@ -133,7 +135,7 @@ const MediaInput = ({
 
       <div className="min-w-0">
         <p className="mb-2 font-mono text-sm text-ink-soft">
-          {id === '' ? <span className="text-ink-faint">Nothing chosen</span> : id}
+          {id === '' ? <span className="text-ink-faint">{t('fields.nothingChosen')}</span> : id}
           {/* An authoring constraint and not a validation one: what an id points at
               lives in another table, so the field cannot check it and does not claim
               to. */}
@@ -144,7 +146,7 @@ const MediaInput = ({
 
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={() => setPicking(true)}>
-            {id === '' ? 'Choose…' : 'Replace'}
+            {id === '' ? t('fields.choose') : t('fields.replace')}
           </Button>
 
           {id !== '' && (
@@ -154,7 +156,7 @@ const MediaInput = ({
               className="text-danger hover:bg-danger-soft"
               onClick={() => onChange(null)}
             >
-              Remove
+              {t('common.remove')}
             </Button>
           )}
         </div>
@@ -174,6 +176,7 @@ const MediaInput = ({
 }
 
 const JsonInput = ({ value, onChange }: { value: unknown; onChange(value: unknown): void }) => {
+  const t = useT()
   const written = JSON.stringify(value ?? null, null, 2)
   const [text, setText] = useState(written)
   const [broken, setBroken] = useState(false)
@@ -211,7 +214,7 @@ const JsonInput = ({ value, onChange }: { value: unknown; onChange(value: unknow
           }
         }}
       />
-      {broken && <span className="text-sm text-danger">Not valid JSON yet</span>}
+      {broken && <span className="text-sm text-danger">{t('fields.brokenJson')}</span>}
     </div>
   )
 }
@@ -229,31 +232,28 @@ const CheckboxesInput = ({
 }) => {
   const chosen = asWords(value)
   const options = field.options ?? []
+  const t = useT()
 
   if (options.length === 0) {
-    return <span className="text-base text-ink-faint">This field declares no options.</span>
+    return <span className="text-base text-ink-faint">{t('fields.noOptions')}</span>
   }
 
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-2">
       {options.map((option) => (
-        <label key={option.value} className="flex items-center gap-2 text-base text-ink-soft">
-          <input
-            type="checkbox"
-            className="size-4 accent-accent"
-            checked={chosen.includes(option.value)}
-            // Ticked in the order they were ticked, which is the order the value is
-            // stored in: a list of tags reads the way its author built it.
-            onChange={(event) =>
-              onChange(
-                event.target.checked
-                  ? [...chosen, option.value]
-                  : chosen.filter((each) => each !== option.value),
-              )
-            }
-          />
+        <Checkbox
+          key={option.value}
+          checked={chosen.includes(option.value)}
+          // Ticked in the order they were ticked, which is the order the value is
+          // stored in: a list of tags reads the way its author built it.
+          onChange={(ticked) =>
+            onChange(
+              ticked ? [...chosen, option.value] : chosen.filter((each) => each !== option.value),
+            )
+          }
+        >
           {option.label}
-        </label>
+        </Checkbox>
       ))}
     </div>
   )
@@ -287,12 +287,13 @@ const swatchOf = (value: string): string => {
  */
 const ColorInput = ({ value, onChange }: { value: unknown; onChange(value: unknown): void }) => {
   const text = asText(value)
+  const t = useT()
 
   return (
     <div className="flex items-center gap-2">
       <input
         type="color"
-        aria-label="Pick a colour"
+        aria-label={t('fields.pickColour')}
         className="size-9 shrink-0 cursor-pointer rounded-lg border border-line bg-surface p-1"
         value={swatchOf(text)}
         onChange={(event) => onChange(event.target.value)}
@@ -305,7 +306,7 @@ const ColorInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
       />
       {text !== '' && (
         <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
-          Clear
+          {t('common.clear')}
         </Button>
       )}
     </div>
@@ -331,6 +332,7 @@ const CodeInput = ({
   const language = asText(current.language)
   const source = asText(current.source)
   const languages = field.options ?? []
+  const t = useT()
 
   // An empty pair is not a half-written value, it is no value: sending
   // `{ language: '', source: '' }` would be refused for a language that is not a name,
@@ -345,18 +347,18 @@ const CodeInput = ({
           <Input
             className="max-w-40 font-mono text-sm"
             placeholder="ts"
-            aria-label="Language"
+            aria-label={t('fields.language')}
             value={language}
             onChange={(event) => emit({ language: event.target.value, source })}
           />
         ) : (
           <Select
             className="max-w-40"
-            aria-label="Language"
+            aria-label={t('fields.language')}
             value={language}
             onChange={(event) => emit({ language: event.target.value, source })}
           >
-            <option value="">Choose a language…</option>
+            <option value="">{t('fields.chooseLanguage')}</option>
             {languages.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -364,7 +366,7 @@ const CodeInput = ({
             ))}
           </Select>
         )}
-        <span className="text-sm text-ink-faint">Stored as written; never run</span>
+        <span className="text-sm text-ink-faint">{t('fields.neverRun')}</span>
       </div>
 
       <Textarea
@@ -424,6 +426,7 @@ const EntryOfResource = ({
   onPick(id: string): void
 }) => {
   const [search, setSearch] = useState('')
+  const t = useT()
 
   const listing = useQuery({
     queryKey: ['entries', resource.name, search],
@@ -441,12 +444,12 @@ const EntryOfResource = ({
       <div className="space-y-1">
         <Input
           className="font-mono text-sm"
-          placeholder="The id it points at"
+          placeholder={t('fields.theId')}
           value={id}
           onChange={(event) => onPick(event.target.value)}
         />
         <span className="text-sm text-ink-faint">
-          {resource.label} cannot be listed for you, so the id has to be written out.
+          {t('fields.cannotList', { name: resource.label })}
         </span>
       </div>
     )
@@ -458,14 +461,20 @@ const EntryOfResource = ({
         <Input
           type="search"
           className="max-w-48"
-          placeholder={`Search ${resource.label.toLowerCase()}…`}
+          placeholder={t('fields.searchIn', { name: resource.label.toLowerCase() })}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
       )}
 
-      <Select aria-label="Which entry" value={id} onChange={(event) => onPick(event.target.value)}>
-        <option value="">{listing.isPending ? 'Loading…' : 'Choose an entry…'}</option>
+      <Select
+        aria-label={t('fields.whichEntry')}
+        value={id}
+        onChange={(event) => onPick(event.target.value)}
+      >
+        <option value="">
+          {listing.isPending ? t('fields.loading') : t('fields.chooseEntry')}
+        </option>
         {/* An id this page does not hold — an older entry, one another search found —
             is still what the value points at, so it stays offered. */}
         {id === '' || rows.some((row) => entryOf(row) === id) ? null : (
@@ -507,6 +516,7 @@ const EntryPicker = ({
   onPick(next: { resource: string; id: string }): void
 }) => {
   const introspection = useIntrospection()
+  const t = useT()
   const resources = (introspection.data?.resources ?? []).filter((each) => each.api.read)
   const chosen = resources.find((each) => each.name === resource)
 
@@ -514,11 +524,11 @@ const EntryPicker = ({
     <div className="space-y-2">
       <Select
         className="max-w-48"
-        aria-label="Which resource"
+        aria-label={t('fields.whichResource')}
         value={resource}
         onChange={(event) => onPick({ resource: event.target.value, id: '' })}
       >
-        <option value="">Choose a resource…</option>
+        <option value="">{t('fields.chooseResource')}</option>
         {/* A resource this application no longer has is still what the link points
             at, so it stays offered rather than vanishing. */}
         {resource === '' || resources.some((each) => each.name === resource) ? null : (
@@ -560,6 +570,7 @@ const RelationInput = ({
   onChange(value: unknown): void
 }) => {
   const introspection = useIntrospection()
+  const t = useT()
   const target = field.target ?? ''
   const chosen = (introspection.data?.resources ?? []).find((each) => each.name === target)
 
@@ -571,14 +582,12 @@ const RelationInput = ({
       <div className="space-y-1">
         <Input
           className="font-mono text-sm"
-          placeholder="The id it points at"
+          placeholder={t('fields.theId')}
           value={asText(value)}
           onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
         />
         <span className="text-sm text-ink-faint">
-          {target === ''
-            ? 'This field names no target resource, so there is nothing to list.'
-            : `${target} cannot be listed here, so the id has to be written out.`}
+          {target === '' ? t('fields.noTarget') : t('fields.cannotListHere', { name: target })}
         </span>
       </div>
     )
@@ -610,6 +619,7 @@ type LinkParts = {
 }
 
 const LinkInput = ({ value, onChange }: { value: unknown; onChange(value: unknown): void }) => {
+  const t = useT()
   const current = asRecord(value)
   const entry = asRecord(current.entry)
 
@@ -647,25 +657,19 @@ const LinkInput = ({ value, onChange }: { value: unknown; onChange(value: unknow
       <div className="flex flex-wrap items-center gap-2">
         <Select
           className="max-w-56"
-          aria-label="What this link points at"
+          aria-label={t('fields.linkPointsAt')}
           value={parts.type}
           onChange={(event) => emit({ type: event.target.value as LinkParts['type'] })}
         >
           <option value="">—</option>
-          <option value="url">A web address</option>
-          <option value="entry">Something in this application</option>
+          <option value="url">{t('fields.aWebAddress')}</option>
+          <option value="entry">{t('fields.somethingHere')}</option>
         </Select>
 
         {parts.type !== '' && (
-          <label className="flex items-center gap-2 text-base text-ink-soft">
-            <input
-              type="checkbox"
-              className="size-4 accent-accent"
-              checked={parts.newTab}
-              onChange={(event) => emit({ newTab: event.target.checked })}
-            />
-            Open in a new tab
-          </label>
+          <Checkbox checked={parts.newTab} onChange={(newTab) => emit({ newTab })}>
+            {t('fields.newTab')}
+          </Checkbox>
         )}
       </div>
 
@@ -688,7 +692,7 @@ const LinkInput = ({ value, onChange }: { value: unknown; onChange(value: unknow
 
       {parts.type !== '' && (
         <Input
-          placeholder="What the link says, if not the page’s own title"
+          placeholder={t('fields.linkLabel')}
           value={parts.label}
           onChange={(event) => emit({ label: event.target.value })}
         />
@@ -706,6 +710,7 @@ const LinkInput = ({ value, onChange }: { value: unknown; onChange(value: unknow
  * — a ragged one has no honest rendering, so this cannot make one.
  */
 const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unknown): void }) => {
+  const t = useT()
   const current = asRecord(value)
   const columns = asWords(current.columns)
   const rows = asRows(current.rows)
@@ -728,8 +733,8 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
                 <div className="flex items-center gap-1">
                   <Input
                     className="min-w-24 text-sm font-semibold"
-                    aria-label={`Heading of column ${column + 1}`}
-                    placeholder="Heading"
+                    aria-label={t('fields.columnHeading', { number: column + 1 })}
+                    placeholder={t('fields.heading')}
                     value={heading}
                     onChange={(event) =>
                       emit({
@@ -744,8 +749,8 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
                     variant="ghost"
                     size="sm"
                     className="h-6 px-1 text-danger"
-                    aria-label={`Remove column ${column + 1}`}
-                    title="Remove this column"
+                    aria-label={t('fields.removeColumn', { number: column + 1 })}
+                    title={t('fields.removeThisColumn')}
                     onClick={() =>
                       emit({
                         columns: columns.filter((_, at) => at !== column),
@@ -762,7 +767,7 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
               <Button
                 variant="secondary"
                 size="sm"
-                title="Add a column"
+                title={t('fields.addColumn')}
                 onClick={() =>
                   emit({
                     columns: [...columns, ''],
@@ -772,7 +777,7 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
                   })
                 }
               >
-                + column
+                {t('fields.plusColumn')}
               </Button>
             </th>
           </tr>
@@ -787,7 +792,7 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
                 <td key={column} className="p-1">
                   <Input
                     className="min-w-24 text-sm"
-                    aria-label={`Row ${index + 1}, column ${column + 1}`}
+                    aria-label={t('fields.cell', { row: index + 1, column: column + 1 })}
                     value={cell(row, column)}
                     onChange={(event) =>
                       emit({
@@ -809,8 +814,8 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
                   variant="ghost"
                   size="sm"
                   className="h-6 px-1 text-danger"
-                  aria-label={`Remove row ${index + 1}`}
-                  title="Remove this row"
+                  aria-label={t('fields.removeRow', { number: index + 1 })}
+                  title={t('fields.removeThisRow')}
                   onClick={() => emit({ columns, rows: rows.filter((_, at) => at !== index) })}
                 >
                   ×
@@ -826,13 +831,13 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
           variant="secondary"
           size="sm"
           disabled={columns.length === 0}
-          title={columns.length === 0 ? 'Add a column first' : 'Add a row'}
+          title={columns.length === 0 ? t('fields.columnFirst') : t('fields.addRow')}
           onClick={() => emit({ columns, rows: [...rows, columns.map(() => '')] })}
         >
-          Add a row
+          {t('fields.addRow')}
         </Button>
         {columns.length === 0 && (
-          <span className="text-sm text-ink-faint">A table starts with a column.</span>
+          <span className="text-sm text-ink-faint">{t('fields.startsWithColumn')}</span>
         )}
       </div>
     </div>
@@ -916,56 +921,60 @@ const Repeated = ({
   onChange(value: unknown): void
   onMove(by: number): void
   onRemove(): void
-}) => (
-  <li className="rounded-lg border border-line bg-surface p-3">
-    <div className="mb-2 flex items-center gap-1">
-      <div className="ml-auto flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5"
-          disabled={index === 0}
-          aria-label={`Move item ${index + 1} up`}
-          title="Move up"
-          onClick={() => onMove(-1)}
-        >
-          ↑
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5"
-          disabled={index === count - 1}
-          aria-label={`Move item ${index + 1} down`}
-          title="Move down"
-          onClick={() => onMove(1)}
-        >
-          ↓
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5 text-danger"
-          aria-label={`Remove item ${index + 1}`}
-          title="Remove this item"
-          onClick={onRemove}
-        >
-          Remove
-        </Button>
-      </div>
-    </div>
+}) => {
+  const t = useT()
 
-    {/* The element's own label is `Element` — the descriptor names it after the key a
+  return (
+    <li className="rounded-lg border border-line bg-surface p-3">
+      <div className="mb-2 flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5"
+            disabled={index === 0}
+            aria-label={t('fields.moveUp', { number: index + 1 })}
+            title={t('fields.up')}
+            onClick={() => onMove(-1)}
+          >
+            ↑
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5"
+            disabled={index === count - 1}
+            aria-label={t('fields.moveDown', { number: index + 1 })}
+            title={t('fields.down')}
+            onClick={() => onMove(1)}
+          >
+            ↓
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5 text-danger"
+            aria-label={t('fields.removeItem', { number: index + 1 })}
+            title={t('fields.removeThisItem')}
+            onClick={onRemove}
+          >
+            {t('common.remove')}
+          </Button>
+        </div>
+      </div>
+
+      {/* The element's own label is `Element` — the descriptor names it after the key a
         definition holds it under — and a card headed "Element" three times over says
         nothing. The number is what identifies an item, so the number is its label. */}
-    <FieldInput
-      field={{ ...element, label: `Item ${index + 1}` }}
-      value={value}
-      {...(issues === undefined ? {} : { issues })}
-      onChange={onChange}
-    />
-  </li>
-)
+      <FieldInput
+        field={{ ...element, label: t('fields.item', { number: index + 1 }) }}
+        value={value}
+        {...(issues === undefined ? {} : { issues })}
+        onChange={onChange}
+      />
+    </li>
+  )
+}
 
 /**
  * Any number of one field: add a row, remove one, move one.
@@ -987,6 +996,7 @@ const RepeaterInput = ({
 }) => {
   const items = asList(value)
   const element = field.element
+  const t = useT()
 
   if (element === undefined) return <JsonInput value={value} onChange={onChange} />
 
@@ -1006,7 +1016,7 @@ const RepeaterInput = ({
   return (
     <div className="space-y-2">
       {items.length === 0 ? (
-        <p className="text-base text-ink-faint">Nothing here yet.</p>
+        <p className="text-base text-ink-faint">{t('fields.nothingHereYet')}</p>
       ) : (
         <ol className="space-y-2">
           {items.map((item, index) => (
@@ -1033,7 +1043,7 @@ const RepeaterInput = ({
         size="sm"
         onClick={() => onChange([...items, emptyValue(element)])}
       >
-        Add an item
+        {t('fields.addItem')}
       </Button>
     </div>
   )
@@ -1277,6 +1287,8 @@ const isSwitch = (field: FieldDescriptor): boolean =>
   field.kind === 'boolean' || (field.kind === 'json' && field.schema?.type === 'boolean')
 
 export const FieldInput = ({ field, value, issues, onChange }: FieldInputProps) => {
+  const t = useT()
+
   // Anything the application said about something inside this value that no inner
   // control is drawing — a key a group no longer declares, an item that is no longer
   // there. Shown here rather than dropped: an unsaid refusal is the defect `Failure`
@@ -1288,7 +1300,7 @@ export const FieldInput = ({ field, value, issues, onChange }: FieldInputProps) 
       label={labelOf(field)}
       help={
         field.kind === 'slug' && field.source !== undefined
-          ? `Left empty, this is made from ${field.source}`
+          ? t('fields.madeFrom', { source: field.source })
           : field.help
       }
       required={field.required}

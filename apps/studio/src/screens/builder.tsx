@@ -34,6 +34,7 @@ import {
   stepFrom,
   useBuilder,
 } from '../builder/state.ts'
+import { useT } from '../i18n/translate.tsx'
 import { Banner, Button, Spinner } from '../ui/index.tsx'
 import { Logo } from '../ui/logo.tsx'
 import { Translations } from './translations.tsx'
@@ -41,6 +42,7 @@ import { Translations } from './translations.tsx'
 export const Builder = () => {
   const { id } = useParams({ from: '/pages/$id' })
   const navigate = useNavigate()
+  const t = useT()
   const introspection = useIntrospection()
   const page = usePage(id, 'draft')
   const { state, node, select, run, rewind, dismiss } = useBuilder(page.data)
@@ -169,15 +171,15 @@ export const Builder = () => {
     return (
       <div className="grid h-dvh place-items-center bg-canvas p-8">
         <div className="w-full max-w-md">
-          <Banner tone="danger" title="This page could not be opened">
-            {page.error instanceof Error ? page.error.message : 'The application did not answer.'}
+          <Banner tone="danger" title={t('builder.cannotOpen')}>
+            {page.error instanceof Error ? page.error.message : t('builder.noAnswer')}
           </Banner>
           <Button
             variant="secondary"
             className="mt-4"
             onClick={() => void navigate({ to: '/pages' })}
           >
-            Back to Pages
+            {t('builder.backToPages')}
           </Button>
         </div>
       </div>
@@ -215,7 +217,7 @@ export const Builder = () => {
           className="flex h-8 items-center gap-2 rounded-lg px-2 text-base opacity-80 hover:bg-white/10 hover:opacity-100"
         >
           <ArrowLeft aria-hidden className="size-[18px]" />
-          Pages
+          {t('nav.pages')}
         </button>
 
         <span aria-hidden className="px-1 opacity-30">
@@ -232,15 +234,15 @@ export const Builder = () => {
 
         {state.hasUnpublishedChanges && (
           <span className="ml-2 shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-sm font-semibold">
-            unpublished changes
+            {t('builder.unpublished')}
           </span>
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <button
             type="button"
-            aria-label="Undo (⌘Z)"
-            title="Undo (⌘Z)"
+            aria-label={t('builder.undo')}
+            title={t('builder.undo')}
             disabled={state.busy}
             onClick={() => void rewind('undo')}
             className="grid size-8 place-items-center rounded-lg opacity-70 hover:bg-white/10 hover:opacity-100 disabled:opacity-30"
@@ -249,8 +251,8 @@ export const Builder = () => {
           </button>
           <button
             type="button"
-            aria-label="Redo (⌘⇧Z)"
-            title="Redo (⌘⇧Z)"
+            aria-label={t('builder.redo')}
+            title={t('builder.redo')}
             disabled={state.busy}
             onClick={() => void rewind('redo')}
             className="grid size-8 place-items-center rounded-lg opacity-70 hover:bg-white/10 hover:opacity-100 disabled:opacity-30"
@@ -263,8 +265,8 @@ export const Builder = () => {
               <button
                 key={name}
                 type="button"
-                aria-label={VIEWPORTS[name].label}
-                title={VIEWPORTS[name].label}
+                aria-label={t(VIEWPORTS[name].label)}
+                title={t(VIEWPORTS[name].label)}
                 onClick={() => setViewport(name)}
                 className={[
                   'inline-grid h-[26px] w-8 place-items-center rounded-[7px]',
@@ -284,7 +286,7 @@ export const Builder = () => {
             className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-base opacity-80 hover:bg-white/10 hover:opacity-100"
           >
             <ExternalLink aria-hidden className="size-4" />
-            Preview
+            {t('builder.preview')}
           </button>
           <button
             type="button"
@@ -292,7 +294,7 @@ export const Builder = () => {
             className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-base opacity-80 hover:bg-white/10 hover:opacity-100"
           >
             <HistoryIcon aria-hidden className="size-4" />
-            History
+            {t('crumb.history')}
           </button>
 
           {/* Accent while there is something to publish, neutral once there is not:
@@ -308,7 +310,7 @@ export const Builder = () => {
                 : 'bg-white/15 hover:bg-white/25',
             ].join(' ')}
           >
-            Publish
+            {t('builder.publish')}
           </button>
         </div>
       </header>
@@ -333,21 +335,17 @@ export const Builder = () => {
             (state.conflict ? (
               <Banner
                 tone="danger"
-                title="Someone else has changed this page since you opened it"
+                title={t('builder.conflict')}
                 actions={
                   <Button variant="secondary" size="sm" onClick={() => location.reload()}>
-                    Reload
+                    {t('builder.reload')}
                   </Button>
                 }
               >
-                Reloading takes their version. Nothing here has been written over.
+                {t('builder.conflictBody')}
               </Banner>
             ) : Object.keys(state.fields).length > 0 ? (
-              <Banner
-                tone="warning"
-                title="This page is not ready to be published"
-                onDismiss={dismiss}
-              >
+              <Banner tone="warning" title={t('builder.notReady')} onDismiss={dismiss}>
                 {/* A chip per offending block, which selects it — the shortest route
                     from "what is wrong" to the field that is wrong. */}
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -447,10 +445,10 @@ export const Builder = () => {
                 ].join(' ')}
               />
               {state.busy
-                ? 'Saving…'
+                ? t('common.saving')
                 : state.hasUnpublishedChanges
-                  ? 'Draft saved · not published'
-                  : `Published · v${state.version}`}
+                  ? t('builder.draftSaved')
+                  : t('builder.published', { version: String(state.version) })}
             </span>
           </div>
         </div>

@@ -241,6 +241,51 @@ segment that is not a language is untouched, so `/api/v1/…` still means a vers
 not translatable at all and says so where it is asked — its entries share one JSONB table
 and its stored definition has nowhere to say which fields are worth translating.
 
+**The collection builder is drawn from the handoff** (`design_handoff_studio_redesign`
+§3). Two columns — what is being declared on the left, what it becomes on the right: a
+live drawing of the entry form an editor will meet, and the JSON the command will be
+sent. A field is an accordion row carrying its kind's icon, its mono name, its kind, its
+flags and an amber chip naming what is still missing; the Kind dropdown is `Picker` in
+`ui/overlay.tsx`, the one place a `<select>` cannot do the job, because each option is an
+icon, a machine name and a sentence saying what a value of that kind *is*. A new
+collection starts with no rows and three presets, so the first question is "what shape is
+this?" rather than "fill this in".
+
+- Two things in the prototype are deliberately not built. It draws a drag handle beside
+  the reorder buttons and never implements dragging — a control that reaches nothing is
+  worse than an absent one, which is the rule the sign-in screen is already built under.
+  And its footer and chips name a **table per collection**: there is none. Every
+  collection's entries share `assemora_resource_entries` (`system-models.ts`), so the
+  chips name what is true — the API path, the Studio path and the name an agent addresses
+  — and the footer says `Ready — 4 fields in testimonials`.
+
+**Studio speaks a language of its own — done (ADR-0030).** Everything above is the
+language the *content* is in. What language the interface is in is a different question:
+the first is a fact about the deployment and decides which rows a screen is about, the
+second is a fact about the person reading it. Both switchers sit on the account menu,
+named apart — `Editing in` and `Studio language` — and the second is there even in an
+application that serves one language. Changing it sends no request and re-renders.
+
+- Every word Studio writes is a key in `apps/studio/src/i18n/messages/`, and a key holds
+  **every language at once**: `Readonly<Record<Language, string>>` means a key with
+  English and nothing else does not compile, so a half-translated language cannot ship
+  unnoticed. English, Ukrainian and Russian are what the bundle ships; a fourth is one
+  column and one reading per key, and the build names the ones that are missing.
+- A message's parameters are read off its English reading with a template-literal type,
+  so `t('entry.savedAt', { when })` does not compile without `when` and does not compile
+  with a hole the sentence has not got. A translation may use *fewer* holes — Ukrainian
+  cannot decline a foreign noun into a sentence — and never more, which a test asserts.
+- Counting is per language: English takes the second form at 21 and Ukrainian the first,
+  so one shared rule prints `21 item`. Numbers and dates are formatted by the language on
+  screen rather than by the browser's.
+- **Studio translates what Studio says and nothing else.** A resource's label, a field's
+  label and a refusal the application wrote are the application's words, carried by the
+  registry and left as they arrive. Where one lands inside a sentence, the sentence puts
+  it where its grammatical case cannot be wrong.
+- Still English: a field-level validation message. `Issue` carries its `code` and
+  `params` to the client and Studio renders `message` — translating by code is a
+  decision of its own, and the codes live in four packages.
+
 Every section of SPEC.md §1–§130 is implemented. The spec then grew: ADR-0025 settles
 which of its limits are permanent and which were only a schedule, and adds five
 sections it never had — §131 localisation, §132 taxonomy, §133 navigation, §134 forms,

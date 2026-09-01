@@ -25,6 +25,7 @@ import {
   useIntrospection,
   valueAt,
 } from '../api/introspection.ts'
+import { useDates, useT } from '../i18n/translate.tsx'
 import { Button, Card, Failure, IconButton, join, Spinner } from '../ui/index.tsx'
 import { SaveBar, Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 import { ConfirmByTyping, Menu, MenuItem } from '../ui/overlay.tsx'
@@ -60,6 +61,8 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
   const more = useRef<HTMLButtonElement>(null)
 
   const introspection = useIntrospection()
+  const t = useT()
+  const dates = useDates()
   const resource = introspection.data?.resources?.find((entry) => entry.name === params.resource)
 
   /**
@@ -131,7 +134,10 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
     return (
       <Screen>
         <ScreenHead>
-          <ScreenTitle title="Not found" description={`No resource called “${params.resource}”.`} />
+          <ScreenTitle
+            title={t('entry.notFound')}
+            description={t('entry.noResource', { name: params.resource })}
+          />
         </ScreenHead>
         <ScreenBody>{null}</ScreenBody>
       </Screen>
@@ -143,8 +149,8 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
       <Screen>
         <ScreenHead>
           <ScreenTitle
-            title="Not found"
-            description={`Nothing in ${resource.label} has that id.`}
+            title={t('entry.notFound')}
+            description={t('entry.noSuchId', { name: resource.label })}
           />
         </ScreenHead>
         <ScreenBody>{null}</ScreenBody>
@@ -254,18 +260,30 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
     return field === undefined ? name : labelOf(field)
   })
 
+  /**
+   * The verb agrees with the list rather than with a number, which is why this is four
+   * keys and not one with a `{count}` in it: `Title differs` and `Title and Excerpt
+   * differ` are two sentences in English, and the same two in Ukrainian and Russian.
+   */
+  const listed =
+    names.length === 1
+      ? (names[0] ?? '')
+      : `${names.slice(0, -1).join(', ')} ${t('entry.and')} ${names[names.length - 1]}`
+
   const differ =
     names.length === 0
       ? undefined
       : names.length > 3
-        ? `${names.length} fields differ from the ${mode === 'create' ? 'empty' : 'saved'} entry.`
-        : `${
-            names.length === 1
-              ? names[0]
-              : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-          } ${names.length === 1 ? 'differs' : 'differ'} from the ${
-            mode === 'create' ? 'empty' : 'saved'
-          } entry.`
+        ? mode === 'create'
+          ? t('entry.differ.countEmpty', { count: names.length })
+          : t('entry.differ.countSaved', { count: names.length })
+        : names.length === 1
+          ? mode === 'create'
+            ? t('entry.differ.oneEmpty', { name: listed })
+            : t('entry.differ.oneSaved', { name: listed })
+          : mode === 'create'
+            ? t('entry.differ.manyEmpty', { names: listed })
+            : t('entry.differ.manySaved', { names: listed })
 
   return (
     <Screen>
@@ -281,14 +299,19 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
               }
             />
           }
-          title={title ?? (mode === 'create' ? `New ${singular}` : `Edit ${singular}`)}
+          title={
+            title ??
+            (mode === 'create'
+              ? t('entry.new', { name: singular })
+              : t('entry.edit', { name: singular }))
+          }
           actions={
             mode === 'edit' &&
             resource.api.delete && (
               <>
                 <IconButton
                   ref={more}
-                  label="More actions"
+                  label={t('entry.moreActions')}
                   size={36}
                   onClick={() => setMenuOpen((open) => !open)}
                 >
@@ -298,7 +321,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
                   open={menuOpen}
                   trigger={more}
                   onDismiss={() => setMenuOpen(false)}
-                  label={`${singular} actions`}
+                  label={t('row.entryActions')}
                 >
                   <MenuItem
                     icon={<Trash2 className="size-5" />}
@@ -308,7 +331,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
                       setConfirming(true)
                     }}
                   >
-                    Delete {singular.toLowerCase()}
+                    {t('entry.deleteThis', { name: singular.toLowerCase() })}
                   </MenuItem>
                 </Menu>
               </>
@@ -351,14 +374,12 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
                 a sentence somebody has to parse, and this heading is only saying which
                 of the two columns is the entry itself. */}
             <div className="flex h-[46px] items-center border-b border-line bg-surface-raised px-5 text-md font-[650] text-ink-strong">
-              Main content
+              {t('entry.mainContent')}
             </div>
             <div className="flex flex-col gap-[22px] p-5">
               {main.map(draw)}
               {main.length === 0 && (
-                <p className="py-4 text-base text-ink-soft">
-                  Every field this resource declares is metadata, so they are all in the panel.
-                </p>
+                <p className="py-4 text-base text-ink-soft">{t('entry.allMetadata')}</p>
               )}
             </div>
           </Card>
@@ -373,7 +394,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
               {typeof existing.data?.updatedAt === 'string' && (
                 <div className="flex min-h-11 items-center gap-2 rounded-xl bg-surface px-4 py-3 text-base text-ink-soft shadow-[0_1px_0_rgb(0_0_0/0.05)]">
                   <HistoryIcon aria-hidden className="size-5 shrink-0" />
-                  Saved {new Date(existing.data.updatedAt).toLocaleString()}
+                  {t('entry.savedAt', { when: dates.dateTime(existing.data.updatedAt) })}
                 </div>
               )}
             </div>
@@ -385,10 +406,10 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
         dirty={dirty}
         summary={
           dirty
-            ? 'Unsaved changes'
+            ? t('entry.unsaved')
             : mode === 'create'
-              ? 'Nothing filled in yet'
-              : 'No unsaved changes'
+              ? t('entry.nothingYet')
+              : t('entry.noChanges')
         }
         {...(dirty ? { detail: differ } : {})}
       >
@@ -400,26 +421,27 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
             setDraft(mode === 'create' ? {} : saved)
           }}
         >
-          Discard
+          {t('entry.discard')}
         </Button>
         <Button type="submit" form="entry-form" busy={save.isPending} disabled={!dirty}>
-          {mode === 'create' ? `Create ${singular}` : 'Save changes'}
+          {mode === 'create'
+            ? t('entries.blank.create', { name: singular })
+            : t('entry.saveChanges')}
         </Button>
       </SaveBar>
 
       <ConfirmByTyping
         open={confirming}
-        title={`Delete this ${singular.toLowerCase()}?`}
+        title={t('entry.deleteTitle', { name: singular.toLowerCase() })}
         word={title ?? String(params.id ?? '')}
-        action="Delete"
+        action={t('common.delete')}
         onClose={() => setConfirming(false)}
         onConfirm={() => {
           setConfirming(false)
           remove.mutate()
         }}
       >
-        It leaves {resource.label} immediately. The revision history keeps what it held, so a
-        restore is still possible.
+        {t('entries.delete.bodyOne', { name: resource.label })}
       </ConfirmByTyping>
     </Screen>
   )

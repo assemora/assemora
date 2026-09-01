@@ -1,6 +1,7 @@
 /** The media library, as Studio reads it (SPEC.md §63). */
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import type { Translate } from '../i18n/messages.ts'
 import { api, upload } from './client.ts'
 
 export type MediaItem = {
@@ -47,11 +48,19 @@ export const useDeleteMedia = () => {
   })
 }
 
-export const readableSize = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+/**
+ * A file size in the unit a person would say it in.
+ *
+ * It takes `t` because the unit is a word: `КБ` and `МБ` in Ukrainian and Russian, and a
+ * decimal comma rather than a point. The number goes over as a *number* so that the
+ * language formats it — rounded to one place here, because rounding is a decision about
+ * the size and not about the language.
+ */
+export const readableSize = (bytes: number, t: Translate): string => {
+  if (bytes < 1024) return t('media.size.bytes', { size: bytes })
+  if (bytes < 1024 * 1024) return t('media.size.kilobytes', { size: Math.round(bytes / 1024) })
 
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return t('media.size.megabytes', { size: Math.round((bytes / (1024 * 1024)) * 10) / 10 })
 }
 
 export const isImage = (item: MediaItem): boolean => item.mimeType.startsWith('image/')

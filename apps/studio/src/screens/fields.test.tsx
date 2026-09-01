@@ -106,8 +106,11 @@ describe('several of a list', () => {
   it('draws a box per option and ticks the ones held', () => {
     const markup = input(tags, ['guide'])
 
-    expect(count(markup, 'input type="checkbox"')).toBe(2)
-    expect(markup.split('checked=""').length - 1).toBe(1)
+    // Studio's own box rather than the browser's: a native checkbox is a different size
+    // and a different shape on every platform, and the handoff draws exactly one box.
+    // `count` looks for a tag; these are attributes on one, so they are counted plainly.
+    expect(markup.split('role="checkbox"').length - 1).toBe(2)
+    expect(markup.split('aria-checked="true"').length - 1).toBe(1)
   })
 
   it('says so rather than drawing nothing when a field declares no options', () => {

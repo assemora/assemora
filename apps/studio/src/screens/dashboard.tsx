@@ -31,6 +31,7 @@ import type { ReactNode } from 'react'
 
 import { useIntrospection } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
+import { useT } from '../i18n/translate.tsx'
 import { GettingStarted } from '../ui/blank.tsx'
 import { Card, Failure, Spinner } from '../ui/index.tsx'
 import { Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
@@ -56,12 +57,13 @@ export const Dashboard = () => {
   const introspection = useIntrospection()
   const { can } = useSession()
   const navigate = useNavigate()
+  const t = useT()
 
   if (introspection.isPending) {
     return (
       <Screen>
         <ScreenHead>
-          <ScreenTitle icon={<Zap className="size-5" />} title="Dashboard" />
+          <ScreenTitle icon={<Zap className="size-5" />} title={t('nav.dashboard')} />
         </ScreenHead>
         <ScreenBody className="pt-6">
           <Spinner />
@@ -74,7 +76,7 @@ export const Dashboard = () => {
     return (
       <Screen>
         <ScreenHead>
-          <ScreenTitle icon={<Zap className="size-5" />} title="Dashboard" />
+          <ScreenTitle icon={<Zap className="size-5" />} title={t('nav.dashboard')} />
         </ScreenHead>
         <ScreenBody className="pt-6">
           <Failure error={introspection.error} />
@@ -110,8 +112,8 @@ export const Dashboard = () => {
       <ScreenHead>
         <ScreenTitle
           icon={<Zap className="size-5" />}
-          title="Dashboard"
-          description={fresh ? 'Nothing has been made here yet' : 'What this application declares'}
+          title={t('nav.dashboard')}
+          description={fresh ? t('dashboard.fresh') : t('dashboard.declares')}
         />
       </ScreenHead>
 
@@ -123,7 +125,7 @@ export const Dashboard = () => {
               onCreateCollection={() => void navigate({ to: '/collections/new' })}
               onCreatePage={() => void navigate({ to: '/pages' })}
             />
-            <Heading>Already wired up for you</Heading>
+            <Heading>{t('dashboard.wired')}</Heading>
           </>
         )}
 
@@ -140,21 +142,37 @@ export const Dashboard = () => {
           {!fresh && (
             <Stat
               icon={<FileText className="size-4" />}
-              label="Resources"
+              label={t('dashboard.resources')}
               value={resources.length}
             />
           )}
-          <Stat icon={<Database className="size-4" />} label="Models" value={models.length} />
-          <Stat icon={<Terminal className="size-4" />} label="Commands" value={commands.length} />
-          <Stat icon={<RouteIcon className="size-4" />} label="Endpoints" value={routes.length} />
+          <Stat
+            icon={<Database className="size-4" />}
+            label={t('dashboard.models')}
+            value={models.length}
+          />
+          <Stat
+            icon={<Terminal className="size-4" />}
+            label={t('dashboard.commands')}
+            value={commands.length}
+          />
+          <Stat
+            icon={<RouteIcon className="size-4" />}
+            label={t('dashboard.endpoints')}
+            value={routes.length}
+          />
           {!fresh && (
-            <Stat icon={<Blocks className="size-4" />} label="Blocks" value={blocks.length} />
+            <Stat
+              icon={<Blocks className="size-4" />}
+              label={t('dashboard.blocks')}
+              value={blocks.length}
+            />
           )}
         </div>
 
         {resources.length > 0 && (
           <>
-            <Heading>Collections</Heading>
+            <Heading>{t('nav.collections')}</Heading>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {resources.map((resource) => (
                 <Link
@@ -173,8 +191,8 @@ export const Dashboard = () => {
                     <span className="min-w-0">
                       <span className="block truncate font-[650] text-ink">{resource.label}</span>
                       <span className="block truncate text-sm text-ink-subdued">
-                        {resource.fields.length} {resource.fields.length === 1 ? 'field' : 'fields'}{' '}
-                        · <span className="font-mono">{resource.model}</span>
+                        {t('dashboard.fieldCount', { count: resource.fields.length })} ·{' '}
+                        <span className="font-mono">{resource.model}</span>
                       </span>
                     </span>
                   </Card>

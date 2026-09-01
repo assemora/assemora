@@ -8,6 +8,8 @@ import { type FormEvent, useState } from 'react'
 
 import { ApiError, api } from '../api/client.ts'
 import { type PageSummary, usePages } from '../api/pages.ts'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useDates, useT } from '../i18n/translate.tsx'
 import { NoPages } from '../ui/blank.tsx'
 import { Button, Failure, Field, Input, Select, Spinner, StatusChip } from '../ui/index.tsx'
 import {
@@ -31,11 +33,19 @@ const TONE = {
   archived: 'danger',
 } as const
 
+/** The three states a page can be in, which are Studio's words rather than the API's. */
+const STATUS = {
+  published: 'pages.status.published',
+  draft: 'pages.status.draft',
+  archived: 'pages.status.archived',
+} as const satisfies Record<PageSummary['status'], MessageKey>
+
 const NewPage = ({ onClose }: { onClose(): void }) => {
   const navigate = useNavigate()
   const client = useQueryClient()
   const [title, setTitle] = useState('')
   const [slug, setSlug] = useState('')
+  const t = useT()
 
   const create = useMutation({
     mutationFn: () => api.command<{ id: string }>('pages.create', { title, slug }),
@@ -53,21 +63,21 @@ const NewPage = ({ onClose }: { onClose(): void }) => {
   return (
     <Dialog
       open
-      title="New page"
+      title={t('pages.new')}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button type="submit" form="new-page" busy={create.isPending}>
-            Create page
+            {t('pages.create')}
           </Button>
         </>
       }
     >
       <form id="new-page" className="space-y-4 text-ink" onSubmit={submit}>
-        <Field label="Title" required>
+        <Field label={t('pages.title')} required>
           <Input
             required
             value={title}
@@ -84,13 +94,13 @@ const NewPage = ({ onClose }: { onClose(): void }) => {
           />
         </Field>
 
-        <Field label="Slug" help="Where the page lives on the site" required>
+        <Field label={t('pages.slug')} help={t('pages.slugHelp')} required>
           <Input required value={slug} onChange={(event) => setSlug(event.target.value)} />
         </Field>
 
         {create.isError && (
           <p className="rounded-lg bg-danger-soft px-3 py-2 text-base text-danger">
-            {create.error instanceof ApiError ? create.error.message : 'Could not create it'}
+            {create.error instanceof ApiError ? create.error.message : t('pages.createFailed')}
           </p>
         )}
       </form>
@@ -98,42 +108,48 @@ const NewPage = ({ onClose }: { onClose(): void }) => {
   )
 }
 
-const Row = ({ page }: { page: PageSummary }) => (
-  <Tr>
-    <Td className="max-w-[26rem]">
-      <Link
-        to="/pages/$id"
-        params={{ id: page.id }}
-        className="block truncate font-[550] text-ink hover:underline hover:decoration-ink-disabled hover:underline-offset-2"
-      >
-        {page.title}
-      </Link>
-    </Td>
-    <Td>
-      <Mono>
-        {page.locale === undefined || page.locale === '' ? '' : `/${page.locale}`}/{page.slug}
-      </Mono>
-    </Td>
-    <Td>
-      <StatusChip tone={TONE[page.status]}>{page.status}</StatusChip>
-    </Td>
-    <Td>
-      <Mono>v{page.version}</Mono>
-    </Td>
-    <Td className="text-ink-soft">{new Date(page.updatedAt).toLocaleDateString()}</Td>
-    <Td align="right">
-      <Link
-        to="/pages/$id"
-        params={{ id: page.id }}
-        className="text-base font-[550] text-link hover:text-link-hover hover:underline"
-      >
-        Open builder
-      </Link>
-    </Td>
-  </Tr>
-)
+const Row = ({ page }: { page: PageSummary }) => {
+  const t = useT()
+  const dates = useDates()
+
+  return (
+    <Tr>
+      <Td className="max-w-[26rem]">
+        <Link
+          to="/pages/$id"
+          params={{ id: page.id }}
+          className="block truncate font-[550] text-ink hover:underline hover:decoration-ink-disabled hover:underline-offset-2"
+        >
+          {page.title}
+        </Link>
+      </Td>
+      <Td>
+        <Mono>
+          {page.locale === undefined || page.locale === '' ? '' : `/${page.locale}`}/{page.slug}
+        </Mono>
+      </Td>
+      <Td>
+        <StatusChip tone={TONE[page.status]}>{t(STATUS[page.status])}</StatusChip>
+      </Td>
+      <Td>
+        <Mono>v{page.version}</Mono>
+      </Td>
+      <Td className="text-ink-soft">{dates.date(page.updatedAt)}</Td>
+      <Td align="right">
+        <Link
+          to="/pages/$id"
+          params={{ id: page.id }}
+          className="text-base font-[550] text-link hover:text-link-hover hover:underline"
+        >
+          {t('pages.openBuilder')}
+        </Link>
+      </Td>
+    </Tr>
+  )
+}
 
 export const Pages = () => {
+  const t = useT()
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -161,11 +177,11 @@ export const Pages = () => {
       <ScreenHead>
         <ScreenTitle
           icon={<LayoutTemplate className="size-5" />}
-          title="Pages"
+          title={t('nav.pages')}
           count={blank ? undefined : listing.data?.total}
           // Not beside the title while the empty state is offering the same button under
           // the sentence that explains it.
-          actions={!blank && <Button onClick={() => setCreating(true)}>New page</Button>}
+          actions={!blank && <Button onClick={() => setCreating(true)}>{t('pages.new')}</Button>}
         />
 
         {!blank && (
@@ -177,8 +193,8 @@ export const Pages = () => {
               />
               <input
                 type="search"
-                aria-label="Search pages"
-                placeholder="Search…"
+                aria-label={t('pages.search')}
+                placeholder={t('collection.searchPlaceholder')}
                 value={search}
                 onChange={(event) => {
                   setPage(1)
@@ -188,7 +204,7 @@ export const Pages = () => {
               />
             </div>
             <Select
-              aria-label="Status"
+              aria-label={t('pages.statusLabel')}
               className="h-8 w-40"
               value={status}
               onChange={(event) => {
@@ -196,10 +212,10 @@ export const Pages = () => {
                 setStatus(event.target.value)
               }}
             >
-              <option value="">Any status</option>
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-              <option value="archived">Archived</option>
+              <option value="">{t('pages.anyStatus')}</option>
+              <option value="draft">{t('pages.status.draft')}</option>
+              <option value="published">{t('pages.status.published')}</option>
+              <option value="archived">{t('pages.status.archived')}</option>
             </Select>
           </Toolbar>
         )}
@@ -225,11 +241,11 @@ export const Pages = () => {
             <Table>
               <thead>
                 <tr className="border-b border-line">
-                  <Th>Title</Th>
-                  <Th>Slug</Th>
-                  <Th>Status</Th>
-                  <Th>Version</Th>
-                  <Th>Updated</Th>
+                  <Th>{t('pages.title')}</Th>
+                  <Th>{t('pages.slug')}</Th>
+                  <Th>{t('pages.statusLabel')}</Th>
+                  <Th>{t('pages.version')}</Th>
+                  <Th>{t('pages.updated')}</Th>
                   <Th width="140px" />
                 </tr>
               </thead>
@@ -245,8 +261,10 @@ export const Pages = () => {
       {listing.data !== undefined && listing.data.data.length > 0 && (
         <ScreenFoot>
           <span className="tabular-nums">
-            Page {listing.data.page} of {listing.data.lastPage} · {listing.data.total}{' '}
-            {listing.data.total === 1 ? 'page' : 'pages'}
+            {`${t('paging.page', {
+              page: listing.data.page,
+              last: listing.data.lastPage,
+            })} · ${t('pages.pageCount', { count: listing.data.total })}`}
           </span>
           <div className="flex gap-2">
             <Button
@@ -254,14 +272,14 @@ export const Pages = () => {
               disabled={page <= 1}
               onClick={() => setPage((current) => current - 1)}
             >
-              Previous
+              {t('paging.previous')}
             </Button>
             <Button
               variant="secondary"
               disabled={page >= listing.data.lastPage}
               onClick={() => setPage((current) => current + 1)}
             >
-              Next
+              {t('paging.next')}
             </Button>
           </div>
         </ScreenFoot>

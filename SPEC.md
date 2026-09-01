@@ -3714,6 +3714,21 @@ with nothing saying so is worse than a 404.
   the case AI is actually good at, and it must not need a second surface.
 - **Revisions** are per row, so a translation has its own history.
 
+### Studio's own language
+
+Everything above is the language the content is *in*. What language Studio itself
+speaks is a different question with a different answer: the first is a fact about the
+deployment and decides which rows a screen is about, the second is a fact about the
+person reading the screen. A Ukrainian shop whose developer reads English, and an
+English shop whose editor reads Ukrainian, are both ordinary — so they are two controls,
+side by side, and never one.
+
+Studio ships its own words and switches between them without a request, because nothing
+the application holds depends on which one is chosen. What the *application* says — a
+resource's label, a field's label, a refusal it wrote — is carried by the registry and
+left in the language it was written in; Studio translates what Studio says and nothing
+else (ADR-0030).
+
 ### Not localised
 
 The theme (§62) — a token is not language. Media bytes; their `alt` text is.

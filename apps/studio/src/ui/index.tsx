@@ -33,7 +33,8 @@ import {
   useId,
 } from 'react'
 
-import { unshownMessages } from '../api/client.ts'
+import { ApiError, unshownMessages } from '../api/client.ts'
+import { useT } from '../i18n/translate.tsx'
 
 export const join = (...classes: (string | false | undefined)[]): string =>
   classes.filter(Boolean).join(' ')
@@ -229,7 +230,8 @@ export const Textarea = ({ className, ...rest }: TextareaHTMLAttributes<HTMLText
  * Native rather than a listbox of our own: it is the one control where the platform's
  * behaviour on a phone, with a keyboard and under a screen reader is better than
  * anything this file would write, and the handoff's dropdown is only its skin. The
- * grouped picker with an explanation per option — the Kind dropdown — is `Picker`.
+ * grouped picker with an explanation per option — the Kind dropdown — is `Picker`, in
+ * `overlay.tsx`, because it is a panel over the screen rather than a control on it.
  */
 export const Select = ({ className, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) => (
   <span className="relative block">
@@ -408,37 +410,64 @@ export const Switch = ({
  * means hiding it and painting a `span` beside it — which is this button, with a focus
  * target that no longer matches what is on screen.
  */
+export type CheckboxProps = {
+  checked: boolean
+  mixed?: boolean
+  onChange(next: boolean): void
+  disabled?: boolean
+} & (
+  | {
+      /** What it is, where nothing beside it says so — a box in a table header. */
+      label: string
+      children?: undefined
+    }
+  | {
+      /** The sentence beside the box *is* the control's name, so `label` is redundant. */
+      label?: undefined
+      children: ReactNode
+    }
+)
+
 export const Checkbox = ({
   checked,
   mixed = false,
   onChange,
   label,
   disabled,
-}: {
-  checked: boolean
-  mixed?: boolean
-  onChange(next: boolean): void
-  label: string
-  disabled?: boolean
-}) => (
+  children,
+}: CheckboxProps) => (
+  /*
+   * One button holding the box and its sentence, which is the handoff's own markup: a
+   * `<label>` wrapping a native input would be two hit targets with one of them 13px
+   * tall, and the words beside a checkbox are the largest part of it to aim at.
+   */
   // biome-ignore lint/a11y/useSemanticElements: the box is the control — see above
   <button
     type="button"
     role="checkbox"
     aria-checked={mixed ? 'mixed' : checked}
-    aria-label={label}
+    {...(label === undefined ? {} : { 'aria-label': label })}
     disabled={disabled}
     onClick={() => onChange(!checked)}
     className={join(
-      'grid size-[17px] shrink-0 place-items-center rounded-[5px] border transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-      checked || mixed ? 'border-accent bg-accent text-white' : 'border-line-strong bg-surface',
+      'inline-flex items-center gap-2 text-left text-base disabled:cursor-not-allowed disabled:opacity-50',
+      children === undefined && 'shrink-0',
     )}
   >
-    {mixed ? (
-      <Minus aria-hidden className="size-3" strokeWidth={3} />
-    ) : (
-      checked && <Check aria-hidden className="size-3" strokeWidth={3} />
-    )}
+    <span
+      aria-hidden
+      className={join(
+        'grid size-[17px] shrink-0 place-items-center rounded-[5px] border transition-colors',
+        checked || mixed ? 'border-accent bg-accent text-white' : 'border-line-strong bg-surface',
+      )}
+    >
+      {mixed ? (
+        <Minus className="size-3" strokeWidth={3} />
+      ) : (
+        checked && <Check className="size-3" strokeWidth={3} />
+      )}
+    </span>
+    {children}
   </button>
 )
 
@@ -655,29 +684,44 @@ export const Banner = ({
         {children !== undefined && <div className="mt-0.5 text-base opacity-85">{children}</div>}
       </div>
       {actions !== undefined && <div className="flex shrink-0 gap-2">{actions}</div>}
-      {onDismiss !== undefined && (
-        <button
-          type="button"
-          aria-label="Dismiss"
-          onClick={onDismiss}
-          className="grid size-[26px] shrink-0 place-items-center rounded-[7px] opacity-55 hover:opacity-100"
-        >
-          <X aria-hidden className="size-4" />
-        </button>
-      )}
+      {onDismiss !== undefined && <Dismiss onClick={onDismiss} />}
     </div>
   )
 }
 
-export const Spinner = ({ label = 'Loading' }: { label?: string }) => (
-  <div className="flex items-center gap-2 text-base text-ink-soft" role="status">
-    <span
-      aria-hidden
-      className="size-4 animate-spin rounded-full border-2 border-line border-t-ink-strong"
-    />
-    {label}
-  </div>
-)
+/** The X on a banner. Its own component because the word on it is a translation. */
+const Dismiss = ({ onClick }: { onClick: () => void }) => {
+  const t = useT()
+
+  return (
+    <button
+      type="button"
+      aria-label={t('common.dismiss')}
+      onClick={onClick}
+      className="grid size-[26px] shrink-0 place-items-center rounded-[7px] opacity-55 hover:opacity-100"
+    >
+      <X aria-hidden className="size-4" />
+    </button>
+  )
+}
+
+/**
+ * `label` is a prop with no default: a spinner in a sidebar shows the animation alone,
+ * and the word beside it is a translation rather than a string this file can hold.
+ */
+export const Spinner = ({ label }: { label?: string }) => {
+  const t = useT()
+
+  return (
+    <div className="flex items-center gap-2 text-base text-ink-soft" role="status">
+      <span
+        aria-hidden
+        className="size-4 animate-spin rounded-full border-2 border-line border-t-ink-strong"
+      />
+      {label ?? t('common.loading')}
+    </div>
+  )
+}
 
 /**
  * A bar shaped like the line it stands in for.
@@ -766,9 +810,25 @@ export const Snippet = ({ children }: { children: string }) => (
  */
 export const Failure = ({ error, except = [] }: { error: unknown; except?: readonly string[] }) => {
   const details = unshownMessages(error, except)
+  const t = useT()
+
+  /**
+   * The application's own sentence, in the language the application wrote it in.
+   *
+   * Studio does not translate a refusal it did not write: `message` is the API's, and
+   * guessing at its words here would be a second, drifting copy of them. The exception
+   * is the one failure Studio invents — a response that was not our error shape at all,
+   * where there is no sentence to pass on (see `failureOf` in `api/client.ts`).
+   */
+  const said =
+    error instanceof ApiError && error.code === 'HTTP_ERROR'
+      ? t('common.http', { status: String(error.status) })
+      : error instanceof Error
+        ? error.message
+        : t('common.wentWrong')
 
   return (
-    <Banner tone="danger" title={error instanceof Error ? error.message : 'Something went wrong'}>
+    <Banner tone="danger" title={said}>
       {details.length > 0 && (
         <ul className="mt-1 list-disc space-y-1 pl-5">
           {details.map((message) => (

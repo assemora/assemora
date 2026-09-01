@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { type BlockDescriptor, valueAt } from '../api/introspection.ts'
 import { useThemeColors } from '../api/theme.ts'
+import { useT } from '../i18n/translate.tsx'
 import { FieldInput } from '../screens/fields.tsx'
 
 import { Badge, IconButton, join } from '../ui/index.tsx'
@@ -56,6 +57,7 @@ export const Properties = ({
   onIndent(): void
   onOutdent(): void
 }) => {
+  const t = useT()
   const [tab, setTab] = useState<'content' | 'design'>('content')
   const [draft, dispatch] = useReducer(draftReducer, emptyDraft)
   /** The edit waiting out the typing pause, and what it will send. */
@@ -152,7 +154,7 @@ export const Properties = ({
         <div className="flex items-center gap-2">
           <Square aria-hidden className="size-4 shrink-0 text-ink-soft" />
           <h2 className="min-w-0 flex-1 truncate text-base font-[650]">{block.label}</h2>
-          {node.hidden === true && <Badge tone="quiet">hidden</Badge>}
+          {node.hidden === true && <Badge tone="quiet">{t('properties.hidden')}</Badge>}
         </div>
         {/* The machine's own names, in the machine's own type: what a bug report needs
             and what an agent addresses the block by. */}
@@ -160,7 +162,7 @@ export const Properties = ({
           {node.type} · {node.id}
         </p>
 
-        <div role="tablist" aria-label="Inspector" className="mt-2 flex gap-6">
+        <div role="tablist" aria-label={t('properties.inspector')} className="mt-2 flex gap-6">
           {(['content', 'design'] as const).map((name) => (
             <button
               key={name}
@@ -168,14 +170,14 @@ export const Properties = ({
               role="tab"
               aria-selected={tab === name}
               className={join(
-                'h-9 border-b-2 px-0.5 text-base capitalize',
+                'h-9 border-b-2 px-0.5 text-base',
                 tab === name
                   ? 'border-ink text-ink font-[650]'
                   : 'border-transparent text-ink-soft font-[550] hover:text-ink',
               )}
               onClick={() => setTab(name)}
             >
-              {name}
+              {name === 'content' ? t('properties.content') : t('properties.design')}
             </button>
           ))}
         </div>
@@ -185,7 +187,7 @@ export const Properties = ({
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" onBlur={commitNow}>
         {tab === 'content' ? (
           block.fields.length === 0 ? (
-            <p className="py-8 text-center text-base text-ink-soft">This block has no fields.</p>
+            <p className="py-8 text-center text-base text-ink-soft">{t('properties.noFields')}</p>
           ) : (
             block.fields.map((field) => (
               <FieldInput
@@ -209,7 +211,7 @@ export const Properties = ({
           destructive action never shares a shape with the five beside it. */}
       <footer className="flex shrink-0 items-center gap-1 border-t border-hairline px-3 py-2.5">
         <IconButton
-          label="Add a copy beside this block"
+          label={t('properties.duplicate')}
           size={30}
           disabled={busy || !can.duplicate}
           onClick={onDuplicate}
@@ -217,7 +219,7 @@ export const Properties = ({
           <Copy aria-hidden className="size-4" />
         </IconButton>
         <IconButton
-          label="Move inside the block above"
+          label={t('properties.indent')}
           size={30}
           disabled={busy || !can.indent}
           onClick={onIndent}
@@ -225,7 +227,7 @@ export const Properties = ({
           <IndentIncrease aria-hidden className="size-4" />
         </IconButton>
         <IconButton
-          label="Move out of its container"
+          label={t('properties.outdent')}
           size={30}
           disabled={busy || !can.outdent}
           onClick={onOutdent}
@@ -233,7 +235,7 @@ export const Properties = ({
           <IndentDecrease aria-hidden className="size-4" />
         </IconButton>
         <IconButton
-          label={node.hidden === true ? 'Show this block' : 'Hide this block'}
+          label={node.hidden === true ? t('properties.show') : t('properties.hide')}
           size={30}
           disabled={busy}
           onClick={() => onHide(node.hidden !== true)}
@@ -252,7 +254,7 @@ export const Properties = ({
           className="ml-auto inline-flex h-[30px] items-center gap-1.5 rounded-lg px-2.5 text-base font-[650] text-danger hover:bg-danger-soft disabled:opacity-50"
         >
           <Trash2 aria-hidden className="size-4" />
-          Remove
+          {t('common.remove')}
         </button>
       </footer>
     </aside>

@@ -15,6 +15,8 @@ import type { BlockTree } from '@assemora/schema'
 import { type Ref, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useIntrospection } from '../api/introspection.ts'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useT } from '../i18n/translate.tsx'
 
 import { dismissOn } from './dismiss.ts'
 import { type InsertionPoint, insertionPoints } from './insertion.ts'
@@ -28,10 +30,10 @@ import {
 import { nodeIn, parentOf, siblingsOf } from './state.ts'
 
 export const VIEWPORTS = {
-  desktop: { label: 'Desktop', width: 0 },
-  tablet: { label: 'Tablet', width: 834 },
-  mobile: { label: 'Mobile', width: 390 },
-} as const
+  desktop: { label: 'builder.viewport.desktop', width: 0 },
+  tablet: { label: 'builder.viewport.tablet', width: 834 },
+  mobile: { label: 'builder.viewport.mobile', width: 390 },
+} as const satisfies Record<string, { label: MessageKey; width: number }>
 
 export type ViewportName = keyof typeof VIEWPORTS
 
@@ -182,41 +184,40 @@ export const EmptyPage = ({
   options: readonly Insertable[]
   busy: boolean
   onInsert(type: string): void
-}) => (
-  <div className="absolute inset-0 grid place-items-center p-8">
-    <div className="pointer-events-auto max-w-sm rounded-xl border border-dashed border-line bg-surface px-6 py-7 text-center">
-      {options.length === 0 ? (
-        <>
-          <p className="text-base font-medium text-ink">Nothing can go on this page yet</p>
-          <p className="mt-1 text-base text-ink-soft">
-            This application declares no block types. A block is a TypeScript declaration, so Studio
-            cannot make one — the Blocks panel on the left has the command that can.
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="text-base font-medium text-ink">This page has nothing on it yet</p>
-          <p className="mt-1 text-base text-ink-soft">
-            Every page is a tree of blocks. Put the first one in.
-          </p>
-          <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-            {options.map((option) => (
-              <button
-                key={option.name}
-                type="button"
-                disabled={busy}
-                className="rounded-lg border border-line px-2.5 py-1 text-base text-ink transition hover:border-accent hover:text-accent disabled:opacity-60"
-                onClick={() => onInsert(option.name)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+}) => {
+  const t = useT()
+
+  return (
+    <div className="absolute inset-0 grid place-items-center p-8">
+      <div className="pointer-events-auto max-w-sm rounded-xl border border-dashed border-line bg-surface px-6 py-7 text-center">
+        {options.length === 0 ? (
+          <>
+            <p className="text-base font-medium text-ink">{t('canvas.nothingFits')}</p>
+            <p className="mt-1 text-base text-ink-soft">{t('canvas.nothingFitsBody')}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-base font-medium text-ink">{t('canvas.empty')}</p>
+            <p className="mt-1 text-base text-ink-soft">{t('canvas.emptyBody')}</p>
+            <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+              {options.map((option) => (
+                <button
+                  key={option.name}
+                  type="button"
+                  disabled={busy}
+                  className="rounded-lg border border-line px-2.5 py-1 text-base text-ink transition hover:border-accent hover:text-accent disabled:opacity-60"
+                  onClick={() => onInsert(option.name)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 export const Canvas = ({
   pageId,
@@ -252,6 +253,7 @@ export const Canvas = ({
    * in an iframe with nothing saying why.
    */
   const introspection = useIntrospection()
+  const t = useT()
   const frontend = introspection.data?.frontend?.[0]?.name ?? '/preview'
 
   const frame = useRef<HTMLIFrameElement>(null)
@@ -369,10 +371,10 @@ export const Canvas = ({
    */
   const reason =
     options.length > 0
-      ? 'Add a block here'
+      ? t('canvas.addHere')
       : container === undefined
-        ? 'This application declares no blocks'
-        : `The ${nameOf(container.type)} block will not take anything more`
+        ? t('canvas.noBlocks')
+        : t('canvas.containerFull', { type: nameOf(container.type) })
 
   return (
     <div className="relative flex-1 overflow-auto bg-canvas p-6">
@@ -385,7 +387,7 @@ export const Canvas = ({
       >
         <iframe
           ref={frame}
-          title="Page preview"
+          title={t('canvas.preview')}
           className="size-full border-0"
           src={`${frontend}${frontend.includes('?') ? '&' : '?'}page=${pageId}&mode=draft&editing=1&editor=${encodeURIComponent(location.origin)}`}
         />

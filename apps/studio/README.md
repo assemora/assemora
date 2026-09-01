@@ -21,6 +21,29 @@ renderer, its block views, its theme (SPEC.md §59). Studio sends the tree in an
 geometry and clicks back, and draws its selection outline over the frame, so nothing
 it does changes what the page looks like.
 
+## The language it says it in
+
+Studio ships its own words in English, Ukrainian and Russian, and a person chooses which
+from the account menu — or from the sign-in screen, which is the one screen read before
+there is an account to have a preference on (ADR-0030).
+
+That is not the language of the *content*. A deployment's `locales` decide which rows a
+listing holds and come from the registry (SPEC.md §131); this decides what the buttons
+around them say. Both switchers are on the account menu, named apart, because a Ukrainian
+shop is routinely filled in by somebody who reads English and the reverse is just as
+ordinary.
+
+- `src/i18n/messages/` — the catalogue, eight slices of one key space. A key holds every
+  language at once, so one written only in English does not compile.
+- `src/i18n/translate.tsx` — `useT()` for a sentence, `useWoven()` for a sentence with
+  something drawn into the middle of it, `useDates()` for a date the language writes.
+- A message's parameters are read off its English reading: `t('entry.savedAt', { when })`
+  does not compile without `when`. A plural carries three forms and the rule for choosing
+  one is per language — English takes the second at 21, Ukrainian the first.
+
+What the *application* says — a resource's label, a field's help text, a refusal it
+wrote — is left in the language it was written in. Studio translates what Studio says.
+
 ## The rule that shapes everything here
 
 Studio holds no knowledge of any particular application. It asks
@@ -56,9 +79,12 @@ and this application is built from it. What lives where:
 - `src/ui/index.tsx` — the design system and the forms kit as one small vocabulary:
   buttons, fields, switch, checkbox, radio, segmented, badges, banners, skeletons.
   Anything a screen needs that is not here belongs here first.
-- `src/ui/overlay.tsx` — menus, dialogs and toasts. Every menu is `position: fixed`
-  against the viewport and flips above its trigger when the space below is short: the
-  tables and panels are scrollers, and a menu positioned inside one is clipped by it.
+- `src/ui/overlay.tsx` — menus, dialogs, toasts and `Picker`. Every menu is
+  `position: fixed` against the viewport and flips above its trigger when the space below
+  is short: the tables and panels are scrollers, and a menu positioned inside one is
+  clipped by it. `Picker` is the one dropdown that is not a native `<select>` — the Kind
+  dropdown, where every option is an icon, a machine name and a sentence about what a
+  value of that kind is, and `<option>` holds text.
 - `src/ui/layout.tsx` — the shape of a screen: a header that stays, one scroller, and a
   footer or save bar pinned to the panel.
 - `src/app/shell.tsx` — the 52px chrome bar, the 240px sidebar and its 56px rail, and
