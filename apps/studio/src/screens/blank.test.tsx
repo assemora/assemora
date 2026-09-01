@@ -109,17 +109,23 @@ const draw = async (
   }
 
   const root = createRootRoute({ component: Outlet })
+  // The real tree puts every screen but the page builder under a pathless `shell`
+  // layout route, and a screen addresses its params by that route's id. Mirroring it
+  // here is what keeps `useParams({ from: … })` resolving the way it does in the app.
+  const shell = createRoute({ getParentRoute: () => root, id: 'shell', component: Outlet })
   const paths = LINKED.includes(at.path) ? LINKED : [...LINKED, at.path]
   const router = createRouter({
-    routeTree: root.addChildren(
-      paths.map((path) =>
-        createRoute({
-          getParentRoute: () => root,
-          path,
-          component: path === at.path ? () => element : () => null,
-        }),
+    routeTree: root.addChildren([
+      shell.addChildren(
+        paths.map((path) =>
+          createRoute({
+            getParentRoute: () => shell,
+            path,
+            component: path === at.path ? () => element : () => null,
+          }),
+        ),
       ),
-    ),
+    ]),
     history: createMemoryHistory({ initialEntries: [at.url] }),
   })
 
@@ -284,8 +290,8 @@ describe('a collection with nothing in it', () => {
   it('offers nothing to somebody the resource does not let create', async () => {
     const shut = collection({ api: { create: false, read: true, update: false, delete: false } })
 
-    expect(times(await opened(shut, []), 'New Testimonial')).toBe(0)
-    expect(times(await opened(collection(), []), 'New Testimonial')).toBe(1)
+    expect(times(await opened(shut, []), 'Create Testimonial')).toBe(0)
+    expect(times(await opened(collection(), []), 'Create Testimonial')).toBe(1)
   })
 
   it('draws the table and the header button once an entry exists', async () => {
@@ -293,7 +299,7 @@ describe('a collection with nothing in it', () => {
 
     expect(words(markup)).toContain('It reads like a product.')
     expect(words(markup)).not.toContain('No testimonial yet')
-    expect(times(markup, 'New Testimonial')).toBe(1)
+    expect(times(markup, 'Create Testimonial')).toBe(1)
   })
 })
 
@@ -337,6 +343,25 @@ describe('the collection list', () => {
     expect(words(markup)).toContain('A collection is a kind of content')
     expect(words(markup)).toContain('a permission this account does not have')
     expect(times(markup, 'New collection')).toBe(0)
+  })
+
+  /**
+   * The defect this covers: an application whose content is all declared in TypeScript
+   * has nothing *made here*, and the screen told it to "make your first collection" over
+   * an empty box while seventeen resources stood in the sidebar beside it. The
+   * invitation belongs to a fresh install and nowhere else.
+   */
+  it('does not call a populated application empty', async () => {
+    const populated: CollectionList = { data: [], taken: ['articles', 'dishes'] }
+    const markup = words(
+      await draw(<Collections />, { collections: populated, permissions: ['*'] }),
+    )
+
+    expect(markup).not.toContain('Make your first collection')
+    expect(markup).toContain('Nothing has been made here yet')
+    expect(markup).toContain('Declared in this application’s source')
+    expect(markup).toContain('articles')
+    expect(markup).toContain('dishes')
   })
 
   it('moves the button back to the header once there is a list under it', async () => {

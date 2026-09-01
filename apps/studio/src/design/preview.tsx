@@ -11,7 +11,7 @@
  *
  * What keeps this from being a second opinion about what a token means is that it has
  * no opinion. It plants each value under the custom property the generated stylesheet
- * declares — `--space-xl`, `--text-lg`, the bare `--brand` — and every sample below
+ * declares — `--space-xl`, `--text-section`, the bare `--brand` — and every sample below
  * reads it back with `var()`, which is exactly what a block does. The only thing this
  * file decides is which sample to draw.
  *
@@ -62,7 +62,7 @@ const Sample = () => (
     <h3
       style={{
         fontFamily: 'var(--font-heading)',
-        fontSize: 'var(--text-xl)',
+        fontSize: 'var(--text-title)',
         fontWeight: 'var(--weight-bold)',
         lineHeight: 'var(--leading-tight)',
       }}
@@ -117,7 +117,7 @@ const Spacings = () => (
         <p
           style={{
             background: 'var(--surface-sunken)',
-            fontSize: 'var(--text-xs)',
+            fontSize: 'var(--text-sm)',
             padding: '0.25rem 0.5rem',
           }}
         >
@@ -136,7 +136,7 @@ const Radii = ({ names }: { names: readonly string[] }) => (
           className="size-10"
           style={{ background: 'var(--brand-soft)', borderRadius: `var(${RADIUS.property(name)})` }}
         />
-        <p className="font-mono text-[0.65rem] text-ink-faint">{name}</p>
+        <p className="font-mono text-xs text-ink-faint">{name}</p>
       </div>
     ))}
   </div>
@@ -150,7 +150,7 @@ const Palette = ({ names }: { names: readonly string[] }) => (
           className="h-8 rounded-md border border-line"
           style={{ background: `var(${COLORS.property(name)})` }}
         />
-        <p className="truncate font-mono text-[0.65rem] text-ink-faint" title={name}>
+        <p className="truncate font-mono text-xs text-ink-faint" title={name}>
           {name}
         </p>
       </div>
@@ -195,7 +195,7 @@ export const Preview = ({ tokens, cssVersion }: { tokens: TokenMap; cssVersion?:
         <Palette names={namesIn(tokens, COLORS)} />
       </div>
       {cssVersion !== undefined && (
-        <p className="p-3 text-xs text-ink-faint">
+        <p className="p-3 text-sm text-ink-faint">
           The stylesheet this renders to is served under{' '}
           <code className="font-mono">{cssVersion}</code>, which changes when and only when the CSS
           does — so a cached copy is never the wrong one.

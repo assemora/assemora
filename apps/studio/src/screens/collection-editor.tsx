@@ -11,6 +11,7 @@
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Network } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
 import {
@@ -45,6 +46,7 @@ import {
 } from '../collections/draft.ts'
 import { FieldRow, type RowSetting } from '../collections/row.tsx'
 import { Button, Card, Failure, Field, Input, Spinner } from '../ui/index.tsx'
+import { SaveBar, Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 
 /** What this save will do that cannot be undone, said while it can still be changed. */
 const Consequences = ({
@@ -60,10 +62,10 @@ const Consequences = ({
 
   return (
     <Card className="space-y-2 border-line bg-surface-sunken p-4">
-      <p className="text-sm font-medium">Saving this will</p>
+      <p className="text-base font-medium">Saving this will</p>
 
       {drops.length > 0 && (
-        <p className="text-sm text-ink-soft">
+        <p className="text-base text-ink-soft">
           Remove {drops.map((name) => `“${name}”`).join(', ')}.
           {entries > 0
             ? ` ${drops.length === 1 ? 'Its values stay in every entry under that name' : 'Their values stay in every entry under those names'}, unreadable, and a later field of ${drops.length === 1 ? 'that name' : 'any of those names'} is refused while this collection holds entries.`
@@ -72,7 +74,7 @@ const Consequences = ({
       )}
 
       {entries > 0 && (
-        <p className="text-sm text-ink-soft">
+        <p className="text-base text-ink-soft">
           Leave the {entries} {entries === 1 ? 'entry as it is' : 'entries as they are'}. What a
           stored value <em>is</em> — a field’s kind, its options, its slug source, its relation
           target — is fixed while entries exist; what it is called, shown and searched as is not.
@@ -80,7 +82,7 @@ const Consequences = ({
       )}
 
       {entries > 0 && added.length > 0 && (
-        <p className="text-sm text-ink-soft">
+        <p className="text-base text-ink-soft">
           Add {added.map((name) => `“${name}”`).join(', ')}, which the {entries}{' '}
           {entries === 1 ? 'entry holds' : 'entries hold'} no value for yet.
         </p>
@@ -168,7 +170,7 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
     return (
       <Page title={`“${removed.name}” is gone`}>
         <Card className="space-y-4 p-6">
-          <p className="text-sm text-ink-soft">{removed.note}</p>
+          <p className="text-base text-ink-soft">{removed.note}</p>
           <Button onClick={() => void navigate({ to: '/collections' })}>Back to collections</Button>
         </Card>
       </Page>
@@ -275,7 +277,7 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
               made at runtime is reachable through — down to the paths, which Studio
               knows neither the prefix nor the published operations of — is the
               application's to say. */}
-          <p className="text-sm text-ink-soft">{created.note}</p>
+          <p className="text-base text-ink-soft">{created.note}</p>
 
           <div className="flex flex-wrap gap-2">
             <Button
@@ -305,182 +307,209 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
     )
   }
 
+  /**
+   * The one sentence the footer says: what has to happen next, or that nothing does.
+   *
+   * The *first* unmet requirement rather than a list of them, because a list of four
+   * refusals under a disabled button is a wall somebody reads once and then ignores.
+   * `issues` is already ordered the way the form is, so the first is the one nearest
+   * the top of the screen.
+   */
+  const nextStep =
+    issues.length > 0
+      ? (issues[0]?.message ?? 'Something is missing')
+      : mode === 'create'
+        ? `Ready — ${draft.fields.length} ${
+            draft.fields.length === 1 ? 'field' : 'fields'
+          } in table ${draft.name}`
+        : 'No unsaved changes to refuse'
+
   return (
-    <Page
-      title={mode === 'create' ? 'New collection' : (stored?.label ?? name)}
-      description={
-        mode === 'create'
-          ? 'A resource stored in the database rather than written in TypeScript'
-          : `${entries} ${entries === 1 ? 'entry' : 'entries'}`
-      }
-      actions={
-        mode === 'edit' &&
-        can('collections.delete') && (
-          <Button variant="ghost" className="text-danger" onClick={() => setConfirming(true)}>
-            Delete collection
-          </Button>
-        )
-      }
-    >
-      <form className="space-y-4" onSubmit={submit}>
-        {failure !== undefined && <Failure error={failure} />}
+    <Screen>
+      <ScreenHead>
+        <ScreenTitle
+          icon={<Network className="size-5" />}
+          title={mode === 'create' ? 'New collection' : (stored?.label ?? name)}
+          description={
+            mode === 'create'
+              ? 'A resource stored in the database rather than written in TypeScript'
+              : `${entries} ${entries === 1 ? 'entry' : 'entries'}`
+          }
+          actions={
+            mode === 'edit' &&
+            can('collections.delete') && (
+              <Button variant="danger" onClick={() => setConfirming(true)}>
+                Delete collection
+              </Button>
+            )
+          }
+        />
+      </ScreenHead>
 
-        {saved !== undefined && (
-          <Card className="border-positive/30 bg-positive-soft p-4">
-            <p className="text-sm text-positive">Saved. {saved}</p>
-          </Card>
-        )}
+      <ScreenBody className="pt-6 pb-8">
+        <form id="collection-form" className="max-w-[900px] space-y-4" onSubmit={submit}>
+          {failure !== undefined && <Failure error={failure} />}
 
-        {confirming && (
-          <Card className="space-y-3 border-danger/30 bg-danger-soft p-4">
-            <p className="text-sm font-medium text-danger">
-              {entries > 0
-                ? `“${name}” holds ${entries} ${entries === 1 ? 'entry' : 'entries'}, and its definition is what makes them readable.`
-                : `Delete “${name}”?`}
-            </p>
-            <p className="text-sm text-ink-soft">
-              {entries > 0
-                ? 'Delete them first — a definition removed while entries exist would leave every one of them unreadable, so this is refused.'
-                : 'Its definition is removed, Studio stops offering it, and an agent can no longer address it. Any entry already in the bin can no longer be restored.'}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {entries > 0 ? (
-                <Link
-                  to="/content/$resource"
-                  params={{ resource: name }}
-                  className="inline-flex h-8 items-center rounded-lg bg-surface px-3 text-sm font-medium"
-                >
-                  Open the entries
-                </Link>
-              ) : (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() => remove.mutate()}
-                >
-                  {remove.isPending ? 'Deleting…' : 'Delete it'}
+          {saved !== undefined && (
+            <Card className="border-accent/30 bg-accent-wash p-4">
+              <p className="text-base text-accent-ink">Saved. {saved}</p>
+            </Card>
+          )}
+
+          {confirming && (
+            <Card className="space-y-3 border-danger/30 bg-danger-soft p-4">
+              <p className="text-base font-medium text-danger">
+                {entries > 0
+                  ? `“${name}” holds ${entries} ${entries === 1 ? 'entry' : 'entries'}, and its definition is what makes them readable.`
+                  : `Delete “${name}”?`}
+              </p>
+              <p className="text-base text-ink-soft">
+                {entries > 0
+                  ? 'Delete them first — a definition removed while entries exist would leave every one of them unreadable, so this is refused.'
+                  : 'Its definition is removed, Studio stops offering it, and an agent can no longer address it. Any entry already in the bin can no longer be restored.'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {entries > 0 ? (
+                  <Link
+                    to="/content/$resource"
+                    params={{ resource: name }}
+                    className="inline-flex h-8 items-center rounded-lg bg-surface px-3 text-base font-medium"
+                  >
+                    Open the entries
+                  </Link>
+                ) : (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => remove.mutate()}
+                  >
+                    {remove.isPending ? 'Deleting…' : 'Delete it'}
+                  </Button>
+                )}
+                <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
+                  Cancel
                 </Button>
-              )}
-              <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
-                Cancel
+              </div>
+            </Card>
+          )}
+
+          <Card className="space-y-5 p-6">
+            <Field
+              label="Label"
+              help="What this collection is called in the navigation and on its screens"
+            >
+              <Input
+                className="max-w-md"
+                placeholder="Testimonials"
+                value={draft.label}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    label: event.target.value,
+                    // The name follows the label until somebody takes it over, and then
+                    // it is theirs: a name is what the API and an agent address, so it is
+                    // never quietly rewritten under them.
+                    ...(mode === 'create' && !namedByHand
+                      ? { name: nameFrom(event.target.value) }
+                      : {}),
+                  }))
+                }
+              />
+            </Field>
+
+            <Field
+              label="Name"
+              required
+              help={
+                mode === 'edit'
+                  ? 'A collection’s name is what its entries, its API and an agent address it by, so it never changes'
+                  : 'Lower case, letters, numbers and underscores. This is what the API and an agent call it'
+              }
+              {...(about('name').length === 0 ? {} : { errors: about('name') })}
+            >
+              <Input
+                className={`max-w-md font-mono text-sm${mode === 'edit' ? ' bg-surface-sunken' : ''}`}
+                placeholder="testimonials"
+                readOnly={mode === 'edit'}
+                value={draft.name}
+                onChange={(event) => {
+                  setNamedByHand(true)
+                  setDraft((current) => ({ ...current, name: event.target.value }))
+                }}
+              />
+            </Field>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <p className="text-base font-semibold">Fields</p>
+              <p className="text-sm text-ink-faint">
+                {draft.fields.length} {draft.fields.length === 1 ? 'field' : 'fields'}, in the order
+                they are shown
+              </p>
+            </div>
+
+            {about('fields').map((message) => (
+              <p key={message} className="px-4 py-3 text-base text-danger">
+                {message}
+              </p>
+            ))}
+
+            {draft.fields.map((field, index) => (
+              <FieldRow
+                key={field.key}
+                field={field}
+                before={storedField(stored, field)}
+                index={index}
+                count={draft.fields.length}
+                depth={1}
+                siblings={draft.fields}
+                setting={setting}
+              />
+            ))}
+
+            <div className="border-t border-line px-4 py-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    fields: [...current.fields, blankField(nextKey())],
+                  }))
+                }
+              >
+                Add a field
               </Button>
             </div>
           </Card>
-        )}
 
-        <Card className="space-y-5 p-6">
-          <Field
-            label="Label"
-            help="What this collection is called in the navigation and on its screens"
-          >
-            <Input
-              className="max-w-md"
-              placeholder="Testimonials"
-              value={draft.label}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  label: event.target.value,
-                  // The name follows the label until somebody takes it over, and then
-                  // it is theirs: a name is what the API and an agent address, so it is
-                  // never quietly rewritten under them.
-                  ...(mode === 'create' && !namedByHand
-                    ? { name: nameFrom(event.target.value) }
-                    : {}),
-                }))
-              }
-            />
-          </Field>
-
-          <Field
-            label="Name"
-            required
-            help={
-              mode === 'edit'
-                ? 'A collection’s name is what its entries, its API and an agent address it by, so it never changes'
-                : 'Lower case, letters, numbers and underscores. This is what the API and an agent call it'
-            }
-            {...(about('name').length === 0 ? {} : { errors: about('name') })}
-          >
-            <Input
-              className={`max-w-md font-mono text-xs${mode === 'edit' ? ' bg-surface-sunken' : ''}`}
-              placeholder="testimonials"
-              readOnly={mode === 'edit'}
-              value={draft.name}
-              onChange={(event) => {
-                setNamedByHand(true)
-                setDraft((current) => ({ ...current, name: event.target.value }))
-              }}
-            />
-          </Field>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <p className="text-sm font-semibold">Fields</p>
-            <p className="text-xs text-ink-faint">
-              {draft.fields.length} {draft.fields.length === 1 ? 'field' : 'fields'}, in the order
-              they are shown
-            </p>
-          </div>
-
-          {about('fields').map((message) => (
-            <p key={message} className="px-4 py-3 text-sm text-danger">
-              {message}
-            </p>
-          ))}
-
-          {draft.fields.map((field, index) => (
-            <FieldRow
-              key={field.key}
-              field={field}
-              before={storedField(stored, field)}
-              index={index}
-              count={draft.fields.length}
-              depth={1}
-              siblings={draft.fields}
-              setting={setting}
-            />
-          ))}
-
-          <div className="border-t border-line px-4 py-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                setDraft((current) => ({
-                  ...current,
-                  fields: [...current.fields, blankField(nextKey())],
-                }))
-              }
-            >
-              Add a field
-            </Button>
-          </div>
-        </Card>
-
-        <Consequences drops={drops} entries={entries} added={added} />
-
-        <div className="flex items-center gap-2">
-          <Button type="submit" disabled={pending || shown.length > 0}>
-            {pending ? 'Saving…' : mode === 'create' ? 'Create collection' : 'Save changes'}
-          </Button>
-          <Button variant="secondary" onClick={() => void navigate({ to: '/collections' })}>
-            Cancel
-          </Button>
+          <Consequences drops={drops} entries={entries} added={added} />
 
           {/* What is actually sent. A definition is data — declarative JSON and nothing
-              executable — and showing it is the cheapest way to make that true rather
-              than promised (SPEC.md §86). */}
-          <details className="ml-auto text-xs text-ink-faint">
+            executable — and showing it is the cheapest way to make that true rather
+            than promised (SPEC.md §86). */}
+          <details className="text-sm text-ink-faint">
             <summary className="cursor-pointer">What this sends</summary>
             <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-surface-sunken p-3 font-mono">
               {JSON.stringify(payloadOf(draft, stored), null, 2)}
             </pre>
           </details>
-        </div>
-      </form>
-    </Page>
+        </form>
+      </ScreenBody>
+
+      {/* The footer states the next required step rather than only greying the button
+          out: "the button is disabled" is not a reason, and a form of this shape has
+          several ways to be unfinished. */}
+      <SaveBar dirty={issues.length > 0} summary={nextStep}>
+        <Button variant="secondary" onClick={() => void navigate({ to: '/collections' })}>
+          Cancel
+        </Button>
+        <Button type="submit" form="collection-form" busy={pending} disabled={shown.length > 0}>
+          {mode === 'create' ? 'Create collection' : 'Save changes'}
+        </Button>
+      </SaveBar>
+    </Screen>
   )
 }

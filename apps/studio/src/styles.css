@@ -1,28 +1,97 @@
 @import "tailwindcss";
 
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
 /*
- * Studio's own surface. The theme a *site* is built with is stored as tokens in the
- * application and edited in the Design section (SPEC.md §62); these variables are
- * the editor's chrome and are deliberately not the same thing.
+ * Studio's own surface (`design_handoff_studio_redesign`).
+ *
+ * The theme a *site* is built with is stored as tokens in the application and edited
+ * in the Design section (SPEC.md §62); these variables are the editor's chrome and are
+ * deliberately not the same thing. Every value below is the handoff's, as a hex — the
+ * palette is a fixed set of neutrals with one accent, not a generated ramp, so naming
+ * a colour in a perceptual space would only put a rounding error between the design
+ * and the screen.
  */
 @theme {
-  --color-ink: oklch(0.21 0.02 265);
-  --color-ink-soft: oklch(0.48 0.02 265);
-  --color-ink-faint: oklch(0.68 0.015 265);
-  --color-surface: oklch(1 0 0);
-  --color-surface-sunken: oklch(0.975 0.003 265);
-  --color-surface-raised: oklch(1 0 0);
-  --color-line: oklch(0.91 0.005 265);
-  --color-line-soft: oklch(0.95 0.004 265);
-  --color-accent: oklch(0.55 0.19 264);
-  --color-accent-soft: oklch(0.96 0.02 264);
-  --color-danger: oklch(0.55 0.2 25);
-  --color-danger-soft: oklch(0.96 0.03 25);
-  --color-positive: oklch(0.6 0.15 155);
-  --color-positive-soft: oklch(0.95 0.04 155);
+  /* Neutrals */
+  --color-ink: #202223;
+  --color-ink-strong: #303030;
+  --color-ink-body: #4a4a4a;
+  --color-ink-soft: #6d7175;
+  --color-ink-subdued: #8a8a8a;
+  --color-ink-faint: #a5a5a5;
+  --color-ink-disabled: #b5b5b5;
+  --color-chrome: #1c1c1f;
+  --color-chrome-ink: #f1f1f1;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-surface-sunken: #fafafa;
+  --color-surface-raised: #f7f7f7;
+  --color-canvas: #f1f1f1;
+  --color-hairline: #ebebeb;
+  --color-line: #e3e3e3;
+  --color-line-strong: #cfcfcf;
+  --color-pressed: #d5d5d5;
+
+  /* Accent */
+  --color-accent: #29845a;
+  --color-accent-soft: #94c9ad;
+  --color-accent-wash: #e3f5ea;
+  --color-accent-tint: #cdfee1;
+  --color-accent-ink: #0c5132;
+  --color-link: #005bd3;
+  --color-link-hover: #004299;
+
+  /* Status */
+  --color-warning: #c98a00;
+  --color-warning-wash: #fff1c2;
+  --color-warning-wash-soft: #fff8e6;
+  --color-warning-line: #f0dda8;
+  --color-warning-ink: #7a5b00;
+  --color-warning-ink-strong: #5c4200;
+
+  --color-danger: #d72c0d;
+  --color-danger-soft: #fff1ef;
+  --color-danger-line: #f0c7bf;
+  --color-danger-line-strong: #e0a79a;
+  --color-danger-ink: #8f1d05;
+  --color-danger-ink-soft: #a4552f;
+
+  --color-info-wash: #eaf4ff;
+  --color-info-line: #c3ddf5;
+  --color-info-ink: #00405f;
+
+  --font-sans:
+    "Inter Variable", Inter, -apple-system, "San Francisco", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  /* Base 13 / 1.4615 — the scale of the handoff, not Tailwind's. */
+  --text-xs: 11px;
+  --text-xs--line-height: 1.4;
+  --text-sm: 12px;
+  --text-sm--line-height: 1.4;
+  --text-base: 13px;
+  --text-base--line-height: 1.4615;
+  --text-md: 14px;
+  --text-md--line-height: 1.4;
+  --text-section: 15px;
+  --text-section--line-height: 1.35;
+  --text-title: 20px;
+  --text-title--line-height: 1.2;
+  --text-display: 26px;
+  --text-display--line-height: 1.15;
+
+  /* Four levels of elevation and no fifth. */
+  --shadow-menu: 0 16px 40px -12px rgb(24 24 27 / 0.24);
+  --shadow-dialog: 0 24px 56px -20px rgb(17 18 38 / 0.38);
+  --shadow-panel: 0 24px 56px -20px rgb(24 24 27 / 0.34);
+  --shadow-pill: 0 6px 20px -8px rgb(24 24 27 / 0.2);
+  --shadow-raise: 0 1px 2px rgb(0 0 0 / 0.08);
+
+  --animate-spin: spin 0.7s linear infinite;
 }
 
 @layer base {
@@ -31,11 +100,145 @@
   }
 
   body {
-    @apply bg-surface-sunken text-ink font-sans antialiased;
+    @apply bg-canvas text-ink font-sans antialiased;
+    font-size: 13px;
+    font-weight: 450;
+    line-height: 1.4615;
+    text-wrap: pretty;
   }
 
-  /* A focus ring that is visible on every surface Studio uses. */
+  /*
+   * The focus ring of the handoff. Accent rather than the neutral one a field takes
+   * on `:focus` — a keyboard traversal has to be findable across a screen, and the
+   * field ring is a state, not a location.
+   */
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-accent;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    transition:
+      background 120ms ease,
+      color 120ms ease,
+      filter 120ms ease,
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  input,
+  select,
+  textarea {
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  tr {
+    transition: background 110ms ease;
+  }
+}
+
+@layer utilities {
+  /*
+   * A field's own ring: neutral, and drawn on the border rather than outside it, so a
+   * row of fields does not shift when one takes focus.
+   */
+  .ring-field:focus {
+    @apply border-ink-strong outline-none;
+    box-shadow: 0 0 0 3px rgb(48 48 48 / 0.08);
+  }
+
+  .ring-field-danger {
+    @apply border-danger;
+    box-shadow: 0 0 0 3px rgb(215 44 13 / 0.08);
+  }
+
+  /* The relief on the two solid buttons, quoted from the handoff. */
+  .relief-primary {
+    box-shadow:
+      0 1px 0 rgb(0 0 0 / 0.12),
+      inset 0 -1px 0 rgb(255 255 255 / 0.2),
+      inset 0 1px 0 rgb(255 255 255 / 0.24);
+  }
+
+  .relief-secondary {
+    box-shadow:
+      0 1px 0 rgb(0 0 0 / 0.05),
+      inset 0 -1px 0 rgb(0 0 0 / 0.2),
+      inset 0 0 0 1px rgb(0 0 0 / 0.1);
+  }
+
+  /* A skeleton is shaped like the content it stands in for, and shimmers. */
+  .shimmer {
+    background: linear-gradient(90deg, #f1f1f1 25%, #e6e6e6 37%, #f1f1f1 63%);
+    background-size: 220% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  .rise {
+    animation: rise 0.16s ease-out;
+  }
+
+  .drop {
+    animation: drop 0.14s ease-out;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 180% 0;
+  }
+  to {
+    background-position: -180% 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-3px);
+  }
+  40%,
+  60% {
+    transform: translateX(3px);
   }
 }

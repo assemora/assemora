@@ -44,7 +44,7 @@ const Change = ({ field, from, to }: { field: string; from: unknown; to: unknown
   }
 
   return (
-    <li className="flex flex-wrap items-baseline gap-1.5 text-xs">
+    <li className="flex flex-wrap items-baseline gap-1.5 text-sm">
       <span className="font-medium text-ink">{field}</span>
       <span className="text-ink-faint line-through">{shorten(from)}</span>
       <span className="text-ink-faint">→</span>
@@ -85,7 +85,7 @@ const TreeChange = ({ from, to }: { from: unknown; to: unknown }) => {
   return (
     <ul className="space-y-0.5">
       {lines.map((line) => (
-        <li key={line} className="text-xs text-ink-soft">
+        <li key={line} className="text-sm text-ink-soft">
           {line}
         </li>
       ))}
@@ -102,7 +102,7 @@ const kindOf = (revision: Revision): string | undefined => {
 }
 
 export const History = () => {
-  const { id } = useParams({ from: '/pages/$id/history' })
+  const { id } = useParams({ from: '/shell/pages/$id/history' })
   const navigate = useNavigate()
   const client = useQueryClient()
   const page = usePage(id, 'draft')
@@ -163,7 +163,7 @@ export const History = () => {
       {compare.length === 2 && (
         <Card className="mb-4 p-4">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Comparing two revisions</h2>
+            <h2 className="text-base font-semibold">Comparing two revisions</h2>
             <Button variant="ghost" size="sm" onClick={() => setCompare([])}>
               Clear
             </Button>
@@ -172,7 +172,7 @@ export const History = () => {
           {difference.isPending && <Spinner />}
           {difference.data !== undefined &&
             (Object.keys(difference.data.patch).length === 0 ? (
-              <p className="text-sm text-ink-soft">Nothing differs between them.</p>
+              <p className="text-base text-ink-soft">Nothing differs between them.</p>
             ) : (
               <ul className="space-y-1">
                 {Object.entries(difference.data.patch).map(([field, change]) => (
@@ -199,24 +199,24 @@ export const History = () => {
             return (
               <li
                 key={revision.id}
-                className="flex gap-4 border-b border-line-soft px-4 py-3 last:border-0"
+                className="flex gap-4 border-b border-hairline px-4 py-3 last:border-0"
               >
                 <div className="w-28 shrink-0 space-y-0.5">
-                  <p className="text-sm font-medium">#{revision.sequence}</p>
-                  <p className="text-xs text-ink-faint">
+                  <p className="text-base font-medium">#{revision.sequence}</p>
+                  <p className="text-sm text-ink-faint">
                     {new Date(revision.createdAt).toLocaleString()}
                   </p>
                 </div>
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <code className="font-mono text-xs text-ink-soft">{revision.command}</code>
+                    <code className="font-mono text-sm text-ink-soft">{revision.command}</code>
                     <Badge>{ACTOR[revision.actorType as keyof typeof ACTOR] ?? 'Unknown'}</Badge>
                     {kind !== undefined && <Badge tone="accent">{kind}</Badge>}
                   </div>
 
                   {revision.changed.length === 0 ? (
-                    <p className="text-xs text-ink-faint">Nothing changed.</p>
+                    <p className="text-sm text-ink-faint">Nothing changed.</p>
                   ) : (
                     <>
                       {Object.entries(revision.patch)
@@ -269,7 +269,7 @@ export const History = () => {
       </Card>
 
       {history.data !== undefined && history.data.lastPage > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
+        <div className="mt-4 flex items-center justify-between text-base text-ink-soft">
           <span>
             Page {history.data.page} of {history.data.lastPage} · {history.data.total} revisions
           </span>

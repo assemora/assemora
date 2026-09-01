@@ -5,13 +5,14 @@
  * MCP pass the same permission checks — there is no privileged path into identity.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Users as UsersIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import { ApiError, api } from '../api/client.ts'
 import type { Paged } from '../api/pages.ts'
 import { useSession } from '../api/session.tsx'
-import { Page } from '../app/shell.tsx'
 import { Badge, Button, Card, Empty, Failure, Field, Input, Select, Spinner } from '../ui/index.tsx'
+import { Screen, ScreenBody, ScreenHead, ScreenTitle, Tabs } from '../ui/layout.tsx'
 
 type UserRow = {
   readonly id: string
@@ -59,7 +60,7 @@ const Pages = ({
   onChange(page: number): void
 }) =>
   of === undefined || of <= 1 ? null : (
-    <div className="flex items-center justify-between text-sm text-ink-soft">
+    <div className="flex items-center justify-between text-base text-ink-soft">
       <span>
         Page {page} of {of}
       </span>
@@ -85,6 +86,13 @@ const Pages = ({
   )
 
 type Tab = (typeof TABS)[number]
+
+const LABELS: Record<Tab, string> = {
+  people: 'People',
+  roles: 'Roles',
+  tokens: 'API tokens',
+  agents: 'Agents',
+}
 
 const useRoles = () =>
   useQuery({
@@ -118,7 +126,7 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
       <Card className="w-full max-w-md p-6">
-        <h2 className="mb-4 text-sm font-semibold">New person</h2>
+        <h2 className="mb-4 text-base font-semibold">New person</h2>
 
         <form className="space-y-4" onSubmit={submit}>
           <Field label="Name" required>
@@ -163,7 +171,7 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
           </Field>
 
           {create.isError && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-base text-danger">
               {create.error instanceof ApiError ? create.error.message : 'Could not create them'}
             </p>
           )}
@@ -232,9 +240,9 @@ const People = () => {
         {users.data?.data.length === 0 && <Empty title="Nobody matches that" />}
 
         {users.data !== undefined && users.data.data.length > 0 && (
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-base">
             <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-faint">
+              <tr className="border-b border-line text-sm font-[650] tracking-[0.01em] text-ink-soft">
                 <th className="px-4 py-2.5 font-medium">Name</th>
                 <th className="px-4 py-2.5 font-medium">Email</th>
                 <th className="px-4 py-2.5 font-medium">Roles</th>
@@ -244,7 +252,7 @@ const People = () => {
             </thead>
             <tbody>
               {users.data.data.map((user) => (
-                <tr key={user.id} className="border-b border-line-soft last:border-0">
+                <tr key={user.id} className="border-b border-hairline last:border-0">
                   <td className="px-4 py-2.5 font-medium">{user.name}</td>
                   <td className="px-4 py-2.5 text-ink-soft">{user.email}</td>
                   <td className="px-4 py-2.5">
@@ -267,7 +275,7 @@ const People = () => {
 
                       <div className="w-28">
                         <Select
-                          className="h-7 py-0 text-xs"
+                          className="h-7 py-0 text-sm"
                           value=""
                           onChange={(event) =>
                             change.mutate({
@@ -344,7 +352,7 @@ const Roles = () => {
           <Card key={role.id} className="space-y-2 p-4">
             <div className="flex items-baseline justify-between">
               <p className="font-medium">{role.label}</p>
-              <code className="font-mono text-xs text-ink-faint">{role.name}</code>
+              <code className="font-mono text-sm text-ink-faint">{role.name}</code>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {role.permissions.map((permission) => (
@@ -356,8 +364,10 @@ const Roles = () => {
       </div>
 
       <Card className="p-4">
-        <p className="mb-2 text-sm font-semibold">Every permission this application has recorded</p>
-        <p className="mb-3 text-sm text-ink-soft">
+        <p className="mb-2 text-base font-semibold">
+          Every permission this application has recorded
+        </p>
+        <p className="mb-3 text-base text-ink-soft">
           A permission name is a command name. <code className="font-mono">articles.*</code> grants
           everything under it.
         </p>
@@ -414,8 +424,8 @@ const NewToken = ({ onIssued, onClose }: { onIssued(token: string): void; onClos
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
       <Card className="w-full max-w-md p-6">
-        <h2 className="mb-1 text-sm font-semibold">Issue an API token</h2>
-        <p className="mb-4 text-sm text-ink-soft">
+        <h2 className="mb-1 text-base font-semibold">Issue an API token</h2>
+        <p className="mb-4 text-base text-ink-soft">
           A token can do exactly what you give it, and no more than you hold yourself.
         </p>
 
@@ -454,7 +464,7 @@ const NewToken = ({ onIssued, onClose }: { onIssued(token: string): void; onClos
               {permissions.data?.data.map((permission) => (
                 <label
                   key={permission.id}
-                  className="flex items-center gap-2 text-sm text-ink-soft"
+                  className="flex items-center gap-2 text-base text-ink-soft"
                 >
                   <input
                     type="checkbox"
@@ -468,14 +478,14 @@ const NewToken = ({ onIssued, onClose }: { onIssued(token: string): void; onClos
                       )
                     }
                   />
-                  <code className="font-mono text-xs">{permission.name}</code>
+                  <code className="font-mono text-sm">{permission.name}</code>
                 </label>
               ))}
             </div>
           </Field>
 
           {create.isError && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-base text-danger">
               {create.error instanceof ApiError ? create.error.message : 'Could not issue it'}
             </p>
           )}
@@ -517,11 +527,11 @@ const Tokens = () => {
       </div>
 
       {issued !== undefined && (
-        <Card className="border-positive/30 bg-positive-soft p-4">
-          <p className="mb-1 text-sm font-medium text-positive">
+        <Card className="border-accent/30 bg-accent-wash p-4">
+          <p className="mb-1 text-base font-medium text-accent-ink">
             Copy this now. It is never shown again.
           </p>
-          <code className="block break-all font-mono text-xs">{issued}</code>
+          <code className="block break-all font-mono text-sm">{issued}</code>
         </Card>
       )}
 
@@ -539,9 +549,9 @@ const Tokens = () => {
         )}
 
         {tokens.data !== undefined && tokens.data.data.length > 0 && (
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-base">
             <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-faint">
+              <tr className="border-b border-line text-sm font-[650] tracking-[0.01em] text-ink-soft">
                 <th className="px-4 py-2.5 font-medium">Name</th>
                 <th className="px-4 py-2.5 font-medium">Permissions</th>
                 <th className="px-4 py-2.5 font-medium">Last used</th>
@@ -550,7 +560,7 @@ const Tokens = () => {
             </thead>
             <tbody>
               {tokens.data.data.map((token) => (
-                <tr key={token.id} className="border-b border-line-soft last:border-0">
+                <tr key={token.id} className="border-b border-hairline last:border-0">
                   <td className="px-4 py-2.5 font-medium">{token.name}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap gap-1">
@@ -627,11 +637,11 @@ const Agents = () => {
         {agents.data?.data.map((agent) => (
           <div
             key={agent.id}
-            className="flex items-center gap-4 border-b border-line-soft px-4 py-3 last:border-0"
+            className="flex items-center gap-4 border-b border-hairline px-4 py-3 last:border-0"
           >
             <div className="min-w-0 flex-1">
               <p className="font-medium">{agent.name}</p>
-              <p className="truncate text-sm text-ink-soft">{agent.description}</p>
+              <p className="truncate text-base text-ink-soft">{agent.description}</p>
               <div className="mt-1 flex flex-wrap gap-1">
                 {agent.permissions.map((permission) => (
                   <Badge key={permission}>{permission}</Badge>
@@ -664,28 +674,30 @@ const Agents = () => {
 export const Users = () => {
   const [tab, setTab] = useState<Tab>('people')
 
-  return (
-    <Page title="Users" description="Who may sign in, and what they may do">
-      <div className="mb-4 flex gap-1">
-        {TABS.map((name) => (
-          <button
-            key={name}
-            type="button"
-            className={[
-              'rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition',
-              tab === name ? 'bg-accent-soft text-accent' : 'text-ink-soft hover:bg-surface-sunken',
-            ].join(' ')}
-            onClick={() => setTab(name)}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
+  /* People, roles, tokens and agents are four views of one question — who may do what —
+     so they are tabs on one screen rather than four destinations in the sidebar. */
+  const views: readonly { value: Tab; label: string }[] = TABS.map((name) => ({
+    value: name,
+    label: LABELS[name],
+  }))
 
-      {tab === 'people' && <People />}
-      {tab === 'roles' && <Roles />}
-      {tab === 'tokens' && <Tokens />}
-      {tab === 'agents' && <Agents />}
-    </Page>
+  return (
+    <Screen>
+      <ScreenHead>
+        <ScreenTitle
+          icon={<UsersIcon className="size-5" />}
+          title="Users"
+          description="Who may sign in, and what they may do"
+        />
+        <Tabs<Tab> value={tab} options={views} onChange={setTab} label="Access views" />
+      </ScreenHead>
+
+      <ScreenBody className="pt-6 pb-10">
+        {tab === 'people' && <People />}
+        {tab === 'roles' && <Roles />}
+        {tab === 'tokens' && <Tokens />}
+        {tab === 'agents' && <Agents />}
+      </ScreenBody>
+    </Screen>
   )
 }

@@ -9,7 +9,6 @@
 import { useMemo, useState } from 'react'
 
 import { type RouteDescriptor, useIntrospection } from '../api/introspection.ts'
-import { Page } from '../app/shell.tsx'
 import { Badge, Button, Card, Failure, Field, Input, Spinner, Textarea } from '../ui/index.tsx'
 
 const METHOD_TONE = {
@@ -111,7 +110,7 @@ const Try = ({ route }: { route: RouteDescriptor }) => {
       {route.method !== 'get' && (
         <Field label="Body">
           <Textarea
-            className="font-mono text-xs"
+            className="font-mono text-sm"
             rows={6}
             value={body}
             onChange={(event) => setBody(event.target.value)}
@@ -125,12 +124,12 @@ const Try = ({ route }: { route: RouteDescriptor }) => {
 
       {attempt !== undefined && (
         <div className="space-y-2 rounded-lg border border-line bg-surface-sunken p-3">
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-base">
             <Badge tone={attempt.status < 400 ? 'positive' : 'danger'}>{attempt.status}</Badge>
             <span className="text-ink-soft">{attempt.duration} ms</span>
             <span className="text-ink-faint">{attempt.headers['content-type']}</span>
           </div>
-          <pre className="max-h-72 overflow-auto font-mono text-xs">{attempt.body}</pre>
+          <pre className="max-h-72 overflow-auto font-mono text-sm">{attempt.body}</pre>
         </div>
       )}
     </div>
@@ -146,7 +145,7 @@ const Schema = ({
 }) => (
   <div className="space-y-1">
     <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{title}</p>
-    <pre className="max-h-56 overflow-auto rounded-lg bg-surface-sunken p-3 font-mono text-xs">
+    <pre className="max-h-56 overflow-auto rounded-lg bg-surface-sunken p-3 font-mono text-sm">
       {JSON.stringify(schema, null, 2)}
     </pre>
   </div>
@@ -171,44 +170,31 @@ export const Explorer = () => {
       .sort((left, right) => left.path.localeCompare(right.path))
   }, [introspection.data, filter])
 
-  if (introspection.isLoading) {
-    return (
-      <Page title="API Explorer">
-        <Spinner />
-      </Page>
-    )
-  }
-
-  if (introspection.isError) {
-    return (
-      <Page title="API Explorer">
-        <Failure error={introspection.error} />
-      </Page>
-    )
-  }
+  if (introspection.isLoading) return <Spinner />
+  if (introspection.isError) return <Failure error={introspection.error} />
 
   return (
-    <Page
-      title="API Explorer"
-      description={`${routes.length} endpoints, all of them described by the application itself`}
-      actions={
+    <div>
+      <div className="mb-4 flex items-center gap-3">
+        <Input
+          type="search"
+          placeholder="Filter by path or tag…"
+          className="max-w-sm"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+        />
+        <span className="text-base text-ink-soft">
+          {routes.length} endpoints, all of them described by the application itself
+        </span>
         <a
           href="/api/openapi.json"
           target="_blank"
           rel="noreferrer"
-          className="text-sm font-medium text-accent hover:underline"
+          className="ml-auto text-base font-medium text-link hover:text-link-hover hover:underline"
         >
           openapi.json
         </a>
-      }
-    >
-      <Input
-        type="search"
-        placeholder="Filter by path or tag…"
-        className="mb-4 max-w-sm"
-        value={filter}
-        onChange={(event) => setFilter(event.target.value)}
-      />
+      </div>
 
       <div className="space-y-2">
         {routes.map((route) => {
@@ -223,8 +209,8 @@ export const Explorer = () => {
                 onClick={() => setOpen(expanded ? undefined : key)}
               >
                 <Badge tone={METHOD_TONE[route.method]}>{route.method.toUpperCase()}</Badge>
-                <code className="font-mono text-sm">/api{route.path}</code>
-                <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">
+                <code className="font-mono text-base">/api{route.path}</code>
+                <span className="min-w-0 flex-1 truncate text-base text-ink-soft">
                   {route.description}
                 </span>
                 {route.auth && <Badge>auth</Badge>}
@@ -256,6 +242,6 @@ export const Explorer = () => {
           )
         })}
       </div>
-    </Page>
+    </div>
   )
 }

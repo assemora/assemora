@@ -125,7 +125,7 @@ export const ColorInput = ({
         <span
           aria-hidden="true"
           title={value}
-          className="grid size-8 shrink-0 place-items-center rounded-md border border-dashed border-line text-[0.6rem] text-ink-faint"
+          className="grid size-8 shrink-0 place-items-center rounded-md border border-dashed border-line text-xs text-ink-faint"
           {...(isHex ? { style: { background: value } } : {})}
         >
           {isHex ? '' : 'abc'}
@@ -135,7 +135,7 @@ export const ColorInput = ({
       <Input
         value={value}
         spellCheck={false}
-        className="font-mono text-xs"
+        className="font-mono text-sm"
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
@@ -210,7 +210,7 @@ export const FontStackInput = ({
         {value.map((family, at) => (
           <li
             key={family}
-            className="flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-xs"
+            className="flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-sm"
           >
             <span className="font-mono">{family}</span>
             <button
@@ -246,7 +246,7 @@ export const FontStackInput = ({
           value={typed}
           placeholder="Add a family, such as Inter or sans-serif"
           spellCheck={false}
-          className="text-xs"
+          className="text-sm"
           onChange={(event) => setTyped(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Enter') return

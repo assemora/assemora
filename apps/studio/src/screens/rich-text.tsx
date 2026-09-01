@@ -13,23 +13,30 @@
  * several hundred kilobytes for bold and a bulleted list is the wrong trade. Every engine
  * still implements it, and the day one stops, the model is the thing to write.
  *
- * The toolbar is structure and nothing else: headings, emphasis, lists, a quote, a link.
- * No fonts, no colours, no sizes — the same rule the markdown field is written under, and
- * SPEC.md §61's: the theme decides how a thing looks, and a colour picker here is the CSS
- * editor arriving through the field layer.
+ * The toolbar is structure and nothing else: headings, emphasis, lists, a quote, a link,
+ * a picture. No fonts, no colours, no sizes — the same rule the markdown field is written
+ * under, and SPEC.md §61's: the theme decides how a thing looks, and a colour picker here
+ * is the CSS editor arriving through the field layer.
+ *
+ * Drawn to `design_handoff_studio_redesign` §3: a `#f1f1f1` strip with a hairline under
+ * it, 30px square buttons at radius 8, 18px Lucide icons, headings as their own words,
+ * and hairline separators between the three groups.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  Bold,
+  Image as ImageIcon,
+  Italic,
+  Link2,
+  Link2Off,
+  List,
+  ListOrdered,
+  Quote,
+} from 'lucide-react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
-const BUTTON =
-  'inline-flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-sm text-ink-soft transition hover:bg-surface-sunken'
-
-type Tool = {
-  readonly label: string
-  readonly title: string
-  /** What `execCommand` is asked to do, and with what. */
-  readonly run: () => void
-  readonly bold?: boolean
-}
+import type { MediaItem } from '../api/media.ts'
+import { join } from '../ui/index.tsx'
+import { MediaPicker } from './media-picker.tsx'
 
 /**
  * `execCommand`, with the two settings that decide what it writes.
@@ -44,6 +51,80 @@ const exec = (command: string, value?: string): void => {
   document.execCommand('defaultParagraphSeparator', false, 'p')
   document.execCommand(command, false, value)
 }
+
+/** What the caret is standing in, lower-cased — engines disagree about the case. */
+const blockAt = (): string => {
+  try {
+    return document.queryCommandValue('formatBlock').toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+const stateOf = (command: string): boolean => {
+  try {
+    return document.queryCommandState(command)
+  } catch {
+    return false
+  }
+}
+
+/** The marks the toolbar lights up for. Read from the selection, never remembered. */
+type Marks = {
+  readonly block: string
+  readonly bold: boolean
+  readonly italic: boolean
+  readonly bullets: boolean
+  readonly numbers: boolean
+}
+
+const NOTHING: Marks = {
+  block: '',
+  bold: false,
+  italic: false,
+  bullets: false,
+  numbers: false,
+}
+
+/**
+ * One button on the strip: 30px square, radius 8, and a fill when it is on.
+ *
+ * `onMouseDown` is prevented on every one of them, because the selection is lost the
+ * moment a button takes focus and a command with nothing selected does nothing at all.
+ */
+const Tool = ({
+  title,
+  active = false,
+  onMouseDown,
+  onClick,
+  children,
+}: {
+  title: string
+  active?: boolean
+  onMouseDown?: (event: React.MouseEvent) => void
+  onClick(): void
+  children: ReactNode
+}) => (
+  <button
+    type="button"
+    title={title}
+    aria-label={title}
+    aria-pressed={active}
+    onMouseDown={(event) => {
+      event.preventDefault()
+      onMouseDown?.(event)
+    }}
+    onClick={onClick}
+    className={join(
+      'grid size-[30px] shrink-0 place-items-center rounded-lg',
+      active ? 'bg-hairline text-ink' : 'bg-transparent text-ink-body hover:bg-line',
+    )}
+  >
+    {children}
+  </button>
+)
+
+const Separator = () => <span aria-hidden className="mx-1.5 h-[18px] w-px shrink-0 bg-line" />
 
 export const RichTextInput = ({
   value,
@@ -71,7 +152,9 @@ export const RichTextInput = ({
   const spoken = useRef<string | null>(null)
   const address = useRef<HTMLInputElement>(null)
   const [linking, setLinking] = useState(false)
+  const [picking, setPicking] = useState(false)
   const [href, setHref] = useState('')
+  const [marks, setMarks] = useState<Marks>(NOTHING)
 
   /**
    * The value reaches the node here and nowhere else, and never through React.
@@ -100,6 +183,41 @@ export const RichTextInput = ({
     if (linking) address.current?.focus()
   }, [linking])
 
+  /**
+   * Which buttons are lit, read from wherever the caret is.
+   *
+   * Derived and never stored: a mark is a fact about the selection, and remembering one
+   * is how a toolbar comes to show bold while the caret sits in plain text. The listener
+   * is on the document because a selection change does not bubble from the box.
+   */
+  const read = useCallback(() => {
+    const node = box.current
+    const selection = document.getSelection()
+    const inside =
+      node !== null &&
+      selection !== null &&
+      selection.anchorNode !== null &&
+      node.contains(selection.anchorNode)
+
+    setMarks(
+      inside
+        ? {
+            block: blockAt(),
+            bold: stateOf('bold'),
+            italic: stateOf('italic'),
+            bullets: stateOf('insertUnorderedList'),
+            numbers: stateOf('insertOrderedList'),
+          }
+        : NOTHING,
+    )
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', read)
+
+    return () => document.removeEventListener('selectionchange', read)
+  }, [read])
+
   const said = (): void => {
     const node = box.current
 
@@ -114,96 +232,117 @@ export const RichTextInput = ({
     box.current?.focus()
     exec(command, argument)
     said()
+    read()
   }
 
-  const tools: readonly Tool[] = [
-    { label: 'B', title: 'Bold', run: apply('bold'), bold: true },
-    { label: 'I', title: 'Italic', run: apply('italic') },
-    { label: 'H2', title: 'Heading', run: apply('formatBlock', 'h2') },
-    { label: 'H3', title: 'Subheading', run: apply('formatBlock', 'h3') },
-    { label: '¶', title: 'Paragraph', run: apply('formatBlock', 'p') },
-    { label: '• —', title: 'Bulleted list', run: apply('insertUnorderedList') },
-    { label: '1.', title: 'Numbered list', run: apply('insertOrderedList') },
-    { label: '❝', title: 'Quote', run: apply('formatBlock', 'blockquote') },
-  ]
+  /**
+   * A heading is a toggle, the way the design draws it.
+   *
+   * Pressing H2 inside an H2 puts the line back to a paragraph. Without that there is no
+   * way out of a heading except deleting the line, and the strip has no ¶ of its own —
+   * the design does not draw one, and it does not need to.
+   */
+  const heading = (tag: 'h2' | 'h3') => apply('formatBlock', marks.block === tag ? 'p' : tag)
+
+  /** A picture from the library, as a tag the value carries like any other. */
+  const insert = (item: MediaItem) => {
+    setPicking(false)
+    box.current?.focus()
+    exec(
+      'insertHTML',
+      `<img src="${item.url}" alt="${(item.alt ?? '').replace(/"/g, '&quot;')}" />`,
+    )
+    said()
+  }
 
   return (
-    <div className="rounded-lg border border-line bg-surface focus-within:border-accent">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-1.5 py-1">
-        {tools.map((tool) => (
-          <button
-            key={tool.label}
-            type="button"
-            title={tool.title}
-            // The selection is lost the moment the button takes focus, and a command with
-            // nothing selected does nothing at all.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={tool.run}
-            className={`${BUTTON} ${tool.bold === true ? 'font-bold' : ''}`}
-          >
-            {tool.label}
-          </button>
-        ))}
+    <div className="overflow-hidden rounded-lg border border-line bg-surface focus-within:border-line-strong">
+      <div className="flex min-h-8 flex-wrap items-center gap-0.5 border-b border-line bg-canvas px-2 py-1.5 text-ink-strong">
+        <Tool title="Heading" active={marks.block === 'h2'} onClick={heading('h2')}>
+          <span className="text-base font-[650]">H2</span>
+        </Tool>
+        <Tool title="Subheading" active={marks.block === 'h3'} onClick={heading('h3')}>
+          <span className="text-base font-[650]">H3</span>
+        </Tool>
 
-        <span className="mx-1 h-4 w-px bg-line" />
+        <Separator />
 
-        <button
-          type="button"
+        <Tool title="Bold" active={marks.bold} onClick={apply('bold')}>
+          <Bold aria-hidden className="size-[18px]" />
+        </Tool>
+        <Tool title="Italic" active={marks.italic} onClick={apply('italic')}>
+          <Italic aria-hidden className="size-[18px]" />
+        </Tool>
+        <Tool title="Bulleted list" active={marks.bullets} onClick={apply('insertUnorderedList')}>
+          <List aria-hidden className="size-[18px]" />
+        </Tool>
+        <Tool title="Numbered list" active={marks.numbers} onClick={apply('insertOrderedList')}>
+          <ListOrdered aria-hidden className="size-[18px]" />
+        </Tool>
+        <Tool
+          title="Quote"
+          active={marks.block === 'blockquote'}
+          onClick={apply('formatBlock', marks.block === 'blockquote' ? 'p' : 'blockquote')}
+        >
+          <Quote aria-hidden className="size-[18px]" />
+        </Tool>
+
+        <Separator />
+
+        <Tool
           title="Link"
-          onMouseDown={(event) => {
+          active={linking}
+          onMouseDown={() => {
             // Kept before focus moves to the input: `createLink` needs a selection, and by
             // the time the address has been typed there is none left to give it.
-            event.preventDefault()
             const range = getSelection()?.getRangeAt(0)
 
             saved.current = range === undefined ? null : range.cloneRange()
           }}
           onClick={() => setLinking((was) => !was)}
-          className={BUTTON}
         >
-          🔗
-        </button>
-
-        <button
-          type="button"
-          title="Remove link"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={apply('unlink')}
-          className={BUTTON}
-        >
-          ⌫
-        </button>
+          <Link2 aria-hidden className="size-[18px]" />
+        </Tool>
+        <Tool title="Remove link" onClick={apply('unlink')}>
+          <Link2Off aria-hidden className="size-[18px]" />
+        </Tool>
+        <Tool title="Image" onClick={() => setPicking(true)}>
+          <ImageIcon aria-hidden className="size-[18px]" />
+        </Tool>
 
         {linking && (
-          <span className="flex items-center gap-1 pl-1">
-            <input
-              ref={address}
-              value={href}
-              placeholder="https://"
-              onChange={(event) => setHref(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter') return
-
-                event.preventDefault()
-
-                const range = saved.current
-
-                if (range !== null) {
-                  const selection = getSelection()
-
-                  selection?.removeAllRanges()
-                  selection?.addRange(range)
-                }
-
-                box.current?.focus()
-                exec('createLink', href)
-                said()
-                setHref('')
+          <input
+            ref={address}
+            value={href}
+            placeholder="https://"
+            onChange={(event) => setHref(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
                 setLinking(false)
-              }}
-              className="h-7 w-56 rounded border border-line px-2 text-sm text-ink focus:border-accent focus:outline-none"
-            />
-          </span>
+                return
+              }
+
+              if (event.key !== 'Enter') return
+
+              event.preventDefault()
+
+              const range = saved.current
+
+              if (range !== null) {
+                const selection = getSelection()
+
+                selection?.removeAllRanges()
+                selection?.addRange(range)
+              }
+
+              box.current?.focus()
+              exec('createLink', href)
+              said()
+              setHref('')
+              setLinking(false)
+            }}
+            className="ring-field ml-1.5 h-[30px] w-56 rounded-lg border border-line bg-surface px-2.5 text-base text-ink"
+          />
         )}
       </div>
 
@@ -221,6 +360,8 @@ export const RichTextInput = ({
         aria-multiline="true"
         onInput={said}
         onBlur={said}
+        onKeyUp={read}
+        onMouseUp={read}
         /**
          * A paste arrives as text and nothing else.
          *
@@ -235,8 +376,10 @@ export const RichTextInput = ({
           exec('insertText', event.clipboardData.getData('text/plain'))
           said()
         }}
-        className="prose-sm min-h-48 max-w-none px-3 py-2 text-sm text-ink focus:outline-none [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:text-ink-soft [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_li]:ml-4 [&_ol]:list-decimal [&_p]:my-2 [&_ul]:list-disc"
+        className="min-h-48 p-4 text-base leading-[1.65] text-ink focus:outline-none [&_a]:text-link [&_a]:underline [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:text-ink-soft [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-section [&_h2]:font-[650] [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-md [&_h3]:font-[650] [&_img]:my-3 [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-5 [&_ol]:my-2 [&_ol]:list-decimal [&_p]:my-3 [&_p]:first:mt-0 [&_ul]:my-2 [&_ul]:list-disc"
       />
+
+      {picking && <MediaPicker onClose={() => setPicking(false)} onPick={insert} />}
     </div>
   )
 }

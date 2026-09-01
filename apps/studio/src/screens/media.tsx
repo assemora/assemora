@@ -1,6 +1,7 @@
 /**
  * The media library (SPEC.md §63, §115).
  */
+import { Image as ImageIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import {
@@ -22,30 +23,30 @@ const Details = ({ item, onClose }: { item: MediaItem; onClose(): void }) => {
       {isImage(item) ? (
         <img src={item.url} alt={item.alt ?? ''} className="w-full rounded-lg border border-line" />
       ) : (
-        <div className="grid aspect-video place-items-center rounded-lg bg-surface-sunken text-sm text-ink-faint">
+        <div className="grid aspect-video place-items-center rounded-lg bg-surface-sunken text-base text-ink-faint">
           {item.mimeType}
         </div>
       )}
 
-      <dl className="space-y-2 text-sm">
+      <dl className="space-y-2 text-base">
         <div>
-          <dt className="text-xs text-ink-faint">Filename</dt>
+          <dt className="text-sm text-ink-faint">Filename</dt>
           <dd className="break-all">{item.filename}</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-faint">Type</dt>
+          <dt className="text-sm text-ink-faint">Type</dt>
           <dd>{item.mimeType}</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-faint">Size</dt>
+          <dt className="text-sm text-ink-faint">Size</dt>
           <dd>
             {readableSize(item.size)}
             {item.width !== null && ` · ${item.width}×${item.height}`}
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-faint">URL</dt>
-          <dd className="break-all font-mono text-xs">{item.url}</dd>
+          <dt className="text-sm text-ink-faint">URL</dt>
+          <dd className="break-all font-mono text-sm">{item.url}</dd>
         </div>
       </dl>
 
@@ -82,8 +83,9 @@ export const MediaLibrary = () => {
     <div className="flex min-h-dvh">
       <div className="min-w-0 flex-1">
         <Page
+          icon={<ImageIcon className="size-5" />}
           title="Media"
-          description={media.data === undefined ? undefined : `${media.data.total} files`}
+          count={media.data?.total}
           actions={
             <>
               <input
@@ -134,19 +136,19 @@ export const MediaLibrary = () => {
                       className="aspect-square w-full rounded object-cover"
                     />
                   ) : (
-                    <span className="grid aspect-square w-full place-items-center rounded bg-surface-sunken text-xs text-ink-faint">
+                    <span className="grid aspect-square w-full place-items-center rounded bg-surface-sunken text-sm text-ink-faint">
                       {item.mimeType.split('/')[1] ?? 'file'}
                     </span>
                   )}
-                  <span className="block truncate text-xs font-medium">{item.filename}</span>
-                  <span className="block text-xs text-ink-faint">{readableSize(item.size)}</span>
+                  <span className="block truncate text-sm font-medium">{item.filename}</span>
+                  <span className="block text-sm text-ink-faint">{readableSize(item.size)}</span>
                 </button>
               ))}
             </div>
           </Card>
 
           {media.data !== undefined && media.data.lastPage > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
+            <div className="mt-4 flex items-center justify-between text-base text-ink-soft">
               <span>
                 Page {media.data.page} of {media.data.lastPage}
               </span>

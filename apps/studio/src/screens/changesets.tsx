@@ -9,12 +9,13 @@
  * the commands run in *their* name, under their permissions.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
 import { api } from '../api/client.ts'
 import type { Paged } from '../api/pages.ts'
-import { Page } from '../app/shell.tsx'
 import { Badge, Button, Card, Empty, Failure, Spinner } from '../ui/index.tsx'
+import { Screen, ScreenBody, ScreenHead, ScreenTitle, Tabs } from '../ui/layout.tsx'
 
 type Change = {
   readonly entityType: string
@@ -46,6 +47,14 @@ const TONE = {
   conflicted: 'danger',
 } as const
 
+/** `''` is "all": the query drops the filter rather than sending an empty status. */
+const STATUSES = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'applied', label: 'Applied' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: '', label: 'All' },
+] as const
+
 const ACTOR = { agent: 'Agent', user: 'Person', api: 'API token' } as const
 
 const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
@@ -72,8 +81,8 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
       <Card className="flex max-h-[80dvh] w-full max-w-lg flex-col">
         <header className="border-b border-line px-5 py-4">
-          <h2 className="text-sm font-semibold">{proposal.data?.title}</h2>
-          <p className="mt-0.5 text-xs text-ink-faint">
+          <h2 className="text-base font-semibold">{proposal.data?.title}</h2>
+          <p className="mt-0.5 text-sm text-ink-faint">
             {proposal.data === undefined
               ? null
               : `${proposal.data.changes.length} ${
@@ -91,7 +100,7 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
 
           {outcome === 'conflicted' && (
             <Card className="mb-3 border-danger/30 bg-danger-soft p-3">
-              <p className="text-sm text-danger">
+              <p className="text-base text-danger">
                 Somebody changed one of these since it was proposed, so nothing was applied. Ask for
                 it again against what the page says now.
               </p>
@@ -100,7 +109,9 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
 
           {outcome === 'expired' && (
             <Card className="mb-3 bg-surface-sunken p-3">
-              <p className="text-sm text-ink-soft">This proposal expired before anybody decided.</p>
+              <p className="text-base text-ink-soft">
+                This proposal expired before anybody decided.
+              </p>
             </Card>
           )}
 
@@ -111,8 +122,8 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
               // lines — so the position is the only stable identity there is.
               // biome-ignore lint/suspicious/noArrayIndexKey: a stored diff never reorders
               <li key={index} className="space-y-0.5">
-                <p className="text-sm font-medium capitalize">{change.entityType}</p>
-                <p className="font-mono text-xs text-ink-soft">{change.summary}</p>
+                <p className="text-base font-medium capitalize">{change.entityType}</p>
+                <p className="font-mono text-sm text-ink-soft">{change.summary}</p>
               </li>
             ))}
           </ol>
@@ -158,64 +169,57 @@ export const ChangeSets = () => {
   })
 
   return (
-    <Page
-      title="Proposals"
-      description="What agents have asked for. Nothing changes until you apply it"
-    >
-      <div className="mb-4 flex gap-1">
-        {['pending', 'applied', 'rejected', ''].map((option) => (
-          <button
-            key={option || 'all'}
-            type="button"
-            className={[
-              'rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition',
-              status === option
-                ? 'bg-accent-soft text-accent'
-                : 'text-ink-soft hover:bg-surface-sunken',
-            ].join(' ')}
-            onClick={() => setStatus(option)}
-          >
-            {option || 'all'}
-          </button>
-        ))}
-      </div>
+    <Screen>
+      <ScreenHead>
+        <ScreenTitle
+          icon={<Sparkles className="size-5" />}
+          title="Proposals"
+          description="What agents have asked for. Nothing changes until you apply it"
+          count={listing.data?.total}
+        />
+        <Tabs value={status} options={STATUSES} onChange={setStatus} label="Proposal statuses" />
+      </ScreenHead>
 
-      {listing.isError && <Failure error={listing.error} />}
+      <ScreenBody className="pt-6 pb-10">
+        {listing.isError && <Failure error={listing.error} />}
 
-      <Card className="overflow-hidden">
-        {listing.isPending && (
-          <div className="p-6">
-            <Spinner />
-          </div>
-        )}
-
-        {listing.data?.data.length === 0 && (
-          <Empty title="Nothing proposed">
-            An agent connected over MCP proposes changes here, and they wait for you.
-          </Empty>
-        )}
-
-        {listing.data?.data.map((proposal) => (
-          <button
-            key={proposal.id}
-            type="button"
-            className="flex w-full items-center gap-3 border-b border-line-soft px-4 py-3 text-left last:border-0 hover:bg-surface-sunken"
-            onClick={() => setReviewing(proposal.id)}
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{proposal.title}</p>
-              <p className="text-xs text-ink-faint">
-                {proposal.changes} {proposal.changes === 1 ? 'change' : 'changes'} ·{' '}
-                {ACTOR[proposal.actorType as keyof typeof ACTOR] ?? 'somebody'} ·{' '}
-                {new Date(proposal.createdAt).toLocaleString()}
-              </p>
+        <Card className="overflow-hidden">
+          {listing.isPending && (
+            <div className="p-6">
+              <Spinner />
             </div>
-            <Badge tone={TONE[proposal.status]}>{proposal.status}</Badge>
-          </button>
-        ))}
-      </Card>
+          )}
 
-      {reviewing !== undefined && <Review id={reviewing} onClose={() => setReviewing(undefined)} />}
-    </Page>
+          {listing.data?.data.length === 0 && (
+            <Empty title="Nothing proposed">
+              An agent connected over MCP proposes changes here, and they wait for you.
+            </Empty>
+          )}
+
+          {listing.data?.data.map((proposal) => (
+            <button
+              key={proposal.id}
+              type="button"
+              className="flex w-full items-center gap-3 border-b border-hairline px-4 py-3 text-left last:border-0 hover:bg-surface-sunken"
+              onClick={() => setReviewing(proposal.id)}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base font-medium">{proposal.title}</p>
+                <p className="text-sm text-ink-faint">
+                  {proposal.changes} {proposal.changes === 1 ? 'change' : 'changes'} ·{' '}
+                  {ACTOR[proposal.actorType as keyof typeof ACTOR] ?? 'somebody'} ·{' '}
+                  {new Date(proposal.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <Badge tone={TONE[proposal.status]}>{proposal.status}</Badge>
+            </button>
+          ))}
+        </Card>
+
+        {reviewing !== undefined && (
+          <Review id={reviewing} onClose={() => setReviewing(undefined)} />
+        )}
+      </ScreenBody>
+    </Screen>
   )
 }

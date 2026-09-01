@@ -9,9 +9,10 @@
  * deepest level a field can no longer be a group or a repeater, because that is where
  * the command stops accepting one.
  */
+import { ChevronRight, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import type { FieldShapeSpec } from '../api/collections.ts'
-import { Badge, Button, Field, Input, Select } from '../ui/index.tsx'
+import { Badge, Button, Field, Input, join, Select } from '../ui/index.tsx'
 import { CONTAINERS, groupedKinds, kindsAt, needOf } from './contract.ts'
 import {
   blankField,
@@ -32,7 +33,7 @@ const Flag = ({
   checked: boolean
   onChange(checked: boolean): void
 }) => (
-  <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+  <label className="flex items-center gap-1.5 text-sm text-ink-soft">
     <input
       type="checkbox"
       className="size-3.5 accent-accent"
@@ -76,7 +77,7 @@ const Words = ({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        {values.length === 0 && <span className="text-xs text-ink-faint">Nothing yet</span>}
+        {values.length === 0 && <span className="text-sm text-ink-faint">Nothing yet</span>}
         {values.map((word) =>
           locked.includes(word) ? (
             <span key={word} title="An entry may hold this, so it cannot be taken away">
@@ -282,7 +283,7 @@ const Inside = ({
   if (field.kind === 'object') {
     return (
       <section className="space-y-1 rounded-lg border border-line bg-surface-sunken/50">
-        <p className="px-3 pt-2.5 text-xs font-medium text-ink-soft">
+        <p className="px-3 pt-2.5 text-sm font-medium text-ink-soft">
           The fields in this group{field.name === '' ? '' : ` (${field.name})`}
         </p>
 
@@ -319,7 +320,7 @@ const Inside = ({
   if (field.kind === 'array' && field.element !== undefined) {
     return (
       <section className="space-y-1 rounded-lg border border-line bg-surface-sunken/50">
-        <p className="px-3 pt-2.5 text-xs font-medium text-ink-soft">Each item is</p>
+        <p className="px-3 pt-2.5 text-sm font-medium text-ink-soft">Each item is</p>
 
         {/* No name, and nothing to reorder: an element is one field, and the value it
             repeats is keyed by position rather than by anything it could be called. */}
@@ -370,180 +371,238 @@ export const FieldRow = ({
   const change = (patch: FieldChange) => setting.onChange(field.key, patch)
   const held = field.name === '' ? 'this field' : field.name
 
+  /*
+   * A field of the collection itself is an accordion (`design_handoff_studio_redesign`
+   * §3): eight fields laid out flat is a wall of thirty controls, and the one being
+   * worked on is the only one anybody is reading. A field inside a group stays open —
+   * it is already inside a disclosure, and a second one is a door behind a door.
+   *
+   * Open by default while it has no name, which is exactly the state a field is in the
+   * moment it is added.
+   */
+  const [open, setOpen] = useState(field.name === '')
+  const expanded = nested || open
+
+  /* What the collapsed row has to say: what is missing, in the palette of a warning. */
+  const missing =
+    issues.length > 0 ? (field.name === '' ? 'needs a name' : 'needs options') : undefined
+
+  const flags = [
+    field.required ? 'required' : undefined,
+    field.searchable ? 'searchable' : undefined,
+    field.filterable ? 'filterable' : undefined,
+  ].filter(Boolean)
+
   return (
     <div
       className={
         nested
-          ? 'space-y-3 border-t border-line-soft px-3 py-3 first-of-type:border-0'
-          : 'space-y-3 border-b border-line-soft p-4 last:border-0'
+          ? 'space-y-3 border-t border-hairline px-3 py-3 first-of-type:border-0'
+          : 'border-b border-hairline last:border-0'
       }
     >
-      <div className="flex flex-wrap items-end gap-3">
-        {count > 1 && (
-          <div className="flex flex-col gap-0.5 pb-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 px-1.5"
-              disabled={index === 0}
-              // An arrow is not a name: what a screen reader announces has to say which
-              // field is moving, and there are as many of these as there are rows.
-              aria-label={`Move ${held} up`}
-              title="Move up"
-              onClick={() => setting.onMove(field.key, -1)}
-            >
-              ↑
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 px-1.5"
-              disabled={index === count - 1}
-              aria-label={`Move ${held} down`}
-              title="Move down"
-              onClick={() => setting.onMove(field.key, 1)}
-            >
-              ↓
-            </Button>
-          </div>
-        )}
+      {!nested && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((showing) => !showing)}
+          className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left hover:bg-surface-sunken"
+        >
+          <ChevronRight
+            aria-hidden
+            className={join(
+              'size-4 shrink-0 text-ink-subdued transition-transform duration-[180ms]',
+              open && 'rotate-90',
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate font-mono text-base">
+            {field.name === '' ? <span className="text-ink-faint">unnamed</span> : field.name}
+          </span>
+          <Badge tone="quiet">{field.kind}</Badge>
+          {flags.length > 0 && (
+            <span className="shrink-0 text-sm text-ink-subdued">{flags.join(' · ')}</span>
+          )}
+          {missing !== undefined && (
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-wash px-2.5 py-0.5 text-sm font-semibold text-warning-ink">
+              <TriangleAlert aria-hidden className="size-3.5" />
+              {missing}
+            </span>
+          )}
+        </button>
+      )}
 
-        {named && (
-          <div className="min-w-40 flex-1">
-            <Field
-              label="Name"
-              required
-              {...(locks.name
-                ? { help: 'A field’s name is where its values are stored, so it never changes' }
-                : {})}
-              {...(issues.length === 0 ? {} : { errors: issues })}
-            >
-              <Input
-                className={`font-mono text-xs${locks.name ? ' bg-surface-sunken' : ''}`}
-                placeholder="author"
-                readOnly={locks.name}
-                value={field.name}
-                onChange={(event) => change({ name: event.target.value })}
-              />
-            </Field>
-          </div>
-        )}
+      {expanded && (
+        <div className={nested ? 'space-y-3' : 'space-y-3 px-4 pb-4'}>
+          <div className="flex flex-wrap items-end gap-3">
+            {count > 1 && (
+              <div className="flex flex-col gap-0.5 pb-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1.5"
+                  disabled={index === 0}
+                  // An arrow is not a name: what a screen reader announces has to say which
+                  // field is moving, and there are as many of these as there are rows.
+                  aria-label={`Move ${held} up`}
+                  title="Move up"
+                  onClick={() => setting.onMove(field.key, -1)}
+                >
+                  ↑
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1.5"
+                  disabled={index === count - 1}
+                  aria-label={`Move ${held} down`}
+                  title="Move down"
+                  onClick={() => setting.onMove(field.key, 1)}
+                >
+                  ↓
+                </Button>
+              </div>
+            )}
 
-        <div className="min-w-40 flex-1">
-          <Field
-            label="Kind"
-            required
-            {...(locks.kind ? { help: 'Fixed: entries already hold values of this kind' } : {})}
-            {...(named || issues.length === 0 ? {} : { errors: issues })}
-          >
-            <Select
-              disabled={locks.kind}
-              value={field.kind}
-              onChange={(event) => change(shaped(field, event.target.value, setting.newKey))}
-            >
-              {/* A stored kind a plugin used to provide is still what the values are,
+            {named && (
+              <div className="min-w-40 flex-1">
+                <Field
+                  label="Name"
+                  required
+                  {...(locks.name
+                    ? { help: 'A field’s name is where its values are stored, so it never changes' }
+                    : {})}
+                  {...(issues.length === 0 ? {} : { errors: issues })}
+                >
+                  <Input
+                    className={`font-mono text-sm${locks.name ? ' bg-surface-sunken' : ''}`}
+                    placeholder="author"
+                    readOnly={locks.name}
+                    value={field.name}
+                    onChange={(event) => change({ name: event.target.value })}
+                  />
+                </Field>
+              </div>
+            )}
+
+            <div className="min-w-40 flex-1">
+              <Field
+                label="Kind"
+                required
+                {...(locks.kind ? { help: 'Fixed: entries already hold values of this kind' } : {})}
+                {...(named || issues.length === 0 ? {} : { errors: issues })}
+              >
+                <Select
+                  disabled={locks.kind}
+                  value={field.kind}
+                  onChange={(event) => change(shaped(field, event.target.value, setting.newKey))}
+                >
+                  {/* A stored kind a plugin used to provide is still what the values are,
                   so it is offered even when the application no longer declares it — and
                   so is a group at a depth this form would no longer offer one at. */}
-              {kinds.includes(field.kind) ? null : <option value={field.kind}>{field.kind}</option>}
-              {groupedKinds(kinds).map((group) => (
-                <optgroup key={group.label} label={group.label}>
-                  {group.kinds.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {kind}
-                    </option>
+                  {kinds.includes(field.kind) ? null : (
+                    <option value={field.kind}>{field.kind}</option>
+                  )}
+                  {groupedKinds(kinds).map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.kinds.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
-                </optgroup>
-              ))}
-            </Select>
-          </Field>
-        </div>
+                </Select>
+              </Field>
+            </div>
 
-        <div className="min-w-40 flex-1">
-          <Field label="Label" help="What an editor sees. Left empty, the name is used">
-            <Input
-              placeholder={field.name === '' ? 'Author' : undefined}
-              value={field.label}
-              onChange={(event) => change({ label: event.target.value })}
+            <div className="min-w-40 flex-1">
+              <Field label="Label" help="What an editor sees. Left empty, the name is used">
+                <Input
+                  placeholder={field.name === '' ? 'Author' : undefined}
+                  value={field.label}
+                  onChange={(event) => change({ label: event.target.value })}
+                />
+              </Field>
+            </div>
+
+            {named && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mb-1 text-danger"
+                disabled={locks.kept}
+                aria-label={`Remove ${held}`}
+                title={
+                  locks.kept
+                    ? 'A field inside a group cannot be removed while the collection holds entries: the next save of an entry would delete the value rather than leave it behind'
+                    : 'Remove this field'
+                }
+                onClick={() => setting.onRemove(field.key)}
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Flag
+              label="required"
+              checked={field.required}
+              onChange={(required) => change({ required })}
             />
-          </Field>
-        </div>
 
-        {named && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mb-1 text-danger"
-            disabled={locks.kept}
-            aria-label={`Remove ${held}`}
-            title={
-              locks.kept
-                ? 'A field inside a group cannot be removed while the collection holds entries: the next save of an entry would delete the value rather than leave it behind'
-                : 'Remove this field'
-            }
-            onClick={() => setting.onRemove(field.key)}
-          >
-            Remove
-          </Button>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Flag
-          label="required"
-          checked={field.required}
-          onChange={(required) => change({ required })}
-        />
-
-        {/* Only at the top. Search and filtering address a resource field by name and
+            {/* Only at the top. Search and filtering address a resource field by name and
             never reach inside a value, so `object()` and `array()` refuse both — a
             checkbox for one here would be a flag the command turns into a refusal.
             No "sortable" at any depth: a collection's entries are ordered by the entry's
             own columns and by nothing else, because a field's value lives inside one
             JSONB document (ADR-0012). `src/collections/draft.ts` carries the whole
             reason; the list screen leaves the same control out for the same one. */}
-        {!nested && (
-          <>
-            <Flag
-              label="searchable"
-              checked={field.searchable}
-              onChange={(searchable) => change({ searchable })}
-            />
-            <Flag
-              label="filterable"
-              checked={field.filterable}
-              onChange={(filterable) => change({ filterable })}
-            />
-          </>
-        )}
+            {!nested && (
+              <>
+                <Flag
+                  label="searchable"
+                  checked={field.searchable}
+                  onChange={(searchable) => change({ searchable })}
+                />
+                <Flag
+                  label="filterable"
+                  checked={field.filterable}
+                  onChange={(filterable) => change({ filterable })}
+                />
+              </>
+            )}
 
-        {field.kind === 'table' && (
-          <span className="text-xs text-ink-faint">
-            An entry chooses this table’s columns, so there is nothing to declare here
-          </span>
-        )}
+            {field.kind === 'table' && (
+              <span className="text-sm text-ink-faint">
+                An entry chooses this table’s columns, so there is nothing to declare here
+              </span>
+            )}
 
-        {/* Once per list rather than once per row: the kind picker is shorter here than
+            {/* Once per list rather than once per row: the kind picker is shorter here than
             it was one level up, and that is worth explaining exactly once. */}
-        {index === 0 &&
-          depth >= setting.maxDepth &&
-          CONTAINERS.some((kind) => setting.kinds.includes(kind)) && (
-            <span className="text-xs text-ink-faint">
-              {setting.maxDepth} levels is as deep as a definition goes, so a field here holds one
-              value
-            </span>
-          )}
-      </div>
+            {index === 0 &&
+              depth >= setting.maxDepth &&
+              CONTAINERS.some((kind) => setting.kinds.includes(kind)) && (
+                <span className="text-sm text-ink-faint">
+                  {setting.maxDepth} levels is as deep as a definition goes, so a field here holds
+                  one value
+                </span>
+              )}
+          </div>
 
-      <Extra
-        field={field}
-        locked={locks.options}
-        frozen={locks.kind}
-        siblings={siblings}
-        resources={setting.resources}
-        onChange={change}
-      />
+          <Extra
+            field={field}
+            locked={locks.options}
+            frozen={locks.kind}
+            siblings={siblings}
+            resources={setting.resources}
+            onChange={change}
+          />
 
-      <Inside field={field} before={before} depth={depth} setting={setting} />
+          <Inside field={field} before={before} depth={depth} setting={setting} />
+        </div>
+      )}
     </div>
   )
 }

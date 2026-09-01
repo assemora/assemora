@@ -15,6 +15,7 @@
  * should learn which is which.
  */
 import { useBlocker } from '@tanstack/react-router'
+import { Palette } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
 import { useIntrospection } from '../api/introspection.ts'
@@ -38,6 +39,7 @@ import {
   TYPOGRAPHY,
 } from '../design/tokens.ts'
 import { Badge, Button, Card, Empty, Failure, Field, Input, Spinner } from '../ui/index.tsx'
+import { SaveBar, Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 
 const written = (value: TokenValue): string =>
   Array.isArray(value) ? value.join(', ') : String(value)
@@ -75,19 +77,19 @@ const Row = ({ draft, group, name }: { draft: ThemeDraft; group: TokenGroup; nam
   return (
     <div className="grid grid-cols-[8rem_minmax(0,1fr)_5rem] items-start gap-3 py-2">
       <div className="space-y-1 pt-2">
-        <code className="block break-all font-mono text-xs">{name}</code>
+        <code className="block break-all font-mono text-sm">{name}</code>
         {staged ? <Badge tone="accent">unsaved</Badge> : overridden && <Badge>changed</Badge>}
       </div>
 
       <div className="space-y-1">
         {value === undefined && staged ? (
           // Staged for removal: there is nothing to edit, only something to take back.
-          <p className="py-2 text-sm text-ink-faint">{describe(draft, key)}</p>
+          <p className="py-2 text-base text-ink-faint">{describe(draft, key)}</p>
         ) : (
           <TokenInput kind={group.kind} value={value} onChange={(next) => draft.set(key, next)} />
         )}
         {errors?.map((error) => (
-          <p key={error} className="text-xs text-danger">
+          <p key={error} className="text-sm text-danger">
             {error}
           </p>
         ))}
@@ -136,13 +138,13 @@ const AddToken = ({
     (taken.includes(trimmed) ? 'The theme already has a token by that name' : undefined)
 
   return (
-    <div className="flex items-end gap-2 border-t border-line-soft pt-3">
+    <div className="flex items-end gap-2 border-t border-hairline pt-3">
       <Field label="New token" {...(problem === undefined ? {} : { errors: [problem] })}>
         <Input
           value={name}
           placeholder="brand-accent"
           spellCheck={false}
-          className="font-mono text-xs"
+          className="font-mono text-sm"
           onChange={(event) => setName(event.target.value)}
         />
       </Field>
@@ -191,18 +193,18 @@ const Group = ({
           <Badge tone="accent">fixed names</Badge>
         )}
       </div>
-      <p className="pb-2 text-sm text-ink-soft">
+      <p className="pb-2 text-base text-ink-soft">
         {group.help}
         {group.keys !== undefined && ' — a block names these, so none can be added or removed'}
       </p>
 
-      <div className="divide-y divide-line-soft">
+      <div className="divide-y divide-hairline">
         {names.map((name) => (
           <Row key={name} draft={draft} group={group} name={name} />
         ))}
       </div>
 
-      {names.length === 0 && <p className="py-3 text-sm text-ink-faint">Nothing here yet.</p>}
+      {names.length === 0 && <p className="py-3 text-base text-ink-faint">Nothing here yet.</p>}
 
       {group.keys === undefined && <AddToken draft={draft} group={group} taken={names} />}
     </Card>
@@ -210,18 +212,18 @@ const Group = ({
 }
 
 const Pending = ({ draft }: { draft: ThemeDraft }) => (
-  <Card className="space-y-2 border-accent/30 bg-accent-soft p-4">
-    <p className="text-sm font-medium text-accent">
+  <Card className="space-y-2 border-accent/30 bg-accent-wash p-4">
+    <p className="text-base font-medium text-accent-ink">
       {draft.edits.size} unsaved {draft.edits.size === 1 ? 'change' : 'changes'}
     </p>
     <ul className="space-y-1">
       {[...draft.edits.keys()].map((key) => (
-        <li key={key} className="flex items-baseline gap-2 text-sm">
-          <code className="font-mono text-xs">{key}</code>
+        <li key={key} className="flex items-baseline gap-2 text-base">
+          <code className="font-mono text-sm">{key}</code>
           <span className="text-ink-soft">→ {describe(draft, key)}</span>
           <button
             type="button"
-            className="text-xs text-ink-faint underline transition hover:text-ink"
+            className="text-sm text-ink-faint underline transition hover:text-ink"
             onClick={() => draft.revert(key)}
           >
             undo
@@ -239,14 +241,14 @@ const Pending = ({ draft }: { draft: ThemeDraft }) => (
  * about the application rather than a 404 somebody has to interpret.
  */
 const NotInstalled = () => (
-  <Page title="Design">
+  <Page icon={<Palette className="size-5" />} title="Design">
     <Card className="p-6">
       <Empty title="This application has no theme">
         <p>
           Add <code className="font-mono">theme()</code> to its modules and the five groups of
           tokens appear here.
         </p>
-        <pre className="mt-3 rounded-lg bg-surface-sunken p-3 text-left font-mono text-xs">
+        <pre className="mt-3 rounded-lg bg-surface-sunken p-3 text-left font-mono text-sm">
           {`import { theme } from '@assemora/theme'\n\nexport default createApplication({ modules: [theme(), pages()] })`}
         </pre>
       </Empty>
@@ -280,7 +282,9 @@ export const Design = () => {
 
   if (draft.state === undefined) {
     return (
-      <Page title="Design">{draft.isPending ? <Spinner /> : <Failure error={draft.error} />}</Page>
+      <Page icon={<Palette className="size-5" />} title="Design">
+        {draft.isPending ? <Spinner /> : <Failure error={draft.error} />}
+      </Page>
     )
   }
 
@@ -301,102 +305,119 @@ export const Design = () => {
     void draft.save()
   }
 
+  const changed = [...draft.edits.keys()]
+
   return (
-    <Page
-      title="Design"
-      description="The tokens every page is drawn from. A block picks a name; this decides what it looks like"
-      actions={
-        <>
-          {draft.state.version === 0 ? (
-            <Badge>never edited</Badge>
-          ) : (
-            <Badge>v{draft.state.version}</Badge>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={draft.edits.size === 0 || draft.busy}
-            onClick={draft.discard}
-          >
-            Discard
-          </Button>
-          <Button
-            size="sm"
-            disabled={draft.edits.size === 0 || draft.busy || !editable}
-            onClick={save}
-          >
-            {draft.busy ? 'Saving…' : 'Save'}
-          </Button>
-        </>
-      }
-    >
-      {draft.failure !== undefined && (
-        <Card className="mb-4 flex items-start gap-3 border-danger/30 bg-danger-soft p-4">
-          <div className="flex-1 space-y-1">
-            <p className="text-sm font-medium text-danger">
-              {draft.conflict
-                ? 'Somebody else has changed the theme since this screen read it. Reloading takes their version and drops the changes listed below.'
-                : draft.failure}
-            </p>
-            {Object.entries(draft.fields).map(([field, messages]) => (
-              <p key={field} className="text-xs text-danger">
-                <code className="font-mono">{field}</code> — {messages.join(', ')}
+    <Screen>
+      <ScreenHead>
+        <ScreenTitle
+          icon={<Palette className="size-5" />}
+          title="Design"
+          description="The tokens every page is drawn from. A block picks a name; this decides what it looks like"
+          badge={
+            draft.state.version === 0 ? (
+              <Badge>never edited</Badge>
+            ) : (
+              <Badge>v{draft.state.version}</Badge>
+            )
+          }
+        />
+      </ScreenHead>
+
+      <ScreenBody className="pt-6 pb-10">
+        {draft.failure !== undefined && (
+          <Card className="mb-4 flex items-start gap-3 border-danger/30 bg-danger-soft p-4">
+            <div className="flex-1 space-y-1">
+              <p className="text-base font-medium text-danger">
+                {draft.conflict
+                  ? 'Somebody else has changed the theme since this screen read it. Reloading takes their version and drops the changes listed below.'
+                  : draft.failure}
               </p>
-            ))}
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={draft.conflict ? draft.reload : draft.dismiss}
-          >
-            {draft.conflict ? 'Reload' : 'Dismiss'}
-          </Button>
-        </Card>
-      )}
-
-      {!editable && (
-        <Card className="mb-4 p-4">
-          <p className="text-sm text-ink-soft">
-            You can read the theme but not change it. Editing needs the{' '}
-            <code className="font-mono">theme.update</code> permission.
-          </p>
-        </Card>
-      )}
-
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <fieldset disabled={!editable} className="min-w-0 space-y-4">
-          {draft.edits.size > 0 && <Pending draft={draft} />}
-
-          <Group draft={draft} group={COLORS} />
-
-          <div className="space-y-4 pt-2">
-            <div className="px-1">
-              <h2 className="font-medium">Typography</h2>
-              <p className="text-sm text-ink-soft">
-                Four maps rather than one, so every entry holds a single kind of value and is
-                checked as that kind
-              </p>
+              {Object.entries(draft.fields).map(([field, messages]) => (
+                <p key={field} className="text-sm text-danger">
+                  <code className="font-mono">{field}</code> — {messages.join(', ')}
+                </p>
+              ))}
             </div>
-            {TYPOGRAPHY.map((group) => (
-              <Group key={group.title} draft={draft} group={group} nested />
-            ))}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={draft.conflict ? draft.reload : draft.dismiss}
+            >
+              {draft.conflict ? 'Reload' : 'Dismiss'}
+            </Button>
+          </Card>
+        )}
+
+        {!editable && (
+          <Card className="mb-4 p-4">
+            <p className="text-base text-ink-soft">
+              You can read the theme but not change it. Editing needs the{' '}
+              <code className="font-mono">theme.update</code> permission.
+            </p>
+          </Card>
+        )}
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <fieldset disabled={!editable} className="min-w-0 space-y-4">
+            {draft.edits.size > 0 && <Pending draft={draft} />}
+
+            <Group draft={draft} group={COLORS} />
+
+            <div className="space-y-4 pt-2">
+              <div className="px-1">
+                <h2 className="font-medium">Typography</h2>
+                <p className="text-base text-ink-soft">
+                  Four maps rather than one, so every entry holds a single kind of value and is
+                  checked as that kind
+                </p>
+              </div>
+              {TYPOGRAPHY.map((group) => (
+                <Group key={group.title} draft={draft} group={group} nested />
+              ))}
+            </div>
+
+            <Group draft={draft} group={SPACING} />
+            <Group draft={draft} group={RADIUS} />
+            <Group draft={draft} group={CONTAINER} />
+          </fieldset>
+
+          <div className="sticky top-6 space-y-2">
+            <Preview tokens={draft.tokens} cssVersion={draft.state.cssVersion} />
+            <p className="text-sm text-ink-faint">
+              Drawn from the tokens above, under the names the generated stylesheet declares —{' '}
+              {GROUPS.length} groups, {draft.tokens.size} tokens.
+              {draft.updatedAt !== null &&
+                ` Last saved ${new Date(draft.updatedAt).toLocaleString()}.`}
+            </p>
           </div>
-
-          <Group draft={draft} group={SPACING} />
-          <Group draft={draft} group={RADIUS} />
-          <Group draft={draft} group={CONTAINER} />
-        </fieldset>
-
-        <div className="sticky top-6 space-y-2">
-          <Preview tokens={draft.tokens} cssVersion={draft.state.cssVersion} />
-          <p className="text-xs text-ink-faint">
-            Drawn from the tokens above, under the names the generated stylesheet declares —{' '}
-            {GROUPS.length} groups, {draft.tokens.size} tokens.
-            {draft.updatedAt !== null &&
-              ` Last saved ${new Date(draft.updatedAt).toLocaleString()}.`}
-          </p>
         </div>
-      </div>
-    </Page>
+      </ScreenBody>
+
+      {/* The theme is one form: nothing is written until this is pressed, and until then
+          the bar names the tokens that are waiting. `theme.update` writes conditionally
+          on the version it read, so a save that lost a race is a 409 rather than an
+          overwrite (SPEC.md §66). */}
+      <SaveBar
+        dirty={changed.length > 0}
+        summary={
+          changed.length === 0
+            ? 'No unsaved changes'
+            : `${changed.length} unsaved ${changed.length === 1 ? 'token' : 'tokens'}`
+        }
+        {...(changed.length > 0 ? { detail: changed.join(' \u00b7 ') } : {})}
+      >
+        <Button
+          variant="secondary"
+          disabled={changed.length === 0 || draft.busy}
+          onClick={draft.discard}
+        >
+          Discard
+        </Button>
+        <Button busy={draft.busy} disabled={changed.length === 0 || !editable} onClick={save}>
+          Save changes
+        </Button>
+      </SaveBar>
+    </Screen>
   )
 }

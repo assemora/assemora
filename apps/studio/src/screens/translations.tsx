@@ -134,8 +134,8 @@ export const Translations = ({
               onClick={() => void goTo(row.id)}
               className={
                 here
-                  ? 'rounded-lg bg-accent-soft px-2.5 py-1 text-sm font-medium text-accent'
-                  : 'rounded-lg px-2.5 py-1 text-sm text-ink-soft transition hover:bg-surface-sunken'
+                  ? 'rounded-lg bg-accent-wash px-2.5 py-1 text-base font-medium text-accent-ink'
+                  : 'rounded-lg px-2.5 py-1 text-base text-ink-soft transition hover:bg-surface-sunken'
               }
             >
               {code}
@@ -143,7 +143,7 @@ export const Translations = ({
                   null on a model that stamps no time, and "I cannot tell" must not be
                   printed as "current". */}
               {row.stale === true && (
-                <span className="ml-1.5 text-xs font-semibold text-danger">out of date</span>
+                <span className="ml-1.5 text-sm font-semibold text-danger">out of date</span>
               )}
             </button>
           )
@@ -151,7 +151,7 @@ export const Translations = ({
       </div>
 
       {isFallback && (
-        <div className="rounded-lg border border-line bg-surface-sunken px-4 py-3 text-sm">
+        <div className="rounded-lg border border-line bg-surface-sunken px-4 py-3 text-base">
           <p className="font-medium">
             This is the {showing} original, not a {locale} translation.
           </p>
@@ -159,7 +159,7 @@ export const Translations = ({
             Editing here changes what every language falls back to. To write it in {locale},
             translate it — the translation starts as a copy of this.
           </p>
-          <p className="mt-2 text-xs text-ink-faint">
+          <p className="mt-2 text-sm text-ink-faint">
             {translations.length} of {locales.length} languages written
           </p>
         </div>

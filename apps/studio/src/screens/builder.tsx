@@ -7,6 +7,16 @@
  */
 import type { BlockNode } from '@assemora/schema'
 import { useNavigate, useParams } from '@tanstack/react-router'
+import {
+  ArrowLeft,
+  ExternalLink,
+  History as HistoryIcon,
+  Monitor,
+  Redo2,
+  Smartphone,
+  Tablet,
+  Undo2,
+} from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import { accepts, blockByName, useIntrospection } from '../api/introspection.ts'
@@ -24,7 +34,8 @@ import {
   stepFrom,
   useBuilder,
 } from '../builder/state.ts'
-import { Badge, Button, Failure, Spinner } from '../ui/index.tsx'
+import { Banner, Button, Spinner } from '../ui/index.tsx'
+import { Logo } from '../ui/logo.tsx'
 import { Translations } from './translations.tsx'
 
 export const Builder = () => {
@@ -148,7 +159,7 @@ export const Builder = () => {
 
   if (page.isPending || introspection.isPending) {
     return (
-      <div className="grid h-dvh place-items-center">
+      <div className="grid h-dvh place-items-center bg-canvas">
         <Spinner />
       </div>
     )
@@ -156,8 +167,19 @@ export const Builder = () => {
 
   if (page.isError) {
     return (
-      <div className="p-8">
-        <Failure error={page.error} />
+      <div className="grid h-dvh place-items-center bg-canvas p-8">
+        <div className="w-full max-w-md">
+          <Banner tone="danger" title="This page could not be opened">
+            {page.error instanceof Error ? page.error.message : 'The application did not answer.'}
+          </Banner>
+          <Button
+            variant="secondary"
+            className="mt-4"
+            onClick={() => void navigate({ to: '/pages' })}
+          >
+            Back to Pages
+          </Button>
+        </div>
       </div>
     )
   }
@@ -173,128 +195,185 @@ export const Builder = () => {
   const above = node === undefined ? undefined : blockAbove(state.tree, node.id)
   const can = allowedMoves(state.tree, node, roomIn)
 
-  return (
-    <div className="flex h-dvh flex-col">
-      <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
-        <Button variant="ghost" size="sm" onClick={() => void navigate({ to: '/pages' })}>
-          ← Pages
-        </Button>
+  const VIEWPORT_ICONS = {
+    desktop: <Monitor className="size-4" />,
+    tablet: <Tablet className="size-4" />,
+    mobile: <Smartphone className="size-4" />,
+  } as const
 
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{page.data?.title}</p>
-          <p className="truncate text-xs text-ink-faint">
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
+      {/*
+       * The editor's own chrome, 52px and chrome-coloured, in place of Studio's — the
+       * builder is a mode rather than a screen, so it takes the whole window and puts
+       * what a page needs where the shell's bar would have been.
+       */}
+      <header className="flex h-13 shrink-0 items-center gap-2 bg-chrome px-3 text-chrome-ink">
+        <button
+          type="button"
+          onClick={() => void navigate({ to: '/pages' })}
+          className="flex h-8 items-center gap-2 rounded-lg px-2 text-base opacity-80 hover:bg-white/10 hover:opacity-100"
+        >
+          <ArrowLeft aria-hidden className="size-[18px]" />
+          Pages
+        </button>
+
+        <span aria-hidden className="px-1 opacity-30">
+          /
+        </span>
+        <Logo size={20} />
+
+        <div className="ml-1 flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-base font-[550]">{page.data?.title}</span>
+          <span className="shrink-0 font-mono text-xs opacity-55">
             /{page.data?.slug} · v{state.version}
-          </p>
+          </span>
         </div>
 
-        {state.hasUnpublishedChanges && <Badge tone="accent">unpublished changes</Badge>}
+        {state.hasUnpublishedChanges && (
+          <span className="ml-2 shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-sm font-semibold">
+            unpublished changes
+          </span>
+        )}
 
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            aria-label="Undo (⌘Z)"
             title="Undo (⌘Z)"
             disabled={state.busy}
             onClick={() => void rewind('undo')}
+            className="grid size-8 place-items-center rounded-lg opacity-70 hover:bg-white/10 hover:opacity-100 disabled:opacity-30"
           >
-            Undo
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+            <Undo2 aria-hidden className="size-[18px]" />
+          </button>
+          <button
+            type="button"
+            aria-label="Redo (⌘⇧Z)"
             title="Redo (⌘⇧Z)"
             disabled={state.busy}
             onClick={() => void rewind('redo')}
+            className="grid size-8 place-items-center rounded-lg opacity-70 hover:bg-white/10 hover:opacity-100 disabled:opacity-30"
           >
-            Redo
-          </Button>
+            <Redo2 aria-hidden className="size-[18px]" />
+          </button>
 
-          <div className="mx-1 flex rounded-lg border border-line p-0.5">
+          <div className="mx-1 rounded-[9px] bg-white/10 p-0.5">
             {(Object.keys(VIEWPORTS) as ViewportName[]).map((name) => (
               <button
                 key={name}
                 type="button"
-                className={[
-                  'rounded-md px-2 py-1 text-xs font-medium transition',
-                  viewport === name ? 'bg-accent-soft text-accent' : 'text-ink-soft hover:text-ink',
-                ].join(' ')}
+                aria-label={VIEWPORTS[name].label}
+                title={VIEWPORTS[name].label}
                 onClick={() => setViewport(name)}
+                className={[
+                  'inline-grid h-[26px] w-8 place-items-center rounded-[7px]',
+                  viewport === name
+                    ? 'bg-white/90 text-ink'
+                    : 'text-chrome-ink/70 hover:text-white',
+                ].join(' ')}
               >
-                {VIEWPORTS[name].label}
+                {VIEWPORT_ICONS[name]}
               </button>
             ))}
           </div>
 
-          <Button
-            variant="secondary"
-            size="sm"
+          <button
+            type="button"
             onClick={() => window.open(`/preview?page=${id}&mode=draft`, '_blank', 'noopener')}
+            className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-base opacity-80 hover:bg-white/10 hover:opacity-100"
           >
+            <ExternalLink aria-hidden className="size-4" />
             Preview
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
+          </button>
+          <button
+            type="button"
             onClick={() => void navigate({ to: '/pages/$id/history', params: { id } })}
+            className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-base opacity-80 hover:bg-white/10 hover:opacity-100"
           >
+            <HistoryIcon aria-hidden className="size-4" />
             History
-          </Button>
+          </button>
 
-          <Button size="sm" disabled={state.busy} onClick={() => void run('pages.publish')}>
+          {/* Accent while there is something to publish, neutral once there is not:
+              the one control on the bar whose colour is a fact about the page. */}
+          <button
+            type="button"
+            disabled={state.busy}
+            onClick={() => void run('pages.publish')}
+            className={[
+              'relief-primary ml-1 h-8 rounded-lg px-4 font-[650] text-white disabled:opacity-60',
+              state.hasUnpublishedChanges
+                ? 'bg-accent hover:brightness-[0.9]'
+                : 'bg-white/15 hover:bg-white/25',
+            ].join(' ')}
+          >
             Publish
-          </Button>
+          </button>
         </div>
       </header>
 
-      {/* Under the header rather than in it: which language this page is decides what
-          every block on the canvas *is*, so it belongs on a line of its own rather than
-          crowded between Undo and the viewport buttons. */}
+      {/* Under the bar rather than in it: which language this page is decides what every
+          block on the canvas *is*, and the answer is a sentence — "out of date", "this is
+          the original everything falls back to" — not a menu item (SPEC.md §131). */}
       {page.data !== undefined && (
-        <div className="border-b border-line-soft bg-surface px-4 py-2">
+        <div className="shrink-0 border-b border-hairline bg-surface px-4 py-2">
           <Translations subject="page" id={id} entryLocale={page.data.locale} />
         </div>
       )}
 
-      {/* An answer, not a refusal: it says what it says at the weight it deserves. */}
-      {state.notice !== undefined && (
-        <div className="flex items-center gap-3 border-b border-line bg-surface-sunken px-4 py-1.5 text-sm text-ink-soft">
-          <p className="flex-1">{state.notice}</p>
-          <Button size="sm" variant="ghost" onClick={dismiss}>
-            Dismiss
-          </Button>
-        </div>
-      )}
-
-      {state.failure !== undefined && (
-        <div className="flex items-center gap-3 border-b border-danger/20 bg-danger-soft px-4 py-2 text-sm text-danger">
-          <div className="flex-1 space-y-0.5">
-            <p>
-              {state.conflict
-                ? 'Someone else has changed this page since you opened it. Reload before editing further.'
-                : Object.keys(state.fields).length > 0
-                  ? 'This page is not ready to be published:'
-                  : state.failure}
-            </p>
-            {Object.entries(state.fields).map(([field, messages]) => (
-              <p key={field} className="text-xs">
-                <code className="font-mono">{field}</code> — {messages.join(', ')}
-              </p>
-            ))}
-          </div>
-          {state.conflict ? (
-            <Button size="sm" variant="secondary" onClick={() => location.reload()}>
-              Reload
-            </Button>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={dismiss}>
-              Dismiss
-            </Button>
+      {/* Banners under the bar, in the palette of what they are about. */}
+      {(state.notice !== undefined || state.failure !== undefined) && (
+        <div className="shrink-0 space-y-2 border-b border-line bg-surface px-4 py-2.5">
+          {state.notice !== undefined && (
+            <Banner tone="info" title={state.notice} onDismiss={dismiss} />
           )}
+
+          {state.failure !== undefined &&
+            (state.conflict ? (
+              <Banner
+                tone="danger"
+                title="Someone else has changed this page since you opened it"
+                actions={
+                  <Button variant="secondary" size="sm" onClick={() => location.reload()}>
+                    Reload
+                  </Button>
+                }
+              >
+                Reloading takes their version. Nothing here has been written over.
+              </Banner>
+            ) : Object.keys(state.fields).length > 0 ? (
+              <Banner
+                tone="warning"
+                title="This page is not ready to be published"
+                onDismiss={dismiss}
+              >
+                {/* A chip per offending block, which selects it — the shortest route
+                    from "what is wrong" to the field that is wrong. */}
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {Object.entries(state.fields).map(([field, messages]) => (
+                    <button
+                      key={field}
+                      type="button"
+                      onClick={() => select(field.split('.')[0] ?? null)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-warning-line bg-surface px-2.5 py-0.5 text-sm font-semibold text-warning-ink hover:bg-warning-wash"
+                    >
+                      <span className="font-mono">{field}</span>
+                      <span className="font-normal opacity-80">{messages.join(', ')}</span>
+                    </button>
+                  ))}
+                </div>
+              </Banner>
+            ) : (
+              <Banner tone="danger" title={state.failure} onDismiss={dismiss} />
+            ))}
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      {/* Three zones: the rail, the canvas, and an inspector floating over its right
+          edge. The canvas gives the panel room only while it is open — `relative` is
+          what the inspector is positioned against. */}
+      <div className="relative flex min-h-0 flex-1">
         <Palette
           introspection={registry}
           tree={state.tree}
@@ -327,18 +406,54 @@ export const Builder = () => {
           }}
         />
 
-        <Canvas
-          pageId={id}
-          tree={state.tree}
-          selected={state.selected}
-          viewport={viewport}
-          busy={state.busy}
-          nameOf={nameOf}
-          insertable={insertable}
-          onSelect={select}
-          onKeyPress={onCanvasKey}
-          onInsert={add}
-        />
+        <div
+          className={
+            node === undefined
+              ? 'relative flex min-w-0 flex-1'
+              : 'relative flex min-w-0 flex-1 pr-94'
+          }
+        >
+          <Canvas
+            pageId={id}
+            tree={state.tree}
+            selected={state.selected}
+            viewport={viewport}
+            busy={state.busy}
+            nameOf={nameOf}
+            insertable={insertable}
+            onSelect={select}
+            onKeyPress={onCanvasKey}
+            onInsert={add}
+          />
+
+          {/*
+           * What the page is, bottom-left, out of the way of everything.
+           *
+           * A page has no Save: every edit is already a command that wrote a revision, so
+           * the only thing left to say is whether what is written is *published*. Saying
+           * nothing leaves a person hunting for a Save button that will never exist.
+           */}
+          <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-2">
+            <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-2 text-sm text-ink-soft shadow-pill">
+              <span
+                aria-hidden
+                className={[
+                  'size-1.5 rounded-full',
+                  state.busy
+                    ? 'bg-warning'
+                    : state.hasUnpublishedChanges
+                      ? 'bg-warning'
+                      : 'bg-accent',
+                ].join(' ')}
+              />
+              {state.busy
+                ? 'Saving…'
+                : state.hasUnpublishedChanges
+                  ? 'Draft saved · not published'
+                  : `Published · v${state.version}`}
+            </span>
+          </div>
+        </div>
 
         <Properties
           node={node}

@@ -23,7 +23,7 @@ import {
   useIntrospection,
   valueAt,
 } from '../api/introspection.ts'
-import { Badge, Button, Field, Input, Select, Textarea } from '../ui/index.tsx'
+import { Badge, Button, Field, Input, Select, Switch, Textarea } from '../ui/index.tsx'
 import { MediaPicker } from './media-picker.tsx'
 import { RichTextInput } from './rich-text.tsx'
 
@@ -107,32 +107,58 @@ const MediaInput = ({
   const id = asText(value)
 
   return (
-    <div className="flex items-center gap-2">
+    /*
+     * A framed slot rather than a button on a line (`design_handoff_studio_redesign` §3):
+     * a picture is the one field whose value can be seen, and an 88×60 plate is the
+     * smallest thing that lets somebody tell one photograph from another without opening
+     * the library.
+     */
+    <div className="flex flex-wrap items-center gap-4 rounded-lg border border-line p-3">
       {id === '' ? (
-        <span className="text-sm text-ink-faint">Nothing chosen</span>
+        <span
+          aria-hidden
+          className="h-15 w-22 shrink-0 rounded-lg border border-line bg-canvas"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(135deg, rgb(0 0 0 / 0.05) 0 1px, transparent 1px 8px)',
+          }}
+        />
       ) : (
         <img
           src={`/api/media/by-id/${id}`}
           alt=""
-          className="size-12 rounded-lg border border-line object-cover"
+          className="h-15 w-22 shrink-0 rounded-lg border border-line object-cover"
         />
       )}
 
-      <Button variant="secondary" size="sm" onClick={() => setPicking(true)}>
-        {id === '' ? 'Choose…' : 'Replace'}
-      </Button>
+      <div className="min-w-0">
+        <p className="mb-2 font-mono text-sm text-ink-soft">
+          {id === '' ? <span className="text-ink-faint">Nothing chosen</span> : id}
+          {/* An authoring constraint and not a validation one: what an id points at
+              lives in another table, so the field cannot check it and does not claim
+              to. */}
+          {field.accept !== undefined && field.accept.length > 0 && (
+            <span className="text-ink-faint"> · {field.accept.join(', ')}</span>
+          )}
+        </p>
 
-      {id !== '' && (
-        <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
-          Clear
-        </Button>
-      )}
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setPicking(true)}>
+            {id === '' ? 'Choose…' : 'Replace'}
+          </Button>
 
-      {/* An authoring constraint and not a validation one: what an id points at lives in
-          another table, so the field cannot check it and does not claim to. */}
-      {field.accept !== undefined && field.accept.length > 0 && (
-        <span className="text-xs text-ink-faint">{field.accept.join(', ')}</span>
-      )}
+          {id !== '' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-danger hover:bg-danger-soft"
+              onClick={() => onChange(null)}
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      </div>
 
       {picking && (
         <MediaPicker
@@ -171,7 +197,7 @@ const JsonInput = ({ value, onChange }: { value: unknown; onChange(value: unknow
   return (
     <div className="space-y-1">
       <Textarea
-        className="font-mono text-xs"
+        className="font-mono text-sm"
         rows={6}
         value={text}
         onChange={(event) => {
@@ -185,7 +211,7 @@ const JsonInput = ({ value, onChange }: { value: unknown; onChange(value: unknow
           }
         }}
       />
-      {broken && <span className="text-xs text-danger">Not valid JSON yet</span>}
+      {broken && <span className="text-sm text-danger">Not valid JSON yet</span>}
     </div>
   )
 }
@@ -205,13 +231,13 @@ const CheckboxesInput = ({
   const options = field.options ?? []
 
   if (options.length === 0) {
-    return <span className="text-sm text-ink-faint">This field declares no options.</span>
+    return <span className="text-base text-ink-faint">This field declares no options.</span>
   }
 
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-2">
       {options.map((option) => (
-        <label key={option.value} className="flex items-center gap-2 text-sm text-ink-soft">
+        <label key={option.value} className="flex items-center gap-2 text-base text-ink-soft">
           <input
             type="checkbox"
             className="size-4 accent-accent"
@@ -272,7 +298,7 @@ const ColorInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
         onChange={(event) => onChange(event.target.value)}
       />
       <Input
-        className="max-w-40 font-mono text-xs"
+        className="max-w-40 font-mono text-sm"
         placeholder="#4a5ed6"
         value={text}
         onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
@@ -317,7 +343,7 @@ const CodeInput = ({
       <div className="flex items-center gap-2">
         {languages.length === 0 ? (
           <Input
-            className="max-w-40 font-mono text-xs"
+            className="max-w-40 font-mono text-sm"
             placeholder="ts"
             aria-label="Language"
             value={language}
@@ -338,11 +364,11 @@ const CodeInput = ({
             ))}
           </Select>
         )}
-        <span className="text-xs text-ink-faint">Stored as written; never run</span>
+        <span className="text-sm text-ink-faint">Stored as written; never run</span>
       </div>
 
       <Textarea
-        className="font-mono text-xs"
+        className="font-mono text-sm"
         rows={10}
         spellCheck={false}
         value={source}
@@ -414,12 +440,12 @@ const EntryOfResource = ({
     return (
       <div className="space-y-1">
         <Input
-          className="font-mono text-xs"
+          className="font-mono text-sm"
           placeholder="The id it points at"
           value={id}
           onChange={(event) => onPick(event.target.value)}
         />
-        <span className="text-xs text-ink-faint">
+        <span className="text-sm text-ink-faint">
           {resource.label} cannot be listed for you, so the id has to be written out.
         </span>
       </div>
@@ -544,12 +570,12 @@ const RelationInput = ({
     return (
       <div className="space-y-1">
         <Input
-          className="font-mono text-xs"
+          className="font-mono text-sm"
           placeholder="The id it points at"
           value={asText(value)}
           onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
         />
-        <span className="text-xs text-ink-faint">
+        <span className="text-sm text-ink-faint">
           {target === ''
             ? 'This field names no target resource, so there is nothing to list.'
             : `${target} cannot be listed here, so the id has to be written out.`}
@@ -631,7 +657,7 @@ const LinkInput = ({ value, onChange }: { value: unknown; onChange(value: unknow
         </Select>
 
         {parts.type !== '' && (
-          <label className="flex items-center gap-2 text-sm text-ink-soft">
+          <label className="flex items-center gap-2 text-base text-ink-soft">
             <input
               type="checkbox"
               className="size-4 accent-accent"
@@ -691,7 +717,7 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
 
   return (
     <div className="space-y-2 overflow-x-auto rounded-lg border border-line bg-surface-sunken/40 p-3">
-      <table className="w-full text-sm">
+      <table className="w-full text-base">
         <thead>
           <tr>
             {columns.map((heading, column) => (
@@ -701,7 +727,7 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
               <th key={column} className="p-1 align-bottom">
                 <div className="flex items-center gap-1">
                   <Input
-                    className="min-w-24 text-xs font-semibold"
+                    className="min-w-24 text-sm font-semibold"
                     aria-label={`Heading of column ${column + 1}`}
                     placeholder="Heading"
                     value={heading}
@@ -760,7 +786,7 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
                 // biome-ignore lint/suspicious/noArrayIndexKey: a cell has no other identity
                 <td key={column} className="p-1">
                   <Input
-                    className="min-w-24 text-xs"
+                    className="min-w-24 text-sm"
                     aria-label={`Row ${index + 1}, column ${column + 1}`}
                     value={cell(row, column)}
                     onChange={(event) =>
@@ -806,7 +832,7 @@ const TableInput = ({ value, onChange }: { value: unknown; onChange(value: unkno
           Add a row
         </Button>
         {columns.length === 0 && (
-          <span className="text-xs text-ink-faint">A table starts with a column.</span>
+          <span className="text-sm text-ink-faint">A table starts with a column.</span>
         )}
       </div>
     </div>
@@ -980,7 +1006,7 @@ const RepeaterInput = ({
   return (
     <div className="space-y-2">
       {items.length === 0 ? (
-        <p className="text-sm text-ink-faint">Nothing here yet.</p>
+        <p className="text-base text-ink-faint">Nothing here yet.</p>
       ) : (
         <ol className="space-y-2">
           {items.map((item, index) => (
@@ -1040,15 +1066,7 @@ const Fallback = ({
 
   if (type === 'boolean') {
     return (
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="size-4 accent-accent"
-          checked={value === true}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        <span className="text-ink-soft">{field.help ?? 'Enabled'}</span>
-      </label>
+      <Switch label={labelOf(field)} checked={value === true} onChange={(next) => onChange(next)} />
     )
   }
 
@@ -1088,15 +1106,11 @@ const Control = ({
   switch (field.kind) {
     case 'boolean':
       return (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 accent-accent"
-            checked={value === true}
-            onChange={(event) => onChange(event.target.checked)}
-          />
-          <span className="text-ink-soft">{field.help ?? 'Enabled'}</span>
-        </label>
+        <Switch
+          label={labelOf(field)}
+          checked={value === true}
+          onChange={(next) => onChange(next)}
+        />
       )
 
     case 'select':
@@ -1164,7 +1178,7 @@ const Control = ({
     case 'markdown':
       return (
         <Textarea
-          className="font-mono text-sm"
+          className="font-mono text-base"
           rows={14}
           spellCheck
           value={asText(value)}
@@ -1252,6 +1266,16 @@ const claimedBy = (field: FieldDescriptor, value: unknown): readonly string[] =>
   return []
 }
 
+/**
+ * Whether this field draws as a switch, and so wants its label beside it.
+ *
+ * `json()` takes a type argument nothing validates at runtime, so a boolean can also
+ * arrive as a JSON field whose schema says `boolean` — the same control, and the same
+ * row.
+ */
+const isSwitch = (field: FieldDescriptor): boolean =>
+  field.kind === 'boolean' || (field.kind === 'json' && field.schema?.type === 'boolean')
+
 export const FieldInput = ({ field, value, issues, onChange }: FieldInputProps) => {
   // Anything the application said about something inside this value that no inner
   // control is drawing — a key a group no longer declares, an item that is no longer
@@ -1269,6 +1293,7 @@ export const FieldInput = ({ field, value, issues, onChange }: FieldInputProps) 
       }
       required={field.required}
       {...(shown.length === 0 ? {} : { errors: shown })}
+      inline={isSwitch(field)}
     >
       <Control field={field} value={value} issues={issues} onChange={onChange} />
     </Field>

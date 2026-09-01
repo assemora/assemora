@@ -15,6 +15,7 @@
  * studio.md), so nothing here decides who may create anything; it is handed the
  * answer and chooses the words for it.
  */
+import { FileText, FolderPlus, LayoutTemplate } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { Button, Empty, Snippet } from './index.tsx'
@@ -33,6 +34,7 @@ export const NoCollections = ({
   onCreate(): void
 }) => (
   <Empty
+    icon={<FolderPlus className="size-[22px]" />}
     title={canCreate ? 'Make your first collection' : 'No collections yet'}
     action={canCreate ? <Button onClick={onCreate}>New collection</Button> : undefined}
   >
@@ -57,11 +59,15 @@ export const NoCollections = ({
  */
 export const NoPages = ({ filtered, onCreate }: { filtered: boolean; onCreate(): void }) =>
   filtered ? (
-    <Empty title="No page matches that">
+    <Empty icon={<LayoutTemplate className="size-[22px]" />} title="No page matches that">
       <p>Try another word, or set the status back to any.</p>
     </Empty>
   ) : (
-    <Empty title="Make your first page" action={<Button onClick={onCreate}>New page</Button>}>
+    <Empty
+      icon={<LayoutTemplate className="size-[22px]" />}
+      title="Make your first page"
+      action={<Button onClick={onCreate}>New page</Button>}
+    >
       <p>
         A page is a tree of blocks at an address — <code className="font-mono">/about</code>,{' '}
         <code className="font-mono">/pricing</code> — never a document of HTML.
@@ -87,7 +93,7 @@ export const NoEntries = ({
   editable,
   onCreate,
 }: {
-  /** What one of these is called, singular — `New Testimonial` uses the same word. */
+  /** What one of these is called, singular — `Create Testimonial` uses the same word. */
   singular: string
   /** Whether this resource's fields are a stored definition, changeable from here. */
   editable: boolean
@@ -95,7 +101,10 @@ export const NoEntries = ({
 }) => (
   <Empty
     title={`No ${singular.toLowerCase()} yet`}
-    action={onCreate === undefined ? undefined : <Button onClick={onCreate}>New {singular}</Button>}
+    icon={<FileText className="size-[22px]" />}
+    action={
+      onCreate === undefined ? undefined : <Button onClick={onCreate}>Create {singular}</Button>
+    }
   >
     <p>An entry is one {singular.toLowerCase()}, filled in against the fields declared for it.</p>
     {editable && (
@@ -135,13 +144,13 @@ const MAKE_BLOCK = 'npx assemora make:block hero'
  * the third step is the one that is easiest to forget and is therefore said.
  */
 export const NoBlocks = () => (
-  <div className="space-y-2 px-1 py-2 text-sm text-ink-soft">
+  <div className="space-y-2 px-1 py-2 text-base text-ink-soft">
     <p className="font-medium text-ink">No blocks yet</p>
     <p>A block is a TypeScript declaration, so it is written in your project, not here.</p>
     <Snippet>{MAKE_BLOCK}</Snippet>
     <p>
-      That writes <code className="font-mono text-xs">src/blocks/hero.ts</code>. Register it with{' '}
-      <code className="font-mono text-xs">pages({'{ blocks: [Hero] }'})</code>, give it a view in
+      That writes <code className="font-mono text-sm">src/blocks/hero.ts</code>. Register it with{' '}
+      <code className="font-mono text-sm">pages({'{ blocks: [Hero] }'})</code>, give it a view in
       your frontend, and it appears in this list.
     </p>
   </div>
@@ -150,7 +159,7 @@ export const NoBlocks = () => (
 const Step = ({ title, body, action }: { title: string; body: string; action: ReactNode }) => (
   <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-raised p-4">
     <p className="font-medium">{title}</p>
-    <p className="flex-1 text-sm text-ink-soft">{body}</p>
+    <p className="flex-1 text-base text-ink-soft">{body}</p>
     <div className="pt-1">{action}</div>
   </div>
 )

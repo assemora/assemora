@@ -111,7 +111,7 @@ export const DesignControls = ({
     <Field label="Hidden on" help="Responsive visibility. The block stays in the tree">
       <div className="flex gap-3 pt-1">
         {VIEWPORTS.map((viewport) => (
-          <label key={viewport} className="flex items-center gap-1.5 text-sm text-ink-soft">
+          <label key={viewport} className="flex items-center gap-1.5 text-base text-ink-soft">
             <input
               type="checkbox"
               className="size-4 accent-accent"
