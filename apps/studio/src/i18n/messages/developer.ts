@@ -882,4 +882,9 @@ export const DEVELOPER = {
   'icons.group.world': { en: 'Places and time', uk: 'Місця й час', ru: 'Места и время' },
   'icons.group.signals': { en: 'Signals', uk: 'Сигнали', ru: 'Сигналы' },
   'icons.group.structure': { en: 'Structure', uk: 'Структура', ru: 'Структура' },
+  'collections.declaredPresentation': {
+    en: 'How one is shown — its label, its heading and its icon — is one line in that same declaration: {call}. The order they are listed in, here and in the sidebar, is the order they are registered in.',
+    uk: 'Те, як ресурс показано — підпис, заголовок і іконка, — це один рядок у тому самому оголошенні: {call}. А порядок, у якому вони перелічені тут і в бічній панелі, — це порядок їх реєстрації.',
+    ru: 'То, как ресурс показан — подпись, заголовок и иконка, — это одна строка в том же объявлении: {call}. А порядок, в котором они перечислены здесь и в боковой панели, — это порядок их регистрации.',
+  },
 } as const satisfies Catalogue

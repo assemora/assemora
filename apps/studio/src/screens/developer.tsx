@@ -246,9 +246,16 @@ export const Developer = () => {
   const navigate = useNavigate()
   const t = useT()
   // In the address rather than in state, so a link can open one of these directly.
-  const { view: tab } = useSearch({ from: '/shell/developer' })
+  const { view: tab, name: named } = useSearch({ from: '/shell/developer' })
   const setTab = (view: Tab) => void navigate({ to: '/developer', search: { view } })
-  const [filter, setFilter] = useState('')
+  /**
+   * The filter starts at whatever the address named, so a link can land on one row.
+   *
+   * `useState`'s initial value rather than an effect: the link arrives with the name
+   * already in it, and a filter that took a render to catch up would show the whole
+   * registry first and then blink down to the one row that was asked for.
+   */
+  const [filter, setFilter] = useState(named ?? '')
 
   if (introspection.isPending) {
     return (

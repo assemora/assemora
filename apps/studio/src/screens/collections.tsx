@@ -8,7 +8,7 @@
  * name over MCP. Nothing below knows that; it asks the application what it has.
  */
 import { Link, useNavigate } from '@tanstack/react-router'
-import { FileText, Network } from 'lucide-react'
+import { Network } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { type CollectionSummary, useCollections } from '../api/collections.ts'
@@ -16,8 +16,9 @@ import { useIntrospection } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
 import { Page } from '../app/shell.tsx'
 import type { MessageKey } from '../i18n/messages.ts'
-import { useT } from '../i18n/translate.tsx'
+import { useT, useWoven } from '../i18n/translate.tsx'
 import { NoCollections } from '../ui/blank.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
 import { Badge, Button, Card, Counter, Failure, Spinner } from '../ui/index.tsx'
 
 /** Which of the generated CRUD operations a resource answers to (SPEC.md §43). */
@@ -53,6 +54,7 @@ const Section = ({
 export const Collections = () => {
   const { can } = useSession()
   const t = useT()
+  const woven = useWoven()
   const navigate = useNavigate()
   const collections = useCollections()
   const introspection = useIntrospection()
@@ -67,9 +69,36 @@ export const Collections = () => {
    * viewer may not read it, and a link to a 403 is worse than none.
    */
   const described = introspection.data?.resources ?? []
-  const declared = (collections.data?.taken ?? [])
-    .filter((name) => !made.some((collection) => collection.name === name))
-    .map((name) => ({ name, label: described.find((entry) => entry.name === name)?.label }))
+  const taken = collections.data?.taken ?? []
+  const isMadeHere = (name: string) => made.some((collection) => collection.name === name)
+
+  /**
+   * In the application's own order, which is the order the sidebar is in.
+   *
+   * `taken` is a *sorted set of names*, and it is sorted for the job it exists to do —
+   * refusing a name where it is typed. Reading the list off it put this screen in
+   * alphabetical order while the sidebar beside it was in registration order: the same
+   * fifteen things, twice, in two orders, and the order a person actually controls —
+   * the one they wrote in `module().resources(…)` — shown in neither.
+   *
+   * So the registry decides, as it does everywhere else. A name in `taken` that the
+   * registry does not describe still belongs on this list — it exists, and a new
+   * collection may not take it — but it is one this viewer may not read, so it comes
+   * after the ones that can be opened rather than being sorted in among them.
+   */
+  const declared = [
+    ...described
+      .filter((resource) => !isMadeHere(resource.name))
+      .map((resource) => ({
+        name: resource.name,
+        label: resource.label,
+        icon: resource.icon,
+        group: resource.group,
+      })),
+    ...taken
+      .filter((name) => !isMadeHere(name) && !described.some((entry) => entry.name === name))
+      .map((name) => ({ name, label: undefined, icon: undefined, group: undefined })),
+  ]
 
   const create = () => void navigate({ to: '/collections/new' })
   const canCreate = can('collections.create')
@@ -147,8 +176,11 @@ export const Collections = () => {
                           <Link
                             to="/content/$resource"
                             params={{ resource: collection.name }}
-                            className="hover:text-link"
+                            className="flex items-center gap-2.5 hover:text-link"
                           >
+                            <span className="shrink-0 text-ink-subdued">
+                              <ResourceIcon name={collection.icon} />
+                            </span>
                             {collection.label}
                           </Link>
                         </td>
@@ -191,6 +223,24 @@ export const Collections = () => {
               count={declared.length}
               note={t('collections.declaredNote')}
             >
+              {/*
+               * Where the three things on this row are changed.
+               *
+               * The note above says the fields are a TypeScript declaration and cannot be
+               * rewritten from here, which is true and is the important half. It left the
+               * fair follow-up unanswered: the label, the heading and the icon are not
+               * fields, they are how the resource is *shown*, and they are one line in the
+               * same declaration. A screen that says only "you cannot" is a dead end.
+               */}
+              <p className="mb-3 max-w-prose text-base text-ink-soft">
+                {woven('collections.declaredPresentation', {
+                  call: (
+                    <code className="font-mono text-sm">
+                      resource(Dish, {'{ … }'}, {'{ label, group, icon }'})
+                    </code>
+                  ),
+                })}
+              </p>
               <Card className="overflow-hidden">
                 <ul className="list-none p-0">
                   {declared.map((resource) => (
@@ -198,10 +248,19 @@ export const Collections = () => {
                       key={resource.name}
                       className="flex items-center gap-3 border-b border-hairline px-4 py-2.5 last:border-0 hover:bg-surface-sunken"
                     >
-                      <FileText aria-hidden className="size-[18px] shrink-0 text-ink-subdued" />
+                      <span className="shrink-0 text-ink-subdued">
+                        <ResourceIcon name={resource.icon} />
+                      </span>
                       <span className="min-w-0 flex-1 truncate font-[550]">
                         {resource.label ?? resource.name}
                       </span>
+                      {/* Which heading it is filed under, so the row says the same thing
+                          the sidebar does about where to find it. */}
+                      {resource.group !== undefined && (
+                        <span className="shrink-0 rounded-full bg-canvas px-2 py-px text-sm text-ink-subdued">
+                          {resource.group}
+                        </span>
+                      )}
                       <code className="shrink-0 font-mono text-sm text-ink-soft">
                         {resource.name}
                       </code>
@@ -212,7 +271,10 @@ export const Collections = () => {
                               end, and the fields are a fair question to have. */}
                           <Link
                             to="/developer"
-                            search={{ view: 'resources' as const }}
+                            // Named, so the link lands on this resource rather than on a
+                            // page holding all fifteen: "Fields" that answers with a wall
+                            // is a link somebody has to read to use.
+                            search={{ view: 'resources' as const, name: resource.name }}
                             className="shrink-0 text-base font-[550] text-link hover:text-link-hover hover:underline"
                           >
                             {t('collections.column.fields')}

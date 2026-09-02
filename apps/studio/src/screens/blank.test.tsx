@@ -381,6 +381,63 @@ describe('the collection list', () => {
     expect(declared).not.toContain('testimonials')
   })
 
+  /**
+   * The order a person controls, rather than the alphabet.
+   *
+   * `taken` is a sorted set of names — sorted for the job it exists to do, refusing a
+   * name where it is typed — and this screen used to read its list off it. So the same
+   * fifteen resources stood in two orders: alphabetical here, and the order they were
+   * registered in in the sidebar beside it. The registry is the one that carries the
+   * order somebody wrote in `module().resources(…)`, so the registry decides.
+   */
+  it('lists what the application declared in the order the application declared it', async () => {
+    const markup = words(
+      await draw(<Collections />, {
+        collections: { data: [], taken: ['articles', 'dishes', 'orders'] },
+        introspection: registry({
+          resources: [
+            resource({ name: 'orders', label: 'Orders' }),
+            resource({ name: 'dishes', label: 'Dishes' }),
+            resource({ name: 'articles', label: 'Articles' }),
+          ],
+        }),
+        permissions: ['*'],
+      }),
+    )
+
+    const declared = markup.slice(markup.indexOf('Declared in this'))
+
+    expect(declared.indexOf('Orders')).toBeLessThan(declared.indexOf('Dishes'))
+    expect(declared.indexOf('Dishes')).toBeLessThan(declared.indexOf('Articles'))
+  })
+
+  it('keeps a name it cannot describe, and puts it after the ones it can', async () => {
+    // A name in `taken` the registry does not describe exists — a new collection may not
+    // take it — but this viewer may not read it, so it is listed without a link rather
+    // than sorted in among the ones that open.
+    const markup = words(
+      await draw(<Collections />, {
+        collections: { data: [], taken: ['articles', 'secrets'] },
+        introspection: registry({ resources: [resource({ name: 'articles', label: 'Articles' })] }),
+        permissions: ['*'],
+      }),
+    )
+
+    const declared = markup.slice(markup.indexOf('Declared in this'))
+
+    expect(declared).toContain('secrets')
+    expect(declared.indexOf('Articles')).toBeLessThan(declared.indexOf('secrets'))
+  })
+
+  it('says where a declared resource is shown from, so the screen is not a dead end', async () => {
+    // The note above it says the fields cannot be rewritten here, which is true and is
+    // the important half. This is the half it left out: the label, the heading and the
+    // icon are one line in the same declaration.
+    const markup = words(await draw(<Collections />, { collections: made, permissions: ['*'] }))
+
+    expect(markup).toContain('label, group, icon')
+  })
+
   it('shows what a collection actually publishes, not four badges by rote', async () => {
     // Equal rights runs both ways: a collection that publishes less has to look like it.
     const markup = words(await draw(<Collections />, { collections: made, permissions: ['*'] }))

@@ -97,17 +97,20 @@ const routes = [
     path: '/developer',
     component: Developer,
     /**
-     * Which of the seven views is open, in the address.
+     * Which of the seven views is open, and which row it is about, in the address.
      *
      * A tab held in component state cannot be linked to, and the Collections screen has
-     * a reason to send somebody straight to a resource's fields. Validated rather than
-     * trusted: a `?view=` somebody typed by hand falls back to the first tab instead of
-     * rendering nothing.
+     * a reason to send somebody straight to a resource's fields — to *that* resource's,
+     * which is what `name` carries: without it the link answered with all of them and
+     * left the reader to find the row. Validated rather than trusted: a `?view=`
+     * somebody typed by hand falls back to the first tab instead of rendering nothing,
+     * and a `?name=` is only ever a filter, so anything at all is safe in it.
      */
-    validateSearch: (search: Record<string, unknown>): { view: DeveloperView } => ({
+    validateSearch: (search: Record<string, unknown>): { view: DeveloperView; name?: string } => ({
       view: DEVELOPER_VIEWS.includes(search.view as DeveloperView)
         ? (search.view as DeveloperView)
         : 'api',
+      ...(typeof search.name === 'string' && search.name !== '' ? { name: search.name } : {}),
     }),
   }),
 ]
