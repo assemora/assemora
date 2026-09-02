@@ -289,9 +289,11 @@ const People = () => {
                         </button>
                       ))}
 
-                      <div className="w-28">
+                      {/* Wide enough for its own label: `Add role…` was clipped to
+                          `Add ro…`, which is a control asking to be guessed at. */}
+                      <div className="w-36">
                         <Select
-                          className="h-7 py-0 text-sm"
+                          size="small"
                           value=""
                           onChange={(event) =>
                             change.mutate({

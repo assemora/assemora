@@ -426,8 +426,9 @@ export const Collection = () => {
                     className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-soft"
                   />
                   <Select
+                    size="panel"
                     aria-label={t('collection.sortOrder')}
-                    className="h-8 w-56 pl-10"
+                    className="w-56 pl-10"
                     value={sort}
                     onChange={(event) => {
                       setPage(1)

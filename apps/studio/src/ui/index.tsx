@@ -204,14 +204,14 @@ const FieldId = createContext<string | undefined>(undefined)
 const FieldInvalid = createContext(false)
 
 const CONTROL =
-  'w-full rounded-lg border bg-surface px-3 text-base text-ink placeholder:text-ink-faint ring-field hover:border-line-strong disabled:cursor-not-allowed disabled:border-hairline disabled:bg-surface-raised disabled:text-ink-disabled read-only:bg-surface-sunken'
+  'w-full border bg-surface text-base text-ink placeholder:text-ink-faint ring-field hover:border-line-strong disabled:cursor-not-allowed disabled:border-hairline disabled:bg-surface-raised disabled:text-ink-disabled read-only:bg-surface-sunken'
 
 const border = (invalid: boolean) => (invalid ? 'ring-field-danger' : 'border-line')
 
 export const Input = ({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) => (
   <input
     id={use(FieldId)}
-    className={join(CONTROL, 'h-9', border(use(FieldInvalid)), className)}
+    className={join(CONTROL, 'h-9 rounded-lg px-3', border(use(FieldInvalid)), className)}
     {...rest}
   />
 )
@@ -219,7 +219,12 @@ export const Input = ({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
 export const Textarea = ({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea
     id={use(FieldId)}
-    className={join(CONTROL, 'min-h-24 resize-y py-[9px]', border(use(FieldInvalid)), className)}
+    className={join(
+      CONTROL,
+      'min-h-24 resize-y rounded-lg px-3 py-[9px]',
+      border(use(FieldInvalid)),
+      className,
+    )}
     {...rest}
   />
 )
@@ -233,13 +238,38 @@ export const Textarea = ({ className, ...rest }: TextareaHTMLAttributes<HTMLText
  * grouped picker with an explanation per option — the Kind dropdown — is `Picker`, in
  * `overlay.tsx`, because it is a panel over the screen rather than a control on it.
  */
-export const Select = ({ className, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) => (
+/**
+ * The three sizes a control comes in, and nothing between them.
+ *
+ * The handoff gives a field one height per place it stands in — 36 on a form, 32 in a
+ * toolbar or a side panel, 28 in a list row — each with its own padding, its own radius
+ * at the smallest, and a chevron that shrinks with it. Left to a `className` at the call
+ * site, `h-8` changed the height and left the padding and the chevron behind, which is
+ * how five selects came to be five slightly different controls.
+ */
+const SELECT_SIZES = {
+  field: { box: 'h-9 rounded-lg pl-3 pr-9 text-base', chevron: 'right-2.5 size-[18px]' },
+  panel: { box: 'h-8 rounded-lg pl-2.5 pr-8 text-base', chevron: 'right-[9px] size-4' },
+  small: { box: 'h-7 rounded-[7px] pl-2.5 pr-7 text-sm', chevron: 'right-2 size-3.5' },
+} as const
+
+export const Select = ({
+  size = 'field',
+  className,
+  ...rest
+  // `size` on a native `<select>` is how many rows a list box shows, which this control
+  // is never. The name is worth more as the handoff's three sizes than as that.
+}: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> & {
+  /** Where it stands: a form, a toolbar or panel, or a row in a list. */
+  size?: keyof typeof SELECT_SIZES
+}) => (
   <span className="relative block">
     <select
       id={use(FieldId)}
       className={join(
         CONTROL,
-        'h-9 cursor-pointer appearance-none pr-9',
+        'cursor-pointer appearance-none',
+        SELECT_SIZES[size].box,
         border(use(FieldInvalid)),
         className,
       )}
@@ -247,7 +277,10 @@ export const Select = ({ className, ...rest }: SelectHTMLAttributes<HTMLSelectEl
     />
     <ChevronDown
       aria-hidden
-      className="pointer-events-none absolute top-1/2 right-2.5 size-[18px] -translate-y-1/2 text-ink-soft"
+      className={join(
+        'pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-soft',
+        SELECT_SIZES[size].chevron,
+      )}
     />
   </span>
 )

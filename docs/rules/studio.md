@@ -23,6 +23,10 @@ Reference: SPEC.md §58–§62, §115, §118, §123.
   check mark on every platform — the kit's box is 17px at radius 5 — so `Checkbox`,
   `Switch`, `Radio` and `Segmented` exist and are the only way those four are written.
   `Select` is the deliberate exception, and `Picker` is the one dropdown it cannot be.
+- A control's size is one of the three the handoff draws — 36 on a form, 32 in a toolbar
+  or panel, 28 in a list row — chosen with a prop, never with a height in a `className`.
+  `h-8` on its own changes the height and leaves the padding, the radius and the chevron
+  behind, which is how five selects became five slightly different controls.
 - Studio says nothing in a language literal. Every word it writes is a key in
   `src/i18n/messages/`, holding every language at once — the compiler refuses a key
   written in one of them (ADR-0030). What the *application* says — a label, a

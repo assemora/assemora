@@ -204,8 +204,9 @@ export const Pages = () => {
               />
             </div>
             <Select
+              size="panel"
               aria-label={t('pages.statusLabel')}
-              className="h-8 w-40"
+              className="w-40"
               value={status}
               onChange={(event) => {
                 setPage(1)
