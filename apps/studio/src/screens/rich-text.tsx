@@ -36,7 +36,7 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useSta
 
 import type { MediaItem } from '../api/media.ts'
 import { useT } from '../i18n/translate.tsx'
-import { join } from '../ui/index.tsx'
+import { Input, join } from '../ui/index.tsx'
 import { MediaPicker } from './media-picker.tsx'
 
 /**
@@ -325,7 +325,8 @@ export const RichTextInput = ({
         </Tool>
 
         {linking && (
-          <input
+          <Input
+            size="panel"
             ref={address}
             value={href}
             placeholder="https://"
@@ -355,7 +356,7 @@ export const RichTextInput = ({
               setHref('')
               setLinking(false)
             }}
-            className="ring-field ml-1.5 h-[30px] w-56 rounded-lg border border-line bg-surface px-2.5 text-base text-ink"
+            className="ml-1.5 w-56"
           />
         )}
       </div>

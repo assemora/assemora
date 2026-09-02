@@ -3,7 +3,7 @@
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { LayoutTemplate, Search } from 'lucide-react'
+import { LayoutTemplate } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import { ApiError, api } from '../api/client.ts'
@@ -11,7 +11,16 @@ import { type PageSummary, usePages } from '../api/pages.ts'
 import type { MessageKey } from '../i18n/messages.ts'
 import { useDates, useT } from '../i18n/translate.tsx'
 import { NoPages } from '../ui/blank.tsx'
-import { Button, Failure, Field, Input, Select, Spinner, StatusChip } from '../ui/index.tsx'
+import {
+  Button,
+  Failure,
+  Field,
+  Input,
+  SearchField,
+  Select,
+  Spinner,
+  StatusChip,
+} from '../ui/index.tsx'
 import {
   Mono,
   Screen,
@@ -186,23 +195,16 @@ export const Pages = () => {
 
         {!blank && (
           <Toolbar>
-            <div className="relative max-w-[400px] flex-1">
-              <Search
-                aria-hidden
-                className="absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-subdued"
-              />
-              <input
-                type="search"
-                aria-label={t('pages.search')}
-                placeholder={t('collection.searchPlaceholder')}
-                value={search}
-                onChange={(event) => {
-                  setPage(1)
-                  setSearch(event.target.value)
-                }}
-                className="ring-field h-8 w-full rounded-lg border border-line bg-surface pr-3 pl-10 text-base hover:border-line-strong"
-              />
-            </div>
+            <SearchField
+              className="max-w-[400px] flex-1"
+              aria-label={t('pages.search')}
+              placeholder={t('collection.searchPlaceholder')}
+              value={search}
+              onChange={(event) => {
+                setPage(1)
+                setSearch(event.target.value)
+              }}
+            />
             <Select
               size="panel"
               aria-label={t('pages.statusLabel')}

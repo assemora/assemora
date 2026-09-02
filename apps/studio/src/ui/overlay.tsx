@@ -14,13 +14,14 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
 } from 'react'
 
 import { useT, useWoven } from '../i18n/translate.tsx'
-import { Button, join } from './index.tsx'
+import { Button, Input, join } from './index.tsx'
 
 export type MenuPlacement = {
   left: number
@@ -464,6 +465,7 @@ export const ConfirmByTyping = ({
   const [typed, setTyped] = useState('')
   const t = useT()
   const woven = useWoven()
+  const id = useId()
 
   useEffect(() => {
     if (!open) setTyped('')
@@ -486,16 +488,17 @@ export const ConfirmByTyping = ({
       }
     >
       {children}
-      <label className="mt-4 block text-base font-semibold text-ink">
+      <label htmlFor={id} className="mt-4 block text-base font-semibold text-ink">
         {woven('common.confirmByTyping', {
           word: <span className="font-mono text-sm text-danger">{word}</span>,
         })}
-        <input
+        <Input
+          id={id}
           value={typed}
           onChange={(event) => setTyped(event.target.value)}
           autoComplete="off"
           spellCheck={false}
-          className="ring-field mt-1.5 block h-9 w-full rounded-lg border border-line bg-surface px-3 font-mono text-sm text-ink"
+          className="mt-1.5 block font-mono text-sm"
         />
       </label>
     </Dialog>

@@ -19,7 +19,6 @@ import {
   FileText,
   Loader,
   Pencil,
-  Search,
   SearchX,
   SlidersHorizontal,
   Star,
@@ -48,6 +47,7 @@ import {
   Empty,
   Failure,
   IconButton,
+  SearchField,
   Select,
   Skeleton,
   Spinner,
@@ -399,24 +399,17 @@ export const Collection = () => {
           (selected.length === 0 ? (
             <Toolbar>
               {searchable && (
-                <div className="relative max-w-[400px] flex-1">
-                  <Search
-                    aria-hidden
-                    className="absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-subdued"
-                  />
-                  <input
-                    type="search"
-                    placeholder={t('collection.searchPlaceholder')}
-                    aria-label={t('collection.searchLabel', { name: resource.label })}
-                    value={search}
-                    onChange={(event) => {
-                      setPage(1)
-                      setSelected([])
-                      setSearch(event.target.value)
-                    }}
-                    className="ring-field h-8 w-full rounded-lg border border-line bg-surface pr-3 pl-10 text-base hover:border-line-strong"
-                  />
-                </div>
+                <SearchField
+                  className="max-w-[400px] flex-1"
+                  placeholder={t('collection.searchPlaceholder')}
+                  aria-label={t('collection.searchLabel', { name: resource.label })}
+                  value={search}
+                  onChange={(event) => {
+                    setPage(1)
+                    setSelected([])
+                    setSearch(event.target.value)
+                  }}
+                />
               )}
 
               {sortable.length > 0 && (

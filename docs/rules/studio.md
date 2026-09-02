@@ -27,6 +27,9 @@ Reference: SPEC.md §58–§62, §115, §118, §123.
   or panel, 28 in a list row — chosen with a prop, never with a height in a `className`.
   `h-8` on its own changes the height and leaves the padding, the radius and the chevron
   behind, which is how five selects became five slightly different controls.
+- A shape the handoff draws more than once is a control, not a pattern to repeat.
+  `SearchField` is a magnifier positioned against a field and the padding that makes room
+  for it; written out per screen it was three copies that had already begun to differ.
 - Studio says nothing in a language literal. Every word it writes is a key in
   `src/i18n/messages/`, holding every language at once — the compiler refuses a key
   written in one of them (ADR-0030). What the *application* says — a label, a

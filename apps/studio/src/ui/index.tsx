@@ -19,6 +19,7 @@ import {
   Info,
   Loader,
   Minus,
+  Search as SearchIcon,
   X,
 } from 'lucide-react'
 import {
@@ -208,10 +209,19 @@ const CONTROL =
 
 const border = (invalid: boolean) => (invalid ? 'ring-field-danger' : 'border-line')
 
-export const Input = ({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) => (
+export const Input = ({
+  size = 'field',
+  className,
+  ...rest
+  // `size` on a native input is a width in characters, which nothing here has ever set
+  // and no design in the handoff is expressed in. The name is worth more as this.
+  // `ComponentPropsWithRef`, so a caller can hold the element: the rich text strip moves
+  // focus into the address box the moment it opens. `IconButton` takes its ref the same
+  // way — React 19 passes one through as an ordinary prop.
+}: Omit<ComponentPropsWithRef<'input'>, 'size'> & { size?: ControlSize }) => (
   <input
     id={use(FieldId)}
-    className={join(CONTROL, 'h-9 rounded-lg px-3', border(use(FieldInvalid)), className)}
+    className={join(CONTROL, INPUT_SIZES[size], border(use(FieldInvalid)), className)}
     {...rest}
   />
 )
@@ -242,16 +252,28 @@ export const Textarea = ({ className, ...rest }: TextareaHTMLAttributes<HTMLText
  * The three sizes a control comes in, and nothing between them.
  *
  * The handoff gives a field one height per place it stands in — 36 on a form, 32 in a
- * toolbar or a side panel, 28 in a list row — each with its own padding, its own radius
- * at the smallest, and a chevron that shrinks with it. Left to a `className` at the call
- * site, `h-8` changed the height and left the padding and the chevron behind, which is
- * how five selects came to be five slightly different controls.
+ * toolbar or a side panel, 28 in a list row — each with its own padding and its own
+ * radius at the smallest. Left to a `className` at the call site, `h-8` changed the
+ * height and left the rest behind, which is how five selects came to be five slightly
+ * different controls.
+ */
+export type ControlSize = 'field' | 'panel' | 'small'
+
+const INPUT_SIZES: Readonly<Record<ControlSize, string>> = {
+  field: 'h-9 rounded-lg px-3 text-base',
+  panel: 'h-8 rounded-lg px-3 text-base',
+  small: 'h-7 rounded-[7px] px-2.5 text-sm',
+}
+
+/**
+ * A select's padding is not an input's: the right edge is a well for the chevron, and
+ * the chevron shrinks with the box.
  */
 const SELECT_SIZES = {
   field: { box: 'h-9 rounded-lg pl-3 pr-9 text-base', chevron: 'right-2.5 size-[18px]' },
   panel: { box: 'h-8 rounded-lg pl-2.5 pr-8 text-base', chevron: 'right-[9px] size-4' },
   small: { box: 'h-7 rounded-[7px] pl-2.5 pr-7 text-sm', chevron: 'right-2 size-3.5' },
-} as const
+} as const satisfies Record<ControlSize, { box: string; chevron: string }>
 
 export const Select = ({
   size = 'field',
@@ -261,7 +283,7 @@ export const Select = ({
   // is never. The name is worth more as the handoff's three sizes than as that.
 }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> & {
   /** Where it stands: a form, a toolbar or panel, or a row in a list. */
-  size?: keyof typeof SELECT_SIZES
+  size?: ControlSize
 }) => (
   <span className="relative block">
     <select
@@ -329,6 +351,28 @@ export const AffixedInput = ({ className, ...rest }: InputHTMLAttributes<HTMLInp
     )}
     {...rest}
   />
+)
+
+/**
+ * A search box, which the handoff draws twice and identically: over the entries of a
+ * collection and over the people in a workspace.
+ *
+ * Its own control rather than a magnifier positioned by hand at each call site, which is
+ * what it was — three copies of `absolute top-1/2 left-3` and a padding that has to know
+ * about them. The geometry is the kit's toolbar field: 32px, a 20px glyph 12px from the
+ * left edge, and 40px of room made for it.
+ */
+export const SearchField = ({
+  className,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'type'>) => (
+  <span className={join('relative block', className)}>
+    <SearchIcon
+      aria-hidden
+      className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-ink-subdued"
+    />
+    <Input type="search" size="panel" className="pl-10" {...rest} />
+  </span>
 )
 
 export const Field = ({

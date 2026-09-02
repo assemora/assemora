@@ -16,14 +16,14 @@
  * with the commands behind it.
  */
 import { CircleAlert, Eye, EyeOff } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useId, useState } from 'react'
 
 import { ApiError, unshownMessages } from '../api/client.ts'
 import { useSession } from '../api/session.tsx'
 import { LANGUAGE_NAMES } from '../i18n/languages.ts'
 import type { Translate } from '../i18n/messages.ts'
 import { useLanguage, useT } from '../i18n/translate.tsx'
-import { Button, Segmented } from '../ui/index.tsx'
+import { Button, Input, Segmented } from '../ui/index.tsx'
 import { Logo } from '../ui/logo.tsx'
 
 /**
@@ -67,6 +67,8 @@ export const Login = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [reveal, setReveal] = useState(false)
+  const emailId = useId()
+  const passwordId = useId()
   const [failure, setFailure] = useState<string>()
   const [busy, setBusy] = useState(false)
 
@@ -111,9 +113,10 @@ export const Login = () => {
           )}
 
           <form className="mt-[22px] flex flex-col gap-3.5" onSubmit={submit}>
-            <label className="block text-base font-semibold">
+            <label htmlFor={emailId} className="block text-base font-semibold">
               {t('login.email')}
-              <input
+              <Input
+                id={emailId}
                 type="email"
                 name="email"
                 autoComplete="username"
@@ -121,14 +124,15 @@ export const Login = () => {
                 required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="ring-field mt-1.5 block h-9 w-full rounded-lg border border-line bg-surface px-3 text-base font-normal hover:border-line-strong"
+                className="mt-1.5 block font-normal"
               />
             </label>
 
-            <label className="block text-base font-semibold">
+            <label htmlFor={passwordId} className="block text-base font-semibold">
               {t('login.password')}
               <span className="relative mt-1.5 block">
-                <input
+                <Input
+                  id={passwordId}
                   type={reveal ? 'text' : 'password'}
                   name="password"
                   autoComplete="current-password"
@@ -136,7 +140,7 @@ export const Login = () => {
                   required
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="ring-field block h-9 w-full rounded-lg border border-line bg-surface pr-10 pl-3 text-base font-normal hover:border-line-strong"
+                  className="block pr-10 font-normal"
                 />
                 <button
                   type="button"

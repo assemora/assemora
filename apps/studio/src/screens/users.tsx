@@ -22,6 +22,7 @@ import {
   Failure,
   Field,
   Input,
+  SearchField,
   Select,
   Spinner,
 } from '../ui/index.tsx'
@@ -228,10 +229,9 @@ const People = () => {
   return (
     <>
       <div className="mb-4 flex items-center gap-3">
-        <Input
-          type="search"
+        <SearchField
+          className="max-w-[400px] flex-1"
           placeholder={t('people.searchPlaceholder')}
-          className="max-w-xs"
           value={search}
           onChange={(event) => {
             setPage(1)
