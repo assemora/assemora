@@ -9,9 +9,27 @@
 import { text } from '@assemora/resources'
 import { describe, expect, it } from 'vitest'
 
-import { block, validateProps } from './block.js'
+import { block, describeBlock, validateProps } from './block.js'
 
 const issues = (result: ReturnType<typeof validateProps>) => (result.ok ? [] : result.issues)
+
+describe('how a block says it should be drawn (SPEC.md §58)', () => {
+  it('carries an icon and a heading into the registry, as data', () => {
+    const described = describeBlock(
+      block('hero', { title: text() }, { icon: 'panel-top', group: 'Layout' }),
+    )
+
+    expect(described.icon).toBe('panel-top')
+    expect(described.group).toBe('Layout')
+  })
+
+  it('says neither when neither was said, so a palette that grouped nothing looks as it did', () => {
+    const described = describeBlock(block('hero', { title: text() }))
+
+    expect(described.icon).toBeUndefined()
+    expect(described.group).toBeUndefined()
+  })
+})
 
 describe("props checked against a block's fields", () => {
   it('takes what the fields declare and drops nothing it declared', () => {

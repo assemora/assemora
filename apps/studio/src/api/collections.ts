@@ -55,6 +55,8 @@ export type FieldSpec = FieldShapeSpec & { readonly name: string }
 export type CollectionDefinition = {
   readonly name: string
   readonly label?: string
+  /** What it is drawn as: a name from the set `ui/icons.tsx` ships (SPEC.md §58). */
+  readonly icon?: string
   readonly fields: readonly FieldSpec[]
 }
 
@@ -62,6 +64,8 @@ export type CollectionSummary = {
   readonly id: string
   readonly name: string
   readonly label: string
+  /** What it is drawn as: a name from the set `ui/icons.tsx` ships. */
+  readonly icon?: string
   readonly fields: number
   readonly api: {
     readonly create: boolean

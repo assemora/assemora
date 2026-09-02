@@ -78,6 +78,7 @@ const context = {
 const draft = (fields: readonly FieldDraft[], name = 'notes'): CollectionDraft => ({
   name,
   label: '',
+  icon: '',
   fields,
 })
 
@@ -518,7 +519,7 @@ describe('a group and a repeater', () => {
     const draft = draftOf(nested)
     const broken = patched(draft.fields, 'stored.author.site', { name: '1nvalid' })
     const messages = issuesOf(
-      { name: 'landing', label: '', fields: broken },
+      { name: 'landing', label: '', icon: '', fields: broken },
       { ...context, stored: nested, taken: [] },
     )
 

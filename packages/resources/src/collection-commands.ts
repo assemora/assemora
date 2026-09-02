@@ -512,6 +512,7 @@ export const CreateCollection = command('collections.create', {
   input: {
     name: collectionDefinitionSchema.shape.name,
     label: collectionDefinitionSchema.shape.label,
+    icon: collectionDefinitionSchema.shape.icon,
     fields: collectionDefinitionSchema.shape.fields,
     /**
      * Which CRUD operations this collection has (SPEC.md §43).
@@ -523,11 +524,11 @@ export const CreateCollection = command('collections.create', {
      */
     api: collectionDefinitionSchema.shape.api,
   },
-  handle: async ({ name, label, fields, api }, context) => {
+  handle: async ({ name, label, icon, fields, api }, context) => {
     // Everything goes through the parser, whatever the bus already checked. It is the
     // one place that knows a field kind has to be registered, and the one place §86 is
     // enforced — a second door into a stored definition is a second door round it.
-    const definition = named(parseDeclaredDefinition({ name, label, fields, api }))
+    const definition = named(parseDeclaredDefinition({ name, label, icon, fields, api }))
 
     refuseTakenName(definition.name)
 
@@ -563,10 +564,11 @@ export const CreateCollection = command('collections.create', {
 })
 
 export const UpdateCollection = command('collections.update', {
-  description: 'Changes a collection: its label, and the fields it declares',
+  description: 'Changes a collection: its label, its icon, and the fields it declares',
   input: {
     name: collectionDefinitionSchema.shape.name,
     label: collectionDefinitionSchema.shape.label,
+    icon: collectionDefinitionSchema.shape.icon,
     fields: collectionDefinitionSchema.shape.fields,
     /**
      * Which CRUD operations this collection has (SPEC.md §43).
@@ -584,7 +586,7 @@ export const UpdateCollection = command('collections.update', {
      */
     drop: array(string()).optional(),
   },
-  handle: async ({ name, label, fields, api, drop }, context) => {
+  handle: async ({ name, label, icon, fields, api, drop }, context) => {
     const row = await storedByName(name)
 
     if (row === null) throw new NotFoundError('collection', name)
@@ -609,6 +611,10 @@ export const UpdateCollection = command('collections.update', {
       parseDeclaredDefinition({
         name,
         label: label ?? row.label,
+        // Left out it keeps what is stored, the way `label` and `api` do. There is no
+        // way to say "no icon" — the name pattern refuses an empty string — and that is
+        // the honest state rather than a second value meaning absence nobody asked for.
+        icon: icon ?? current.icon,
         fields,
         api: api ?? current.api,
       }),
@@ -736,6 +742,8 @@ export type CollectionSummary = {
   readonly id: string
   readonly name: string
   readonly label: string
+  /** What it is drawn as, so a list of collections looks like the sidebar does. */
+  readonly icon?: string
   readonly fields: number
   readonly api: ApiExposure
 }
@@ -744,6 +752,9 @@ const summarize = (collection: Collection): CollectionSummary => ({
   id: collection.id,
   name: collection.resource.descriptor.name,
   label: collection.resource.descriptor.label,
+  ...(collection.resource.descriptor.icon === undefined
+    ? {}
+    : { icon: collection.resource.descriptor.icon }),
   fields: collection.resource.descriptor.fields.length,
   api: collection.resource.descriptor.api,
 })

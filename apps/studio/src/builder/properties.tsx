@@ -13,7 +13,6 @@ import {
   EyeOff,
   IndentDecrease,
   IndentIncrease,
-  Square,
   Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
@@ -21,6 +20,7 @@ import { type BlockDescriptor, valueAt } from '../api/introspection.ts'
 import { useThemeColors } from '../api/theme.ts'
 import { useT } from '../i18n/translate.tsx'
 import { FieldInput } from '../screens/fields.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
 
 import { Badge, IconButton, join } from '../ui/index.tsx'
 import { DesignControls } from './design.tsx'
@@ -152,7 +152,7 @@ export const Properties = ({
     <aside className="absolute inset-y-4 right-4 flex w-86 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-panel">
       <header className="shrink-0 border-b border-hairline px-4 pt-3">
         <div className="flex items-center gap-2">
-          <Square aria-hidden className="size-4 shrink-0 text-ink-soft" />
+          <ResourceIcon name={block.icon} className="size-4 shrink-0 text-ink-soft" />
           <h2 className="min-w-0 flex-1 truncate text-base font-[650]">{block.label}</h2>
           {node.hidden === true && <Badge tone="quiet">{t('properties.hidden')}</Badge>}
         </div>

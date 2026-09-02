@@ -170,6 +170,50 @@ describe('creating a collection (SPEC.md §37)', () => {
     expect(listed.total).toBe(1)
   })
 
+  /**
+   * What a collection is drawn as, which a person picks rather than writes.
+   *
+   * The same field a resource declared in TypeScript carries, reaching Studio through
+   * the same registry — a name, never a picture, because the glyphs belong to whatever
+   * is drawing (SPEC.md §58).
+   */
+  it('carries what it is drawn as, and keeps it through an edit that says nothing', async () => {
+    const { app } = await build()
+
+    const made = (await create(app, { ...testimonials, icon: 'quote' })) as {
+      resource: { icon?: string }
+    }
+
+    expect(made.resource.icon).toBe('quote')
+
+    // `label` and `api` both keep what is stored when an update leaves them out, and an
+    // icon that vanished the first time somebody renamed a field would be worse than one
+    // that could never be set.
+    const edited = (await app.commands.execute('collections.update', {
+      name: 'testimonials',
+      fields: testimonials.fields,
+    })) as { resource: { icon?: string } }
+
+    expect(edited.resource.icon).toBe('quote')
+  })
+
+  it('refuses an icon that is not a name, because a definition holds no pictures', async () => {
+    const { app } = await build()
+
+    // The whole of the rule: a definition holds a *name* for whatever is drawing to look
+    // up. Anything that could be markup is refused where it is written, not sanitised
+    // where it is drawn (SPEC.md §86).
+    type Refusal = { code?: string; issues?: readonly { path: readonly string[] }[] }
+
+    const refused = (await create(app, {
+      ...testimonials,
+      icon: '<svg onload=alert(1)>',
+    }).catch((error: unknown) => error)) as Refusal
+
+    expect(refused.code).toBe('VALIDATION_ERROR')
+    expect(refused.issues?.map((issue) => issue.path.join('.'))).toContain('icon')
+  })
+
   it('says where the collection can be reached, and promises no restart (SPEC.md §43)', async () => {
     const { app } = await build()
 

@@ -18,21 +18,14 @@
  * and a dashboard of plausible-looking fictions is worse than a short one.
  */
 import { Link, useNavigate } from '@tanstack/react-router'
-import {
-  Blocks,
-  Database,
-  FileText,
-  Network,
-  Route as RouteIcon,
-  Terminal,
-  Zap,
-} from 'lucide-react'
+import { Blocks, Database, FileText, Route as RouteIcon, Terminal, Zap } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { useIntrospection } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
 import { useT } from '../i18n/translate.tsx'
 import { GettingStarted } from '../ui/blank.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
 import { Card, Failure, Spinner } from '../ui/index.tsx'
 import { Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 
@@ -186,7 +179,7 @@ export const Dashboard = () => {
                       aria-hidden
                       className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-canvas text-ink-soft"
                     >
-                      <Network className="size-[18px]" />
+                      <ResourceIcon name={resource.icon} />
                     </span>
                     <span className="min-w-0">
                       <span className="block truncate font-[650] text-ink">{resource.label}</span>

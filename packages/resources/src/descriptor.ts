@@ -80,6 +80,20 @@ export type ResourceDescriptor = {
    * that never groups anything looks exactly as it did.
    */
   readonly group?: string
+  /**
+   * What this resource is drawn as, wherever a client lists it (SPEC.md §58).
+   *
+   * A name from the set the client ships — `shopping-cart`, `utensils` — and never a
+   * picture: the glyphs belong to whatever is drawing, and Studio is a pre-built
+   * artifact whose icons ship inside it. A name it does not know is drawn as the
+   * general document every resource was drawn as before, so an application naming one
+   * a newer Studio has never seen degrades rather than breaks.
+   *
+   * It reaches Studio the way `label` and `group` do — through the registry, as data —
+   * and it is set the same two ways: in the declaration for a resource written in
+   * TypeScript, in the definition for one made in Studio.
+   */
+  readonly icon?: string
   readonly perPage: number
 }
 

@@ -331,11 +331,33 @@ const shapeSpecAt = (depth: number): Shape => {
 /** The shape a stored definition is allowed to have. Declarative JSON, nothing else. */
 export const fieldSpecSchema: Schema<FieldSpec> = namedSpec(shapeSpecAt(1))
 
+/**
+ * What a resource is drawn as, wherever it is listed (SPEC.md §58).
+ *
+ * A *name*, and never a picture: an icon set belongs to whatever is drawing, and Studio
+ * is a pre-built artifact whose icons ship inside it (ADR-0027). So this validates the
+ * shape of a name and nothing more — the drawer holds the set, offers the ones it has,
+ * and falls back to a general one for a name it does not know. The alternative is an
+ * enum in the framework that has to be edited every time a client learns a new glyph,
+ * and a picture in a definition, which is a stylesheet arriving through the field layer.
+ *
+ * Kebab-case because that is how the set Studio ships names its own: `shopping-cart`,
+ * `map-pin`. Unsaid, a resource is drawn as a document, which is what every one of them
+ * looked like before.
+ */
+const iconNameSchema = string()
+  .pattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, 'Invalid icon name')
+  .max(64)
+  .describe(
+    'What this resource is drawn as in a client that lists it — a name from the set that client ships, such as "shopping-cart". Unknown names fall back to a general document icon (SPEC.md §58)',
+  )
+
 export const definitionSchema = object({
   name: string()
     .pattern(/^[a-z][a-z0-9_]*$/, 'Invalid resource name')
     .max(COLUMN_LENGTH),
   label: string().max(COLUMN_LENGTH).optional(),
+  icon: iconNameSchema.optional(),
   fields: array(fieldSpecSchema).min(1).max(MAX_FIELDS),
 })
 

@@ -92,6 +92,8 @@ export type ResourceDescriptor = {
   readonly titleField?: string
   /** The heading the sidebar files it under, where the application named one. */
   readonly group?: string
+  /** What it is drawn as: a name from the set `ui/icons.tsx` ships (SPEC.md §58). */
+  readonly icon?: string
   readonly perPage: number
 }
 
@@ -123,6 +125,10 @@ export type BlockDescriptor = {
   readonly name: string
   readonly label: string
   readonly description?: string
+  /** What the palette draws it as: a name from the set `ui/icons.tsx` ships. */
+  readonly icon?: string
+  /** The heading the palette files it under, where the application named one. */
+  readonly group?: string
   readonly fields: readonly FieldDescriptor[]
   readonly acceptsChildren: boolean
   /** Empty means anything, once children are accepted at all (SPEC.md §56). */

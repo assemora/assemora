@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useIntrospection } from '../api/introspection.ts'
 import { useT } from '../i18n/translate.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
 import { join } from '../ui/index.tsx'
 import { useDismiss } from '../ui/overlay.tsx'
 
@@ -82,7 +83,7 @@ export const Palette = ({
         key: `resource:${resource.name}`,
         label: resource.label,
         where: t('nav.content'),
-        icon: <FileText className="size-5" />,
+        icon: <ResourceIcon name={resource.icon} className="size-5" />,
         to: { to: '/content/$resource', params: { resource: resource.name } } as LinkProps,
       })),
       {

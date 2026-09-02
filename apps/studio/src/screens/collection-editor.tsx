@@ -44,10 +44,12 @@ import {
   storedField,
   without,
 } from '../collections/draft.ts'
+import { IconField } from '../collections/icon-field.tsx'
 import { fits, PRESETS } from '../collections/kinds.tsx'
 import { Preview } from '../collections/preview.tsx'
 import { FieldRow, type RowSetting } from '../collections/row.tsx'
 import { useT } from '../i18n/translate.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
 import { Button, Card, Failure, Field, Input, join, Spinner } from '../ui/index.tsx'
 import { SaveBar, Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 
@@ -366,7 +368,13 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
     <Screen>
       <ScreenHead>
         <ScreenTitle
-          icon={<Network className="size-5" />}
+          icon={
+            draft.icon === '' ? (
+              <Network className="size-5" />
+            ) : (
+              <ResourceIcon name={draft.icon} className="size-5" />
+            )
+          }
           title={mode === 'create' ? t('collections.new') : (stored?.label ?? name)}
           description={
             mode === 'create' ? t('editor.lede') : t('collection.entryCount', { count: entries })
@@ -479,6 +487,14 @@ export const CollectionEditor = ({ mode }: { mode: 'create' | 'edit' }) => {
                     }}
                   />
                 </Field>
+
+                {/* Offered here and nowhere else: a collection made in Studio holds its
+                    icon in its own definition, and a resource declared in TypeScript
+                    holds it in `resource(…, { icon })`, which no screen may rewrite. */}
+                <IconField
+                  value={draft.icon}
+                  onChange={(icon) => setDraft((current) => ({ ...current, icon }))}
+                />
               </div>
 
               {/*

@@ -28,6 +28,8 @@ import { validateAgainstFields } from './validation.js'
 export type DynamicDefinition = {
   readonly name: string
   readonly label?: string
+  /** What Studio draws it as: a name from the set Studio ships (SPEC.md §58). */
+  readonly icon?: string
   readonly fields: readonly FieldSpec[]
   /**
    * Which CRUD operations this collection has (SPEC.md §43).
@@ -236,6 +238,7 @@ export const dynamicResource = (
     // the whole of a collection being able to offer less, and it was hard-coded to all
     // four until now.
     api: apiExposureOf(definition.api),
+    ...(definition.icon === undefined ? {} : { icon: definition.icon }),
     perPage,
   }
 

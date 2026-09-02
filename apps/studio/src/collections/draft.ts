@@ -58,6 +58,8 @@ export type FieldDraft = {
 export type CollectionDraft = {
   readonly name: string
   readonly label: string
+  /** What it is drawn as. The empty string is "nobody said", which draws a document. */
+  readonly icon: string
   readonly fields: readonly FieldDraft[]
 }
 
@@ -118,6 +120,7 @@ function shapeDraftOf(spec: FieldShapeSpec, key: string): FieldDraft {
 export const draftOf = (definition: CollectionDefinition): CollectionDraft => ({
   name: definition.name,
   label: definition.label ?? '',
+  icon: definition.icon ?? '',
   fields: definition.fields.map((spec) => fieldDraftOf(spec, 'stored')),
 })
 
@@ -133,6 +136,7 @@ export const draftOf = (definition: CollectionDefinition): CollectionDraft => ({
 export const emptyDraft = (): CollectionDraft => ({
   name: '',
   label: '',
+  icon: '',
   fields: [],
 })
 
@@ -314,6 +318,9 @@ export const payloadOf = (
   return {
     name: draft.name.trim(),
     ...(draft.label.trim() === '' ? {} : { label: draft.label.trim() }),
+    // Absent rather than empty: the command's name pattern refuses `''`, and leaving it
+    // out is what "keep whatever is stored" means to an update.
+    ...(draft.icon === '' ? {} : { icon: draft.icon }),
     fields: draft.fields.map((field) => specOf(field)),
     ...(drop.length === 0 ? {} : { drop }),
   }

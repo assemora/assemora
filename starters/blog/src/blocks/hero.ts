@@ -15,5 +15,5 @@ export const Hero = block(
     title: text().required().label('Headline'),
     subtitle: text().label('Subtitle'),
   },
-  { label: 'Hero', description: 'The first thing a visitor sees' },
+  { label: 'Hero', description: 'The first thing a visitor sees', icon: 'panel-top' },
 )

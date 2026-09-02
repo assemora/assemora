@@ -241,6 +241,28 @@ segment that is not a language is untouched, so `/api/v1/…` still means a vers
 not translatable at all and says so where it is asked — its entries share one JSONB table
 and its stored definition has nowhere to say which fields are worth translating.
 
+**A resource says what it is drawn as.** `resource(Dish, …, { icon: 'utensils' })` sits
+beside `label` and `group`, reaches Studio through the registry as data, and is drawn in
+the sidebar, the rail, the command palette, the dashboard, the listing's own heading and
+both halves of the Collections screen. A collection made in Studio carries it in its own
+definition instead and picks it from a grid — so the one field is set the two ways every
+other presentation fact is.
+
+- It is a **name**, never a picture: the glyphs ship inside Studio (ADR-0027), and an
+  application cannot add one to a bundle it did not build. So the framework validates
+  that a name is a name — kebab-case, `^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$` — and
+  `apps/studio/src/ui/icons.tsx` decides what it looks like. A name Studio does not know
+  draws the document every resource drew before, which is the whole degradation story: a
+  project naming an icon a newer Studio would know reads plainer, and does not break.
+- The set and the picker are two objects that have to agree, so `icons.test.tsx` counts
+  them against each other: a name offered with no glyph behind it is a button that
+  silently sets a resource's icon to a document.
+- A **block** says the same two things — `block(…, { icon: 'panel-top', group: 'Layout' })`
+  — and the page editor reads them: the icon draws the outline row, the palette card and
+  the inspector's own heading, and the group files the palette under headings, in
+  registration order, with no heading at all over blocks that named none. An application
+  that groups nothing sees the flat list it always saw.
+
 **The collection builder is drawn from the handoff** (`design_handoff_studio_redesign`
 §3). Two columns — what is being declared on the left, what it becomes on the right: a
 live drawing of the entry form an editor will meet, and the JSON the command will be

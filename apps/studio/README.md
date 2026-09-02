@@ -49,7 +49,9 @@ wrote — is left in the language it was written in. Studio translates what Stud
 Studio holds no knowledge of any particular application. It asks
 `/api/_introspection` what exists and renders that:
 
-- the navigation's collections are the registry's resources
+- the navigation's collections are the registry's resources, drawn as the icon each one
+  names — `resource(…, { icon: 'utensils' })`, or a grid in the editor for a collection
+  made here; a name Studio does not ship draws a document
 - a table's columns, its search box and its sort options are the resource's fields
 - a form is the field list, one input per `kind`
 - the API Explorer is the registry's routes, with their real schemas

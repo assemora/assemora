@@ -36,6 +36,7 @@ import { useSession } from '../api/session.tsx'
 import { LANGUAGE_NAMES } from '../i18n/languages.ts'
 import type { MessageKey } from '../i18n/messages.ts'
 import { useLanguage, useT } from '../i18n/translate.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
 import { join, Spinner } from '../ui/index.tsx'
 import { Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 import { Logo } from '../ui/logo.tsx'
@@ -229,7 +230,7 @@ export const Shell = () => {
                     key={resource.name}
                     to="/content/$resource"
                     params={{ resource: resource.name }}
-                    icon={<FileText className="size-5" />}
+                    icon={<ResourceIcon name={resource.icon} className="size-5" />}
                     label={resource.label}
                   />
                 ))}
@@ -349,6 +350,7 @@ export const Shell = () => {
                               to="/content/$resource"
                               params={{ resource: resource.name }}
                             >
+                              <ResourceIcon name={resource.icon} className="mr-1.5 size-4" />
                               {resource.label}
                             </SubLink>
                           ))}
@@ -382,7 +384,7 @@ export const Shell = () => {
                         key={resource.name}
                         to="/content/$resource"
                         params={{ resource: resource.name }}
-                        icon={<FileText className="size-[18px]" />}
+                        icon={<ResourceIcon name={resource.icon} />}
                       >
                         {resource.label}
                       </NavLink>

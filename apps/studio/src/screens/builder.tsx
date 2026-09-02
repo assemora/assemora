@@ -53,6 +53,9 @@ export const Builder = () => {
   /** What the application calls a block of this type, never its machine name. */
   const nameOf = (type: string): string => blockByName(registry, type)?.label ?? type
 
+  /** What the application draws a block of this type as, if it asked for anything. */
+  const iconOf = (type: string): string | undefined => blockByName(registry, type)?.icon
+
   /**
    * Whether a container will take one more block of this type, right now.
    *
@@ -378,6 +381,7 @@ export const Builder = () => {
           selected={state.selected}
           busy={state.busy}
           nameOf={nameOf}
+          iconOf={iconOf}
           fitsInSelection={(type) => roomIn(node ?? null, type)}
           onSelect={select}
           onMove={(blockId, direction) => {

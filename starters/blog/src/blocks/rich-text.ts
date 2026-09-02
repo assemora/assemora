@@ -11,5 +11,5 @@ import { richText } from '@assemora/resources'
 export const RichText = block(
   'richText',
   { body: richText().required().label('Text') },
-  { label: 'Rich text', description: 'A paragraph or two of prose' },
+  { label: 'Rich text', description: 'A paragraph or two of prose', icon: 'text-align-start' },
 )

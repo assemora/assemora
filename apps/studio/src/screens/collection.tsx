@@ -16,7 +16,6 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import {
   Copy,
   Ellipsis,
-  FileText,
   Loader,
   Pencil,
   SearchX,
@@ -40,6 +39,7 @@ import {
 import { useLocales } from '../api/locale.tsx'
 import { useDates, useT } from '../i18n/translate.tsx'
 import { NoEntries } from '../ui/blank.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
 import {
   Badge,
   Button,
@@ -380,7 +380,7 @@ export const Collection = () => {
     <Screen>
       <ScreenHead>
         <ScreenTitle
-          icon={<FileText className="size-5" />}
+          icon={<ResourceIcon name={resource.icon} className="size-5" />}
           title={resource.label}
           count={blank ? undefined : listing.data?.total}
           actions={

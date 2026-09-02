@@ -860,4 +860,26 @@ export const DEVELOPER = {
     uk: ['{count} поле', '{count} поля', '{count} полів'],
     ru: ['{count} поле', '{count} поля', '{count} полей'],
   },
+  // --- what a collection is drawn as (SPEC.md §58) ------------------------------------
+  //
+  // The names themselves — `shopping-cart`, `utensils` — are the drawing set's own and
+  // stay as they are in every language, the way a field kind's name does.
+  'editor.icon': { en: 'Icon', uk: 'Іконка', ru: 'Иконка' },
+  'editor.iconHelp': {
+    en: 'What it is drawn as in the sidebar and wherever else it is listed',
+    uk: 'Якою її малюють у бічній панелі й скрізь, де вона перелічена',
+    ru: 'Какой её рисуют в боковой панели и везде, где она перечислена',
+  },
+  'editor.iconDefault': {
+    en: 'A document, as every resource was',
+    uk: 'Документ, як і всі ресурси досі',
+    ru: 'Документ, как и все ресурсы до сих пор',
+  },
+  'icons.group.content': { en: 'Content', uk: 'Вміст', ru: 'Содержимое' },
+  'icons.group.people': { en: 'People', uk: 'Люди', ru: 'Люди' },
+  'icons.group.shop': { en: 'Shop', uk: 'Магазин', ru: 'Магазин' },
+  'icons.group.media': { en: 'Media', uk: 'Медіа', ru: 'Медиа' },
+  'icons.group.world': { en: 'Places and time', uk: 'Місця й час', ru: 'Места и время' },
+  'icons.group.signals': { en: 'Signals', uk: 'Сигнали', ru: 'Сигналы' },
+  'icons.group.structure': { en: 'Structure', uk: 'Структура', ru: 'Структура' },
 } as const satisfies Catalogue
