@@ -622,7 +622,11 @@ export const Segmented = <T extends string>({
   <div
     role="radiogroup"
     aria-label={label}
-    className="inline-flex gap-0.5 rounded-[9px] bg-canvas p-0.5"
+    /* Wrapping, because a track is as long as the scale it is offering and a scale is
+       the theme's to decide: seven spacing tokens and `theme` do not fit across a 344px
+       inspector. Two rows of the same track still read as one control; a row that
+       overflows its panel does not. */
+    className="inline-flex flex-wrap gap-0.5 rounded-[9px] bg-canvas p-0.5"
   >
     {options.map((option) => (
       // biome-ignore lint/a11y/useSemanticElements: the option is the control — see above

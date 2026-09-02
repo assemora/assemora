@@ -253,4 +253,20 @@ export const DESIGN = {
     ru: 'Добавьте гарнитуру, например Inter или sans-serif',
   },
   'design.didNotWork': { en: 'That did not work', uk: 'Не вийшло', ru: 'Не получилось' },
+  'design.themeShort': { en: 'theme', uk: 'тема', ru: 'тема' },
+  'design.sevenControls': {
+    en: 'Seven controls every block has. The values are theme tokens — what `lg` means is the theme’s answer, not this panel’s.',
+    uk: 'Сім контролів, які має кожен блок. Значення — це токени теми: що означає `lg`, вирішує тема, а не ця панель.',
+    ru: 'Семь контролов, которые есть у каждого блока. Значения — это токены темы: что означает `lg`, решает тема, а не эта панель.',
+  },
+  'design.containerHelp': {
+    en: 'Ignored when the width is full.',
+    uk: 'Не діє, коли ширина — full.',
+    ru: 'Не действует, когда ширина — full.',
+  },
+  'design.backgroundHelp': {
+    en: 'Only colours the theme declares.',
+    uk: 'Лише кольори, які оголошує тема.',
+    ru: 'Только цвета, которые объявляет тема.',
+  },
 } as const satisfies Catalogue

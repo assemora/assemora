@@ -7,6 +7,7 @@ import {
   allowedMoves,
   blockAbove,
   liftOut,
+  nodeIn,
   parentOf,
   placeBeside,
   rememberPage,
@@ -117,11 +118,23 @@ describe('what the Properties panel may offer (SPEC.md §56, §60)', () => {
   const anywhere = () => true
   const nowhere = () => false
 
+  it('says a block may move only among its own siblings, and not past either end', () => {
+    // The footer's arrows and the outline's ask the same question of the same helper,
+    // so a block at the top of its container greys the same control in both places.
+    const first = allowedMoves(tree, nodeIn(tree, 'a'), anywhere)
+    const last = allowedMoves(tree, nodeIn(tree, 'd'), anywhere)
+
+    expect([first.up, first.down]).toEqual([false, true])
+    expect([last.up, last.down]).toEqual([true, false])
+  })
+
   it('offers nothing at all with no selection', () => {
     expect(allowedMoves(tree, undefined, anywhere)).toEqual({
       indent: false,
       outdent: false,
       duplicate: false,
+      up: false,
+      down: false,
     })
   })
 

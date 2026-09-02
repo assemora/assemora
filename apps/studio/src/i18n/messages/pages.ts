@@ -301,4 +301,11 @@ export const PAGES = {
   },
   'properties.show': { en: 'Show this block', uk: 'Показати цей блок', ru: 'Показать этот блок' },
   'properties.hide': { en: 'Hide this block', uk: 'Приховати цей блок', ru: 'Скрыть этот блок' },
+  'properties.moveUp': { en: 'Move up', uk: 'Перемістити вгору', ru: 'Переместить вверх' },
+  'properties.moveDown': { en: 'Move down', uk: 'Перемістити вниз', ru: 'Переместить вниз' },
+  'properties.nothingSelected': {
+    en: 'Nothing selected',
+    uk: 'Нічого не вибрано',
+    ru: 'Ничего не выбрано',
+  },
 } as const satisfies Catalogue

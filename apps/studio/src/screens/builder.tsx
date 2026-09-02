@@ -200,6 +200,17 @@ export const Builder = () => {
   const above = node === undefined ? undefined : blockAbove(state.tree, node.id)
   const can = allowedMoves(state.tree, node, roomIn)
 
+  /** One step among its own siblings, which is what the outline's arrows do too. */
+  const move = (direction: -1 | 1) => {
+    if (node === undefined) return
+
+    const placement = stepFrom(state.tree, node.id, direction)
+
+    if (placement === undefined) return
+
+    void run('blocks.move', { blockId: node.id, ...placement })
+  }
+
   const VIEWPORT_ICONS = {
     desktop: <Monitor className="size-4" />,
     tablet: <Tablet className="size-4" />,
@@ -476,6 +487,8 @@ export const Builder = () => {
 
             void run('blocks.move', { blockId: node.id, ...placement })
           }}
+          onMoveUp={() => move(-1)}
+          onMoveDown={() => move(1)}
           onProps={(props) => {
             if (node !== undefined) void run('blocks.update', { blockId: node.id, props })
           }}

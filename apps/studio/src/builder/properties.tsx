@@ -7,6 +7,8 @@
  */
 import type { BlockNode } from '@assemora/schema'
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronsRight,
   Copy,
   Eye,
@@ -38,6 +40,8 @@ export const Properties = ({
   onRemove,
   onIndent,
   onOutdent,
+  onMoveUp,
+  onMoveDown,
 }: {
   node: BlockNode | undefined
   block: BlockDescriptor | undefined
@@ -48,7 +52,7 @@ export const Properties = ({
    * A control that offers what the application refuses is a red banner waiting to
    * happen, and Duplicate was the one still doing it.
    */
-  can: { indent: boolean; outdent: boolean; duplicate: boolean }
+  can: { indent: boolean; outdent: boolean; duplicate: boolean; up: boolean; down: boolean }
   onProps(props: Record<string, unknown>): void
   onDesign(patch: Record<string, unknown>): void
   onHide(hidden: boolean): void
@@ -56,6 +60,8 @@ export const Properties = ({
   onRemove(): void
   onIndent(): void
   onOutdent(): void
+  onMoveUp(): void
+  onMoveDown(): void
 }) => {
   const t = useT()
   const [tab, setTab] = useState<'content' | 'design'>('content')
@@ -109,7 +115,7 @@ export const Properties = ({
       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-start p-4">
         <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-2 text-sm text-ink-soft shadow-pill">
           <ChevronsRight aria-hidden className="size-4" />
-          Nothing selected
+          {t('properties.nothingSelected')}
         </span>
       </div>
     )
@@ -245,6 +251,25 @@ export const Properties = ({
           ) : (
             <EyeOff aria-hidden className="size-4" />
           )}
+        </IconButton>
+        {/* Moving is one of the six actions the handoff puts in this footer, and it was
+            reachable only from the outline: a person working in the inspector had to
+            cross the window to move the block they already had selected. */}
+        <IconButton
+          label={t('properties.moveUp')}
+          size={30}
+          disabled={busy || !can.up}
+          onClick={onMoveUp}
+        >
+          <ArrowUp aria-hidden className="size-4" />
+        </IconButton>
+        <IconButton
+          label={t('properties.moveDown')}
+          size={30}
+          disabled={busy || !can.down}
+          onClick={onMoveDown}
+        >
+          <ArrowDown aria-hidden className="size-4" />
         </IconButton>
 
         <button
