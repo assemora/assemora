@@ -60,7 +60,7 @@ export const Articles = resource(
     views: numberField().sortable().filterable().label('Views'),
     featured: toggle().filterable().label('Featured'),
   },
-  { label: 'Articles', defaultSort: '-views', perPage: 10 },
+  { label: 'Articles', icon: 'newspaper', defaultSort: '-views', perPage: 10 },
 )
 
 export const Hero = block(
@@ -71,7 +71,12 @@ export const Hero = block(
     image: media().label('Background'),
     variant: select('centered', 'split').required().label('Layout'),
   },
-  { label: 'Hero', description: 'The first thing a visitor sees' },
+  {
+    label: 'Hero',
+    description: 'The first thing a visitor sees',
+    icon: 'panel-top',
+    group: 'Layout',
+  },
 )
 
 export const Section = block(
@@ -80,6 +85,8 @@ export const Section = block(
   {
     label: 'Section',
     description: 'Holds other blocks',
+    icon: 'rows-3',
+    group: 'Layout',
     acceptsChildren: true,
     maxChildren: 8,
   },
@@ -88,7 +95,7 @@ export const Section = block(
 export const Faq = block(
   'faq',
   { question: text().required().label('Question'), answer: richText().required().label('Answer') },
-  { label: 'FAQ entry' },
+  { label: 'FAQ entry', icon: 'circle-question-mark', group: 'Content' },
 )
 
 /** A hand-written route, to show one living beside the generated CRUD (SPEC.md §121). */

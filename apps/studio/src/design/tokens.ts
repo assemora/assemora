@@ -16,14 +16,25 @@
 import { CONTAINER_WIDTHS, RADIUS_SCALE, SPACING_SCALE } from '@assemora/schema'
 
 import type { TokenValue } from '../api/theme.ts'
+import type { MessageKey } from '../i18n/messages.ts'
 
 export type TokenKind = 'color' | 'length' | 'fontStack' | 'weight' | 'lineHeight'
+
+/**
+ * The keys a group may be headed by.
+ *
+ * Narrowed to the `design.group.` family rather than left as `MessageKey`, because `t`
+ * asks for a message's parameters at the call site and so cannot be handed a key that
+ * could be *any* of them. Written as an `Extract` so the set follows the catalogue.
+ */
+type GroupMessage = Extract<MessageKey, `design.group.${string}`>
 
 export type TokenGroup = {
   /** Where it lives in the document: `['colors']`, `['typography', 'sizes']`. */
   readonly path: readonly string[]
-  readonly title: string
-  readonly help: string
+  /** Named rather than written: a group is headed in the language Studio is read in. */
+  readonly title: GroupMessage
+  readonly help: GroupMessage
   readonly kind: TokenKind
   /** The keys it must have and may never gain or lose. Absent means a site decides. */
   readonly keys?: readonly string[]
@@ -38,8 +49,8 @@ const prefixed =
 
 export const COLORS: TokenGroup = {
   path: ['colors'],
-  title: 'Colours',
-  help: 'A block names one of these as its background, so this list is the list of backgrounds there are',
+  title: 'design.group.colours',
+  help: 'design.group.coloursHelp',
   kind: 'color',
   // Bare, with no prefix: `background: 'brand'` on a block renders `var(--brand)`.
   property: prefixed(''),
@@ -47,40 +58,40 @@ export const COLORS: TokenGroup = {
 
 export const FONTS: TokenGroup = {
   path: ['typography', 'fonts'],
-  title: 'Font stacks',
-  help: 'Most preferred family first, ending in a generic family a browser always has',
+  title: 'design.group.fonts',
+  help: 'design.group.fontsHelp',
   kind: 'fontStack',
   property: prefixed('font-'),
 }
 
 export const SIZES: TokenGroup = {
   path: ['typography', 'sizes'],
-  title: 'Type scale',
-  help: 'The sizes text is set at',
+  title: 'design.group.sizes',
+  help: 'design.group.sizesHelp',
   kind: 'length',
   property: prefixed('text-'),
 }
 
 export const WEIGHTS: TokenGroup = {
   path: ['typography', 'weights'],
-  title: 'Font weights',
-  help: '1 to 1000, as a font declares them',
+  title: 'design.group.weights',
+  help: 'design.group.weightsHelp',
   kind: 'weight',
   property: prefixed('weight-'),
 }
 
 export const LINE_HEIGHTS: TokenGroup = {
   path: ['typography', 'lineHeights'],
-  title: 'Line heights',
-  help: 'Unitless, so they scale with whatever size they are used at',
+  title: 'design.group.lineHeights',
+  help: 'design.group.lineHeightsHelp',
   kind: 'lineHeight',
   property: prefixed('leading-'),
 }
 
 export const SPACING: TokenGroup = {
   path: ['spacing'],
-  title: 'Spacing',
-  help: 'What the space above and below a block means',
+  title: 'design.group.spacing',
+  help: 'design.group.spacingHelp',
   kind: 'length',
   keys: SPACING_SCALE,
   property: prefixed('space-'),
@@ -88,8 +99,8 @@ export const SPACING: TokenGroup = {
 
 export const RADIUS: TokenGroup = {
   path: ['radius'],
-  title: 'Corner radius',
-  help: 'The corners a site rounds, from square to a pill',
+  title: 'design.group.radius',
+  help: 'design.group.radiusHelp',
   kind: 'length',
   keys: RADIUS_SCALE,
   property: prefixed('radius-'),
@@ -97,8 +108,8 @@ export const RADIUS: TokenGroup = {
 
 export const CONTAINER: TokenGroup = {
   path: ['container'],
-  title: 'Container widths',
-  help: 'How wide a block is allowed to be at each of the four widths',
+  title: 'design.group.container',
+  help: 'design.group.containerHelp',
   kind: 'length',
   keys: CONTAINER_WIDTHS,
   property: prefixed('width-'),
@@ -199,15 +210,16 @@ const TOKEN_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 /** A colour becomes a bare custom property, so its name may not open with a digit. */
 const COLOR_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 
-export const nameProblem = (group: TokenGroup, name: string): string | undefined => {
+export const nameProblem = (
+  group: TokenGroup,
+  name: string,
+): 'design.name.colour' | 'design.name.token' | undefined => {
   if (name === '') return undefined
 
   const pattern = group.kind === 'color' ? COLOR_NAME : TOKEN_NAME
 
   if (!pattern.test(name)) {
-    return group.kind === 'color'
-      ? 'Lowercase letters, digits and single dashes, opening with a letter'
-      : 'Lowercase letters, digits and single dashes'
+    return group.kind === 'color' ? 'design.name.colour' : 'design.name.token'
   }
 
   return undefined

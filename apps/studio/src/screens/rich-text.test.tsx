@@ -51,9 +51,29 @@ describe('the rich text field', () => {
       'Numbered list',
       'Quote',
       'Link',
+      'Remove link',
+      'Image',
     ]) {
       expect(markup).toContain(tool)
     }
+  })
+
+  /**
+   * The strip is the design's, so it is drawn the design's way: a `#f1f1f1` band under a
+   * hairline, 30px square buttons, and the headings as their own words rather than as an
+   * icon somebody has to learn. Asserted because it is the half a screenshot review
+   * catches and a unit test usually does not.
+   */
+  it('is drawn as the toolbar of the design and not as a row of glyphs', () => {
+    const markup = draw('')
+
+    expect(markup).toContain('bg-canvas')
+    expect(markup).toContain('size-[30px]')
+    expect(markup).toContain('>H2<')
+    expect(markup).toContain('>H3<')
+    // The emoji it used to be: a paperclip and a backspace key standing in for icons.
+    expect(markup).not.toContain('🔗')
+    expect(markup).not.toContain('⌫')
   })
 
   /**

@@ -6,12 +6,25 @@
  * controls, which every block has and no block declares.
  */
 import type { BlockNode } from '@assemora/schema'
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronsRight,
+  Copy,
+  Eye,
+  EyeOff,
+  IndentDecrease,
+  IndentIncrease,
+  Trash2,
+} from 'lucide-react'
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-
 import { type BlockDescriptor, valueAt } from '../api/introspection.ts'
 import { useThemeColors } from '../api/theme.ts'
+import { useT } from '../i18n/translate.tsx'
 import { FieldInput } from '../screens/fields.tsx'
-import { Badge, Button, Empty } from '../ui/index.tsx'
+import { ResourceIcon } from '../ui/icons.tsx'
+
+import { Badge, IconButton, join } from '../ui/index.tsx'
 import { DesignControls } from './design.tsx'
 import { draftReducer, emptyDraft, sameContent } from './draft.ts'
 
@@ -27,6 +40,8 @@ export const Properties = ({
   onRemove,
   onIndent,
   onOutdent,
+  onMoveUp,
+  onMoveDown,
 }: {
   node: BlockNode | undefined
   block: BlockDescriptor | undefined
@@ -37,7 +52,7 @@ export const Properties = ({
    * A control that offers what the application refuses is a red banner waiting to
    * happen, and Duplicate was the one still doing it.
    */
-  can: { indent: boolean; outdent: boolean; duplicate: boolean }
+  can: { indent: boolean; outdent: boolean; duplicate: boolean; up: boolean; down: boolean }
   onProps(props: Record<string, unknown>): void
   onDesign(patch: Record<string, unknown>): void
   onHide(hidden: boolean): void
@@ -45,7 +60,10 @@ export const Properties = ({
   onRemove(): void
   onIndent(): void
   onOutdent(): void
+  onMoveUp(): void
+  onMoveDown(): void
 }) => {
+  const t = useT()
   const [tab, setTab] = useState<'content' | 'design'>('content')
   const [draft, dispatch] = useReducer(draftReducer, emptyDraft)
   /** The edit waiting out the typing pause, and what it will send. */
@@ -87,11 +105,19 @@ export const Properties = ({
 
   useEffect(() => cancel, [cancel])
 
+  /*
+   * Nothing selected: the panel collapses to a pill and the canvas takes the space back.
+   * A 344px column of "Nothing selected" is the widest possible way to say nothing, and
+   * on a laptop it is the difference between judging a page at its real width and not.
+   */
   if (node === undefined || block === undefined) {
     return (
-      <aside className="w-80 shrink-0 border-l border-line bg-surface">
-        <Empty title="Nothing selected">Choose a block on the page or in the outline.</Empty>
-      </aside>
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-start p-4">
+        <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-2 text-sm text-ink-soft shadow-pill">
+          <ChevronsRight aria-hidden className="size-4" />
+          {t('properties.nothingSelected')}
+        </span>
+      </div>
     )
   }
 
@@ -129,37 +155,45 @@ export const Properties = ({
   }
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line bg-surface">
-      <header className="space-y-2 border-b border-line px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">{block.label}</h2>
-          {node.hidden === true && <Badge>hidden</Badge>}
+    <aside className="absolute inset-y-4 right-4 flex w-86 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-panel">
+      <header className="shrink-0 border-b border-hairline px-4 pt-3">
+        <div className="flex items-center gap-2">
+          <ResourceIcon name={block.icon} className="size-4 shrink-0 text-ink-soft" />
+          <h2 className="min-w-0 flex-1 truncate text-base font-[650]">{block.label}</h2>
+          {node.hidden === true && <Badge tone="quiet">{t('properties.hidden')}</Badge>}
         </div>
+        {/* The machine's own names, in the machine's own type: what a bug report needs
+            and what an agent addresses the block by. */}
+        <p className="mt-0.5 truncate font-mono text-xs text-ink-faint">
+          {node.type} · {node.id}
+        </p>
 
-        <div className="flex gap-1">
+        <div role="tablist" aria-label={t('properties.inspector')} className="mt-2 flex gap-6">
           {(['content', 'design'] as const).map((name) => (
             <button
               key={name}
               type="button"
-              className={[
-                'rounded-md px-2.5 py-1 text-xs font-medium capitalize transition',
+              role="tab"
+              aria-selected={tab === name}
+              className={join(
+                'h-9 border-b-2 px-0.5 text-base',
                 tab === name
-                  ? 'bg-accent-soft text-accent'
-                  : 'text-ink-soft hover:bg-surface-sunken',
-              ].join(' ')}
+                  ? 'border-ink text-ink font-[650]'
+                  : 'border-transparent text-ink-soft font-[550] hover:text-ink',
+              )}
               onClick={() => setTab(name)}
             >
-              {name}
+              {name === 'content' ? t('properties.content') : t('properties.design')}
             </button>
           ))}
         </div>
       </header>
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: a blur anywhere inside flushes the pending edit */}
-      <div className="flex-1 space-y-4 px-4 py-4" onBlur={commitNow}>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" onBlur={commitNow}>
         {tab === 'content' ? (
           block.fields.length === 0 ? (
-            <Empty title="This block has no fields" />
+            <p className="py-8 text-center text-base text-ink-soft">{t('properties.noFields')}</p>
           ) : (
             block.fields.map((field) => (
               <FieldInput
@@ -179,55 +213,74 @@ export const Properties = ({
         )}
       </div>
 
-      <footer className="flex flex-wrap gap-2 border-t border-line px-4 py-3">
-        <Button
-          variant="secondary"
-          size="sm"
+      {/* Six moves as icons and one destruction in words: the handoff's footer. A
+          destructive action never shares a shape with the five beside it. */}
+      <footer className="flex shrink-0 items-center gap-1 border-t border-hairline px-3 py-2.5">
+        <IconButton
+          label={t('properties.duplicate')}
+          size={30}
+          disabled={busy || !can.duplicate}
+          onClick={onDuplicate}
+        >
+          <Copy aria-hidden className="size-4" />
+        </IconButton>
+        <IconButton
+          label={t('properties.indent')}
+          size={30}
           disabled={busy || !can.indent}
-          title="Move inside the block above"
           onClick={onIndent}
         >
-          Nest
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
+          <IndentIncrease aria-hidden className="size-4" />
+        </IconButton>
+        <IconButton
+          label={t('properties.outdent')}
+          size={30}
           disabled={busy || !can.outdent}
-          title="Move out of its container"
           onClick={onOutdent}
         >
-          Lift out
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
+          <IndentDecrease aria-hidden className="size-4" />
+        </IconButton>
+        <IconButton
+          label={node.hidden === true ? t('properties.show') : t('properties.hide')}
+          size={30}
           disabled={busy}
           onClick={() => onHide(node.hidden !== true)}
         >
-          {node.hidden === true ? 'Show' : 'Hide'}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={busy || !can.duplicate}
-          title={
-            can.duplicate
-              ? 'Add a copy beside this block'
-              : 'What holds this block will not take another'
-          }
-          onClick={onDuplicate}
+          {node.hidden === true ? (
+            <Eye aria-hidden className="size-4" />
+          ) : (
+            <EyeOff aria-hidden className="size-4" />
+          )}
+        </IconButton>
+        {/* Moving is one of the six actions the handoff puts in this footer, and it was
+            reachable only from the outline: a person working in the inspector had to
+            cross the window to move the block they already had selected. */}
+        <IconButton
+          label={t('properties.moveUp')}
+          size={30}
+          disabled={busy || !can.up}
+          onClick={onMoveUp}
         >
-          Duplicate
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-danger"
+          <ArrowUp aria-hidden className="size-4" />
+        </IconButton>
+        <IconButton
+          label={t('properties.moveDown')}
+          size={30}
+          disabled={busy || !can.down}
+          onClick={onMoveDown}
+        >
+          <ArrowDown aria-hidden className="size-4" />
+        </IconButton>
+
+        <button
+          type="button"
           disabled={busy}
           onClick={onRemove}
+          className="ml-auto inline-flex h-[30px] items-center gap-1.5 rounded-lg px-2.5 text-base font-[650] text-danger hover:bg-danger-soft disabled:opacity-50"
         >
-          Remove
-        </Button>
+          <Trash2 aria-hidden className="size-4" />
+          {t('common.remove')}
+        </button>
       </footer>
     </aside>
   )

@@ -15,8 +15,10 @@
  * studio.md), so nothing here decides who may create anything; it is handed the
  * answer and chooses the words for it.
  */
+import { FileText, FolderPlus, LayoutTemplate } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { useT, useWoven } from '../i18n/translate.tsx'
 import { Button, Empty, Snippet } from './index.tsx'
 
 /**
@@ -31,22 +33,20 @@ export const NoCollections = ({
 }: {
   canCreate: boolean
   onCreate(): void
-}) => (
-  <Empty
-    title={canCreate ? 'Make your first collection' : 'No collections yet'}
-    action={canCreate ? <Button onClick={onCreate}>New collection</Button> : undefined}
-  >
-    <p>
-      A collection is a kind of content this application holds — Testimonials, Recipes, Team
-      members. You give it a name and say what fields one entry has.
-    </p>
-    <p>
-      {canCreate
-        ? 'It is then a resource like every other: its own screen in the sidebar, the same policies, revisions and audit as everything else, and a tool an agent can call by name over MCP.'
-        : 'Making one needs a permission this account does not have.'}
-    </p>
-  </Empty>
-)
+}) => {
+  const t = useT()
+
+  return (
+    <Empty
+      icon={<FolderPlus className="size-[22px]" />}
+      title={canCreate ? t('collections.blank.first') : t('collections.blank.none')}
+      action={canCreate ? <Button onClick={onCreate}>{t('collections.new')}</Button> : undefined}
+    >
+      <p>{t('collections.blank.what')}</p>
+      <p>{canCreate ? t('collections.blank.then') : t('collections.blank.forbidden')}</p>
+    </Empty>
+  )
+}
 
 /**
  * Two different silences, which the one sentence used to cover.
@@ -55,23 +55,34 @@ export const NoCollections = ({
  * to make their first page while they are looking at a filter is how a person comes to
  * believe the search box deleted their work.
  */
-export const NoPages = ({ filtered, onCreate }: { filtered: boolean; onCreate(): void }) =>
-  filtered ? (
-    <Empty title="No page matches that">
-      <p>Try another word, or set the status back to any.</p>
-    </Empty>
-  ) : (
-    <Empty title="Make your first page" action={<Button onClick={onCreate}>New page</Button>}>
+export const NoPages = ({ filtered, onCreate }: { filtered: boolean; onCreate(): void }) => {
+  const t = useT()
+  const woven = useWoven()
+
+  if (filtered) {
+    return (
+      <Empty icon={<LayoutTemplate className="size-[22px]" />} title={t('pages.blank.noMatch')}>
+        <p>{t('pages.blank.tryAnother')}</p>
+      </Empty>
+    )
+  }
+
+  return (
+    <Empty
+      icon={<LayoutTemplate className="size-[22px]" />}
+      title={t('pages.blank.first')}
+      action={<Button onClick={onCreate}>{t('pages.new')}</Button>}
+    >
       <p>
-        A page is a tree of blocks at an address — <code className="font-mono">/about</code>,{' '}
-        <code className="font-mono">/pricing</code> — never a document of HTML.
+        {woven('pages.blank.what', {
+          about: <code className="font-mono">/about</code>,
+          pricing: <code className="font-mono">/pricing</code>,
+        })}
       </p>
-      <p>
-        You put blocks on it in the builder, and publishing decides what a visitor sees. Until then
-        it is a draft only you can open.
-      </p>
+      <p>{t('pages.blank.then')}</p>
     </Empty>
   )
+}
 
 /**
  * A collection with no entries in it — the screen right after somebody made one.
@@ -87,25 +98,29 @@ export const NoEntries = ({
   editable,
   onCreate,
 }: {
-  /** What one of these is called, singular — `New Testimonial` uses the same word. */
+  /** What one of these is called, singular — `Create Testimonial` uses the same word. */
   singular: string
   /** Whether this resource's fields are a stored definition, changeable from here. */
   editable: boolean
   onCreate?: (() => void) | undefined
-}) => (
-  <Empty
-    title={`No ${singular.toLowerCase()} yet`}
-    action={onCreate === undefined ? undefined : <Button onClick={onCreate}>New {singular}</Button>}
-  >
-    <p>An entry is one {singular.toLowerCase()}, filled in against the fields declared for it.</p>
-    {editable && (
-      <p>
-        Nothing is stored against them yet, which makes this the cheapest moment to change what they
-        are: what a value <em>is</em> becomes fixed as soon as one exists.
-      </p>
-    )}
-  </Empty>
-)
+}) => {
+  const t = useT()
+
+  return (
+    <Empty
+      title={t('entries.blank.title', { name: singular.toLowerCase() })}
+      icon={<FileText className="size-[22px]" />}
+      action={
+        onCreate === undefined ? undefined : (
+          <Button onClick={onCreate}>{t('entries.blank.create', { name: singular })}</Button>
+        )
+      }
+    >
+      <p>{t('entries.blank.what', { name: singular.toLowerCase() })}</p>
+      {editable && <p>{t('entries.blank.cheapest')}</p>}
+    </Empty>
+  )
+}
 
 /**
  * The line somebody selects, and has to get a block out of.
@@ -134,23 +149,29 @@ const MAKE_BLOCK = 'npx assemora make:block hero'
  * view — a declaration and its component are deliberately separate (SPEC.md §57) — so
  * the third step is the one that is easiest to forget and is therefore said.
  */
-export const NoBlocks = () => (
-  <div className="space-y-2 px-1 py-2 text-sm text-ink-soft">
-    <p className="font-medium text-ink">No blocks yet</p>
-    <p>A block is a TypeScript declaration, so it is written in your project, not here.</p>
-    <Snippet>{MAKE_BLOCK}</Snippet>
-    <p>
-      That writes <code className="font-mono text-xs">src/blocks/hero.ts</code>. Register it with{' '}
-      <code className="font-mono text-xs">pages({'{ blocks: [Hero] }'})</code>, give it a view in
-      your frontend, and it appears in this list.
-    </p>
-  </div>
-)
+export const NoBlocks = () => {
+  const t = useT()
+  const woven = useWoven()
+
+  return (
+    <div className="space-y-2 px-1 py-2 text-base text-ink-soft">
+      <p className="font-medium text-ink">{t('blocks.blank.title')}</p>
+      <p>{t('blocks.blank.declared')}</p>
+      <Snippet>{MAKE_BLOCK}</Snippet>
+      <p>
+        {woven('blocks.blank.register', {
+          file: <code className="font-mono text-sm">src/blocks/hero.ts</code>,
+          call: <code className="font-mono text-sm">pages({'{ blocks: [Hero] }'})</code>,
+        })}
+      </p>
+    </div>
+  )
+}
 
 const Step = ({ title, body, action }: { title: string; body: string; action: ReactNode }) => (
   <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-raised p-4">
     <p className="font-medium">{title}</p>
-    <p className="flex-1 text-sm text-ink-soft">{body}</p>
+    <p className="flex-1 text-base text-ink-soft">{body}</p>
     <div className="pt-1">{action}</div>
   </div>
 )
@@ -173,37 +194,41 @@ export const GettingStarted = ({
   canCreateCollection: boolean
   onCreateCollection(): void
   onCreatePage(): void
-}) => (
-  <div className={`grid gap-3 ${canCreateCollection ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-    {canCreateCollection && (
+}) => {
+  const t = useT()
+
+  return (
+    <div className={`grid gap-3 ${canCreateCollection ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      {canCreateCollection && (
+        <Step
+          title={t('start.collection.title')}
+          body={t('start.collection.body')}
+          action={
+            <Button size="sm" onClick={onCreateCollection}>
+              {t('collections.new')}
+            </Button>
+          }
+        />
+      )}
+
+      {/* "Go to pages" rather than "New page": making one is a dialog on that screen,
+          and a button that lands you somewhere else having promised a form is the small
+          lie people stop trusting a product over. */}
       <Step
-        title="Describe some content"
-        body="A collection is a kind of content named and shaped here rather than in TypeScript. Once it exists it is a resource like any other — a screen, the same policies, and a tool an agent can call."
+        title={t('start.page.title')}
+        body={t('start.page.body')}
         action={
-          <Button size="sm" onClick={onCreateCollection}>
-            New collection
+          <Button size="sm" variant="secondary" onClick={onCreatePage}>
+            {t('start.page.go')}
           </Button>
         }
       />
-    )}
 
-    {/* "Go to pages" rather than "New page": making one is a dialog on that screen,
-        and a button that lands you somewhere else having promised a form is the small
-        lie people stop trusting a product over. */}
-    <Step
-      title="Build a page"
-      body="A page is a tree of blocks at an address. The builder puts blocks on it; publishing decides what a visitor sees."
-      action={
-        <Button size="sm" variant="secondary" onClick={onCreatePage}>
-          Go to pages
-        </Button>
-      }
-    />
-
-    <Step
-      title="Declare a block"
-      body="Blocks are what a page is built from, and each one is a TypeScript declaration — so this is the step Studio cannot do for you."
-      action={<Snippet>{MAKE_BLOCK}</Snippet>}
-    />
-  </div>
-)
+      <Step
+        title={t('start.block.title')}
+        body={t('start.block.body')}
+        action={<Snippet>{MAKE_BLOCK}</Snippet>}
+      />
+    </div>
+  )
+}

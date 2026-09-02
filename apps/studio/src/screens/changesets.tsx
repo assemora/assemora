@@ -9,12 +9,15 @@
  * the commands run in *their* name, under their permissions.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
 import { api } from '../api/client.ts'
 import type { Paged } from '../api/pages.ts'
-import { Page } from '../app/shell.tsx'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useDates, useT } from '../i18n/translate.tsx'
 import { Badge, Button, Card, Empty, Failure, Spinner } from '../ui/index.tsx'
+import { Screen, ScreenBody, ScreenHead, ScreenTitle, Tabs } from '../ui/layout.tsx'
 
 type Change = {
   readonly entityType: string
@@ -46,10 +49,32 @@ const TONE = {
   conflicted: 'danger',
 } as const
 
-const ACTOR = { agent: 'Agent', user: 'Person', api: 'API token' } as const
+/** `''` is "all": the query drops the filter rather than sending an empty status. */
+const STATUSES = [
+  { value: 'pending', label: 'proposals.status.pending' },
+  { value: 'applied', label: 'proposals.status.applied' },
+  { value: 'rejected', label: 'proposals.status.rejected' },
+  { value: '', label: 'proposals.status.all' },
+] as const satisfies readonly { value: string; label: MessageKey }[]
+
+/** Every state a proposal can be shown in, including the two it is only ever put into. */
+const STATE = {
+  pending: 'proposals.status.pending',
+  applied: 'proposals.status.applied',
+  rejected: 'proposals.status.rejected',
+  expired: 'proposals.status.expired',
+  conflicted: 'proposals.status.conflicted',
+} as const satisfies Record<ChangeSetRow['status'], MessageKey>
+
+const ACTOR = {
+  agent: 'history.actor.agent',
+  user: 'history.actor.person',
+  api: 'history.actor.token',
+} as const satisfies Record<string, MessageKey>
 
 const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
   const client = useQueryClient()
+  const t = useT()
   const [outcome, setOutcome] = useState<string>()
 
   const proposal = useQuery({
@@ -72,15 +97,17 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
       <Card className="flex max-h-[80dvh] w-full max-w-lg flex-col">
         <header className="border-b border-line px-5 py-4">
-          <h2 className="text-sm font-semibold">{proposal.data?.title}</h2>
-          <p className="mt-0.5 text-xs text-ink-faint">
+          <h2 className="text-base font-semibold">{proposal.data?.title}</h2>
+          <p className="mt-0.5 text-sm text-ink-faint">
             {proposal.data === undefined
               ? null
-              : `${proposal.data.changes.length} ${
-                  proposal.data.changes.length === 1 ? 'change' : 'changes'
-                } · proposed by ${
-                  ACTOR[proposal.data.actorType as keyof typeof ACTOR] ?? 'somebody'
-                }`}
+              : `${t('proposals.changeCount', {
+                  count: proposal.data.changes.length,
+                })} · ${t('proposals.proposedBy', {
+                  who: t(
+                    ACTOR[proposal.data.actorType as keyof typeof ACTOR] ?? 'proposals.somebody',
+                  ),
+                })}`}
           </p>
         </header>
 
@@ -91,16 +118,13 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
 
           {outcome === 'conflicted' && (
             <Card className="mb-3 border-danger/30 bg-danger-soft p-3">
-              <p className="text-sm text-danger">
-                Somebody changed one of these since it was proposed, so nothing was applied. Ask for
-                it again against what the page says now.
-              </p>
+              <p className="text-base text-danger">{t('proposals.conflicted')}</p>
             </Card>
           )}
 
           {outcome === 'expired' && (
             <Card className="mb-3 bg-surface-sunken p-3">
-              <p className="text-sm text-ink-soft">This proposal expired before anybody decided.</p>
+              <p className="text-base text-ink-soft">{t('proposals.expired')}</p>
             </Card>
           )}
 
@@ -111,8 +135,8 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
               // lines — so the position is the only stable identity there is.
               // biome-ignore lint/suspicious/noArrayIndexKey: a stored diff never reorders
               <li key={index} className="space-y-0.5">
-                <p className="text-sm font-medium capitalize">{change.entityType}</p>
-                <p className="font-mono text-xs text-ink-soft">{change.summary}</p>
+                <p className="text-base font-medium capitalize">{change.entityType}</p>
+                <p className="font-mono text-sm text-ink-soft">{change.summary}</p>
               </li>
             ))}
           </ol>
@@ -122,24 +146,24 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
           {open ? (
             <>
               <Button disabled={decide.isPending} onClick={() => decide.mutate('apply')}>
-                {decide.isPending ? 'Applying…' : 'Apply'}
+                {decide.isPending ? t('proposals.applying') : t('proposals.apply')}
               </Button>
               <Button
                 variant="secondary"
                 disabled={decide.isPending}
                 onClick={() => decide.mutate('reject')}
               >
-                Reject
+                {t('proposals.reject')}
               </Button>
             </>
           ) : (
             <Badge tone={TONE[(outcome ?? proposal.data?.status ?? 'pending') as 'pending']}>
-              {outcome ?? proposal.data?.status}
+              {t(STATE[(outcome ?? proposal.data?.status ?? 'pending') as 'pending'])}
             </Badge>
           )}
 
           <Button variant="ghost" className="ml-auto" onClick={onClose}>
-            Close
+            {t('common.close')}
           </Button>
         </footer>
       </Card>
@@ -148,6 +172,8 @@ const Review = ({ id, onClose }: { id: string; onClose(): void }) => {
 }
 
 export const ChangeSets = () => {
+  const t = useT()
+  const dates = useDates()
   const [status, setStatus] = useState('pending')
   const [reviewing, setReviewing] = useState<string>()
 
@@ -158,64 +184,60 @@ export const ChangeSets = () => {
   })
 
   return (
-    <Page
-      title="Proposals"
-      description="What agents have asked for. Nothing changes until you apply it"
-    >
-      <div className="mb-4 flex gap-1">
-        {['pending', 'applied', 'rejected', ''].map((option) => (
-          <button
-            key={option || 'all'}
-            type="button"
-            className={[
-              'rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition',
-              status === option
-                ? 'bg-accent-soft text-accent'
-                : 'text-ink-soft hover:bg-surface-sunken',
-            ].join(' ')}
-            onClick={() => setStatus(option)}
-          >
-            {option || 'all'}
-          </button>
-        ))}
-      </div>
+    <Screen>
+      <ScreenHead>
+        <ScreenTitle
+          icon={<Sparkles className="size-5" />}
+          title={t('nav.proposals')}
+          description={t('proposals.lede')}
+          count={listing.data?.total}
+        />
+        <Tabs
+          value={status}
+          options={STATUSES.map((entry) => ({ value: entry.value, label: t(entry.label) }))}
+          onChange={setStatus}
+          label={t('proposals.statuses')}
+        />
+      </ScreenHead>
 
-      {listing.isError && <Failure error={listing.error} />}
+      <ScreenBody className="pt-6 pb-10">
+        {listing.isError && <Failure error={listing.error} />}
 
-      <Card className="overflow-hidden">
-        {listing.isPending && (
-          <div className="p-6">
-            <Spinner />
-          </div>
-        )}
-
-        {listing.data?.data.length === 0 && (
-          <Empty title="Nothing proposed">
-            An agent connected over MCP proposes changes here, and they wait for you.
-          </Empty>
-        )}
-
-        {listing.data?.data.map((proposal) => (
-          <button
-            key={proposal.id}
-            type="button"
-            className="flex w-full items-center gap-3 border-b border-line-soft px-4 py-3 text-left last:border-0 hover:bg-surface-sunken"
-            onClick={() => setReviewing(proposal.id)}
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{proposal.title}</p>
-              <p className="text-xs text-ink-faint">
-                {proposal.changes} {proposal.changes === 1 ? 'change' : 'changes'} ·{' '}
-                {ACTOR[proposal.actorType as keyof typeof ACTOR] ?? 'somebody'} ·{' '}
-                {new Date(proposal.createdAt).toLocaleString()}
-              </p>
+        <Card className="overflow-hidden">
+          {listing.isPending && (
+            <div className="p-6">
+              <Spinner />
             </div>
-            <Badge tone={TONE[proposal.status]}>{proposal.status}</Badge>
-          </button>
-        ))}
-      </Card>
+          )}
 
-      {reviewing !== undefined && <Review id={reviewing} onClose={() => setReviewing(undefined)} />}
-    </Page>
+          {listing.data?.data.length === 0 && (
+            <Empty title={t('proposals.none')}>{t('proposals.noneBody')}</Empty>
+          )}
+
+          {listing.data?.data.map((proposal) => (
+            <button
+              key={proposal.id}
+              type="button"
+              className="flex w-full items-center gap-3 border-b border-hairline px-4 py-3 text-left last:border-0 hover:bg-surface-sunken"
+              onClick={() => setReviewing(proposal.id)}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base font-medium">{proposal.title}</p>
+                <p className="text-sm text-ink-faint">
+                  {t('proposals.changeCount', { count: proposal.changes })} ·{' '}
+                  {t(ACTOR[proposal.actorType as keyof typeof ACTOR] ?? 'proposals.somebody')} ·{' '}
+                  {dates.dateTime(proposal.createdAt)}
+                </p>
+              </div>
+              <Badge tone={TONE[proposal.status]}>{t(STATE[proposal.status])}</Badge>
+            </button>
+          ))}
+        </Card>
+
+        {reviewing !== undefined && (
+          <Review id={reviewing} onClose={() => setReviewing(undefined)} />
+        )}
+      </ScreenBody>
+    </Screen>
   )
 }

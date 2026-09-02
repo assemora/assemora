@@ -47,7 +47,30 @@ export const registerEntryRestorer = (name: string): void => {
     )
 
     if (existing === undefined) {
-      const created = await target[PERSISTENCE].create(target.validate(writable, 'create'))
+      /**
+       * The language the row was written in, put back with it (SPEC.md §131).
+       *
+       * `locale` and `translationOf` are columns of a translatable model and not fields
+       * of the resource, so the projection above drops them — and the column is `not
+       * null`, so the insert then refuses with "locale is required" and a deleted entry
+       * of a translatable resource could not be restored at all. `entries.create` adds
+       * them after validation for the same reason; this is the same seam, one step later.
+       *
+       * From the snapshot rather than from the context: a restore puts back the row that
+       * was there. Taking the language of whoever is restoring would bring a Russian
+       * translation back as Ukrainian, and taking `translationOf: null` would cut it
+       * loose from the entry it is one language of.
+       */
+      const restored =
+        target[PERSISTENCE].translatable && Object.hasOwn(snapshot, 'locale')
+          ? {
+              ...target.validate(writable, 'create'),
+              locale: snapshot.locale,
+              translationOf: snapshot.translationOf ?? null,
+            }
+          : target.validate(writable, 'create')
+
+      const created = await target[PERSISTENCE].create(restored)
 
       return { replaced: null, id: created.id }
     }

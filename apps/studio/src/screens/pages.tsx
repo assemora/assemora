@@ -3,13 +3,38 @@
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { LayoutTemplate } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import { ApiError, api } from '../api/client.ts'
 import { type PageSummary, usePages } from '../api/pages.ts'
-import { Page } from '../app/shell.tsx'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useDates, useT } from '../i18n/translate.tsx'
 import { NoPages } from '../ui/blank.tsx'
-import { Badge, Button, Card, Failure, Field, Input, Select, Spinner } from '../ui/index.tsx'
+import {
+  Button,
+  Failure,
+  Field,
+  Input,
+  SearchField,
+  Select,
+  Spinner,
+  StatusChip,
+} from '../ui/index.tsx'
+import {
+  Mono,
+  Screen,
+  ScreenBody,
+  ScreenFoot,
+  ScreenHead,
+  ScreenTitle,
+  Table,
+  Td,
+  Th,
+  Toolbar,
+  Tr,
+} from '../ui/layout.tsx'
+import { Dialog } from '../ui/overlay.tsx'
 
 const TONE = {
   published: 'positive',
@@ -17,11 +42,19 @@ const TONE = {
   archived: 'danger',
 } as const
 
+/** The three states a page can be in, which are Studio's words rather than the API's. */
+const STATUS = {
+  published: 'pages.status.published',
+  draft: 'pages.status.draft',
+  archived: 'pages.status.archived',
+} as const satisfies Record<PageSummary['status'], MessageKey>
+
 const NewPage = ({ onClose }: { onClose(): void }) => {
   const navigate = useNavigate()
   const client = useQueryClient()
   const [title, setTitle] = useState('')
   const [slug, setSlug] = useState('')
+  const t = useT()
 
   const create = useMutation({
     mutationFn: () => api.command<{ id: string }>('pages.create', { title, slug }),
@@ -37,86 +70,95 @@ const NewPage = ({ onClose }: { onClose(): void }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
-      <Card className="w-full max-w-md p-6">
-        <h2 className="mb-4 text-sm font-semibold">New page</h2>
+    <Dialog
+      open
+      title={t('pages.new')}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" form="new-page" busy={create.isPending}>
+            {t('pages.create')}
+          </Button>
+        </>
+      }
+    >
+      <form id="new-page" className="space-y-4 text-ink" onSubmit={submit}>
+        <Field label={t('pages.title')} required>
+          <Input
+            required
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value)
+              setSlug(
+                event.target.value
+                  .toLowerCase()
+                  .normalize('NFKD')
+                  .replace(/[^a-z0-9]+/g, '-')
+                  .replace(/^-+|-+$/g, ''),
+              )
+            }}
+          />
+        </Field>
 
-        <form className="space-y-4" onSubmit={submit}>
-          <Field label="Title" required>
-            <Input
-              required
-              value={title}
-              onChange={(event) => {
-                setTitle(event.target.value)
-                setSlug(
-                  event.target.value
-                    .toLowerCase()
-                    .normalize('NFKD')
-                    .replace(/[^a-z0-9]+/g, '-')
-                    .replace(/^-+|-+$/g, ''),
-                )
-              }}
-            />
-          </Field>
+        <Field label={t('pages.slug')} help={t('pages.slugHelp')} required>
+          <Input required value={slug} onChange={(event) => setSlug(event.target.value)} />
+        </Field>
 
-          <Field label="Slug" help="Where the page lives on the site" required>
-            <Input required value={slug} onChange={(event) => setSlug(event.target.value)} />
-          </Field>
-
-          {create.isError && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-              {create.error instanceof ApiError ? create.error.message : 'Could not create it'}
-            </p>
-          )}
-
-          <div className="flex gap-2">
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? 'Creating…' : 'Create page'}
-            </Button>
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+        {create.isError && (
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-base text-danger">
+            {create.error instanceof ApiError ? create.error.message : t('pages.createFailed')}
+          </p>
+        )}
+      </form>
+    </Dialog>
   )
 }
 
-const Row = ({ page }: { page: PageSummary }) => (
-  <tr className="border-b border-line-soft last:border-0 hover:bg-surface-sunken">
-    <td className="px-4 py-2.5">
-      <Link
-        to="/pages/$id"
-        params={{ id: page.id }}
-        className="font-medium text-ink hover:text-accent"
-      >
-        {page.title}
-      </Link>
-    </td>
-    <td className="px-4 py-2.5 font-mono text-xs text-ink-soft">
-      {page.locale === undefined || page.locale === '' ? '' : `/${page.locale}`}/{page.slug}
-    </td>
-    <td className="px-4 py-2.5">
-      <Badge tone={TONE[page.status]}>{page.status}</Badge>
-    </td>
-    <td className="px-4 py-2.5 text-sm text-ink-soft">v{page.version}</td>
-    <td className="px-4 py-2.5 text-sm text-ink-soft">
-      {new Date(page.updatedAt).toLocaleDateString()}
-    </td>
-    <td className="px-4 py-2.5 text-right">
-      <Link
-        to="/pages/$id"
-        params={{ id: page.id }}
-        className="text-sm font-medium text-accent hover:underline"
-      >
-        Open builder
-      </Link>
-    </td>
-  </tr>
-)
+const Row = ({ page }: { page: PageSummary }) => {
+  const t = useT()
+  const dates = useDates()
+
+  return (
+    <Tr>
+      <Td className="max-w-[26rem]">
+        <Link
+          to="/pages/$id"
+          params={{ id: page.id }}
+          className="block truncate font-[550] text-ink hover:underline hover:decoration-ink-disabled hover:underline-offset-2"
+        >
+          {page.title}
+        </Link>
+      </Td>
+      <Td>
+        <Mono>
+          {page.locale === undefined || page.locale === '' ? '' : `/${page.locale}`}/{page.slug}
+        </Mono>
+      </Td>
+      <Td>
+        <StatusChip tone={TONE[page.status]}>{t(STATUS[page.status])}</StatusChip>
+      </Td>
+      <Td>
+        <Mono>v{page.version}</Mono>
+      </Td>
+      <Td className="text-ink-soft">{dates.date(page.updatedAt)}</Td>
+      <Td align="right">
+        <Link
+          to="/pages/$id"
+          params={{ id: page.id }}
+          className="text-base font-[550] text-link hover:text-link-hover hover:underline"
+        >
+          {t('pages.openBuilder')}
+        </Link>
+      </Td>
+    </Tr>
+  )
+}
 
 export const Pages = () => {
+  const t = useT()
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -140,46 +182,57 @@ export const Pages = () => {
   const blank = listing.data !== undefined && listing.data.data.length === 0 && !filtered
 
   return (
-    <Page
-      title="Pages"
-      description={listing.data === undefined || blank ? undefined : `${listing.data.total} pages`}
-      // Not beside the title while the empty state is offering the same button under
-      // the sentence that explains it.
-      actions={!blank && <Button onClick={() => setCreating(true)}>New page</Button>}
-    >
-      {!blank && (
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <Input
-            type="search"
-            placeholder="Search…"
-            className="max-w-xs"
-            value={search}
-            onChange={(event) => {
-              setPage(1)
-              setSearch(event.target.value)
-            }}
-          />
-          <Select
-            className="max-w-40"
-            value={status}
-            onChange={(event) => {
-              setPage(1)
-              setStatus(event.target.value)
-            }}
-          >
-            <option value="">Any status</option>
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
-          </Select>
-        </div>
-      )}
+    <Screen>
+      <ScreenHead>
+        <ScreenTitle
+          icon={<LayoutTemplate className="size-5" />}
+          title={t('nav.pages')}
+          count={blank ? undefined : listing.data?.total}
+          // Not beside the title while the empty state is offering the same button under
+          // the sentence that explains it.
+          actions={!blank && <Button onClick={() => setCreating(true)}>{t('pages.new')}</Button>}
+        />
 
-      {listing.isError && <Failure error={listing.error} />}
+        {!blank && (
+          <Toolbar>
+            <SearchField
+              className="max-w-[400px] flex-1"
+              aria-label={t('pages.search')}
+              placeholder={t('collection.searchPlaceholder')}
+              value={search}
+              onChange={(event) => {
+                setPage(1)
+                setSearch(event.target.value)
+              }}
+            />
+            <Select
+              size="panel"
+              aria-label={t('pages.statusLabel')}
+              className="w-40"
+              value={status}
+              onChange={(event) => {
+                setPage(1)
+                setStatus(event.target.value)
+              }}
+            >
+              <option value="">{t('pages.anyStatus')}</option>
+              <option value="draft">{t('pages.status.draft')}</option>
+              <option value="published">{t('pages.status.published')}</option>
+              <option value="archived">{t('pages.status.archived')}</option>
+            </Select>
+          </Toolbar>
+        )}
+      </ScreenHead>
 
-      <Card className="overflow-hidden">
+      <ScreenBody>
+        {listing.isError && (
+          <div className="pt-2 pb-4">
+            <Failure error={listing.error} />
+          </div>
+        )}
+
         {listing.isPending && (
-          <div className="p-6">
+          <div className="py-16">
             <Spinner />
           </div>
         )}
@@ -188,15 +241,15 @@ export const Pages = () => {
           (listing.data.data.length === 0 ? (
             <NoPages filtered={filtered} onCreate={() => setCreating(true)} />
           ) : (
-            <table className="w-full text-left text-sm">
+            <Table>
               <thead>
-                <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-faint">
-                  <th className="px-4 py-2.5 font-medium">Title</th>
-                  <th className="px-4 py-2.5 font-medium">Slug</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
-                  <th className="px-4 py-2.5 font-medium">Version</th>
-                  <th className="px-4 py-2.5 font-medium">Updated</th>
-                  <th className="w-0 px-4 py-2.5" />
+                <tr className="border-b border-line">
+                  <Th>{t('pages.title')}</Th>
+                  <Th>{t('pages.slug')}</Th>
+                  <Th>{t('pages.statusLabel')}</Th>
+                  <Th>{t('pages.version')}</Th>
+                  <Th>{t('pages.updated')}</Th>
+                  <Th width="140px" />
                 </tr>
               </thead>
               <tbody>
@@ -204,37 +257,38 @@ export const Pages = () => {
                   <Row key={entry.id} page={entry} />
                 ))}
               </tbody>
-            </table>
+            </Table>
           ))}
-      </Card>
+      </ScreenBody>
 
-      {listing.data !== undefined && listing.data.lastPage > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
-          <span>
-            Page {listing.data.page} of {listing.data.lastPage}
+      {listing.data !== undefined && listing.data.data.length > 0 && (
+        <ScreenFoot>
+          <span className="tabular-nums">
+            {`${t('paging.page', {
+              page: listing.data.page,
+              last: listing.data.lastPage,
+            })} · ${t('pages.pageCount', { count: listing.data.total })}`}
           </span>
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              size="sm"
               disabled={page <= 1}
               onClick={() => setPage((current) => current - 1)}
             >
-              Previous
+              {t('paging.previous')}
             </Button>
             <Button
               variant="secondary"
-              size="sm"
               disabled={page >= listing.data.lastPage}
               onClick={() => setPage((current) => current + 1)}
             >
-              Next
+              {t('paging.next')}
             </Button>
           </div>
-        </div>
+        </ScreenFoot>
       )}
 
       {creating && <NewPage onClose={() => setCreating(false)} />}
-    </Page>
+    </Screen>
   )
 }

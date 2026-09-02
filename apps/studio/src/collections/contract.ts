@@ -16,6 +16,7 @@
  * in to `@assemora/auth`.
  */
 import type { CommandDescriptor } from '../api/introspection.ts'
+import type { MessageKey } from '../i18n/messages.ts'
 
 /**
  * The field kinds `@assemora/resources` registers, in the order `FieldKind` declares
@@ -216,24 +217,31 @@ export const kindsAt = (
  * they are read in, because two dozen options in one flat list is a list nobody reads to
  * the end.
  */
-const GROUPS: readonly (readonly [string, readonly string[]])[] = [
-  ['Text', ['text', 'textarea', 'richText', 'markdown', 'code', 'slug']],
-  ['Numbers and switches', ['number', 'integer', 'boolean']],
-  ['Choices', ['select', 'checkboxes', 'color']],
-  ['Dates and times', ['date', 'datetime', 'time']],
-  ['Links and files', ['url', 'link', 'email', 'media', 'relation']],
-  ['Several values', ['object', 'array', 'table', 'json']],
-]
+const GROUPS = [
+  ['collections.kinds.text', ['text', 'textarea', 'richText', 'markdown', 'code', 'slug']],
+  ['collections.kinds.numbers', ['number', 'integer', 'boolean']],
+  ['collections.kinds.choices', ['select', 'checkboxes', 'color']],
+  ['collections.kinds.dates', ['date', 'datetime', 'time']],
+  ['collections.kinds.links', ['url', 'link', 'email', 'media', 'relation']],
+  ['collections.kinds.several', ['object', 'array', 'table', 'json']],
+] as const satisfies readonly (readonly [MessageKey, readonly string[]])[]
+
+/**
+ * A heading is named rather than written, because the picker that draws it is drawn in
+ * the language of whoever opened Studio. The set is closed — these six and `Other` —
+ * so it is a union of keys rather than `MessageKey`, which `t` could not be called with.
+ */
+export type KindGroupLabel = (typeof GROUPS)[number][0] | 'collections.kinds.other'
 
 export type KindGroup = {
-  readonly label: string
+  readonly label: KindGroupLabel
   readonly kinds: readonly string[]
 }
 
 export const groupedKinds = (kinds: readonly string[]): readonly KindGroup[] => {
   const placed = new Set<string>()
 
-  const groups = GROUPS.map(([label, members]) => {
+  const groups = GROUPS.map(([label, members]): KindGroup => {
     const held = members.filter((kind) => kinds.includes(kind))
 
     for (const kind of held) placed.add(kind)
@@ -243,5 +251,5 @@ export const groupedKinds = (kinds: readonly string[]): readonly KindGroup[] => 
 
   const rest = kinds.filter((kind) => !placed.has(kind))
 
-  return rest.length === 0 ? groups : [...groups, { label: 'Other', kinds: rest }]
+  return rest.length === 0 ? groups : [...groups, { label: 'collections.kinds.other', kinds: rest }]
 }

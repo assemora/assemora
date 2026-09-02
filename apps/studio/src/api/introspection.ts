@@ -92,6 +92,8 @@ export type ResourceDescriptor = {
   readonly titleField?: string
   /** The heading the sidebar files it under, where the application named one. */
   readonly group?: string
+  /** What it is drawn as: a name from the set `ui/icons.tsx` ships (SPEC.md §58). */
+  readonly icon?: string
   readonly perPage: number
 }
 
@@ -123,6 +125,10 @@ export type BlockDescriptor = {
   readonly name: string
   readonly label: string
   readonly description?: string
+  /** What the palette draws it as: a name from the set `ui/icons.tsx` ships. */
+  readonly icon?: string
+  /** The heading the palette files it under, where the application named one. */
+  readonly group?: string
   readonly fields: readonly FieldDescriptor[]
   readonly acceptsChildren: boolean
   /** Empty means anything, once children are accepted at all (SPEC.md §56). */
@@ -239,6 +245,49 @@ export const columnFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
 
 export const editableFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
   resource.fields.filter((field) => !field.hidden && !field.readOnly)
+
+/**
+ * The kinds that belong beside the entry rather than inside it.
+ *
+ * An entry form is two columns: what the entry *is* on the left, and what is *true of*
+ * it on the right — the arrangement `design_handoff_studio_redesign` §3 draws, where
+ * Title, Slug, Excerpt, Content and the cover image sit in a Main content card and
+ * Status, Views, Featured and the relations sit in a panel next to it.
+ *
+ * Derived from the kind rather than declared, because a resource descriptor has nowhere
+ * to say it: nothing in `resource()` or in a stored definition carries a hint about
+ * where a field is drawn, and inventing one is a change to the schema layer, the parser,
+ * the registry, OpenAPI and the MCP tools — not to Studio. The kind is the honest proxy
+ * we already have, and it is the same division the design made by hand: a single small
+ * value with a fixed set of answers is metadata; anything holding prose, a document or
+ * a file is the entry itself.
+ *
+ * A resource whose fields all fall on one side gets one column, at full width. Two
+ * columns where one of them is empty is a margin, not a layout.
+ */
+const BESIDE: readonly FieldKind[] = [
+  'boolean',
+  'number',
+  'integer',
+  'date',
+  'datetime',
+  'time',
+  'select',
+  'checkboxes',
+  'relation',
+  'color',
+  'email',
+  'url',
+  'link',
+]
+
+/** What the entry is: its title, its address, its prose, its picture. */
+export const mainFields = (fields: readonly FieldDescriptor[]): FieldDescriptor[] =>
+  fields.filter((field) => !BESIDE.includes(field.kind))
+
+/** What is true of the entry: its status, its author, its counters, its flags. */
+export const asideFields = (fields: readonly FieldDescriptor[]): FieldDescriptor[] =>
+  fields.filter((field) => BESIDE.includes(field.kind))
 
 /**
  * The fields a listing of this resource can actually be ordered by (SPEC.md §38).

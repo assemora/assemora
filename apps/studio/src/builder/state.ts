@@ -186,8 +186,16 @@ export const allowedMoves = (
   tree: BlockTree,
   node: BlockNode | undefined,
   holds: (container: BlockNode | null, type: string) => boolean,
-): { readonly indent: boolean; readonly outdent: boolean; readonly duplicate: boolean } => {
-  if (node === undefined) return { indent: false, outdent: false, duplicate: false }
+): {
+  readonly indent: boolean
+  readonly outdent: boolean
+  readonly duplicate: boolean
+  readonly up: boolean
+  readonly down: boolean
+} => {
+  if (node === undefined) {
+    return { indent: false, outdent: false, duplicate: false, up: false, down: false }
+  }
 
   const above = blockAbove(tree, node.id)
   const parentId = parentOf(tree, node.id)
@@ -199,6 +207,11 @@ export const allowedMoves = (
     // is the one the original is already in — and it counts one more child, not the
     // same one moved.
     duplicate: holds(nodeIn(tree, parentId) ?? null, node.type),
+    // Among its own siblings and no further: moving a block past the end of its
+    // container is not a move, it is a reparenting, and that is what indent and outdent
+    // are. `stepFrom` answers `undefined` at either end, which is the whole rule.
+    up: stepFrom(tree, node.id, -1) !== undefined,
+    down: stepFrom(tree, node.id, 1) !== undefined,
   }
 }
 

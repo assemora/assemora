@@ -5,13 +5,28 @@
  * MCP pass the same permission checks — there is no privileged path into identity.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Users as UsersIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import { ApiError, api } from '../api/client.ts'
 import type { Paged } from '../api/pages.ts'
 import { useSession } from '../api/session.tsx'
-import { Page } from '../app/shell.tsx'
-import { Badge, Button, Card, Empty, Failure, Field, Input, Select, Spinner } from '../ui/index.tsx'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useDates, useT, useWoven } from '../i18n/translate.tsx'
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Empty,
+  Failure,
+  Field,
+  Input,
+  SearchField,
+  Select,
+  Spinner,
+} from '../ui/index.tsx'
+import { Screen, ScreenBody, ScreenHead, ScreenTitle, Tabs } from '../ui/layout.tsx'
 
 type UserRow = {
   readonly id: string
@@ -57,12 +72,12 @@ const Pages = ({
   page: number
   of: number | undefined
   onChange(page: number): void
-}) =>
-  of === undefined || of <= 1 ? null : (
-    <div className="flex items-center justify-between text-sm text-ink-soft">
-      <span>
-        Page {page} of {of}
-      </span>
+}) => {
+  const t = useT()
+
+  return of === undefined || of <= 1 ? null : (
+    <div className="flex items-center justify-between text-base text-ink-soft">
+      <span>{t('paging.page', { page, last: of })}</span>
       <div className="flex gap-2">
         <Button
           variant="secondary"
@@ -70,7 +85,7 @@ const Pages = ({
           disabled={page <= 1}
           onClick={() => onChange(page - 1)}
         >
-          Previous
+          {t('paging.previous')}
         </Button>
         <Button
           variant="secondary"
@@ -78,13 +93,21 @@ const Pages = ({
           disabled={page >= of}
           onClick={() => onChange(page + 1)}
         >
-          Next
+          {t('paging.next')}
         </Button>
       </div>
     </div>
   )
+}
 
 type Tab = (typeof TABS)[number]
+
+const LABELS = {
+  people: 'people.tab.people',
+  roles: 'people.tab.roles',
+  tokens: 'people.tab.tokens',
+  agents: 'people.tab.agents',
+} as const satisfies Record<Tab, MessageKey>
 
 const useRoles = () =>
   useQuery({
@@ -94,6 +117,7 @@ const useRoles = () =>
 
 const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }) => {
   const client = useQueryClient()
+  const t = useT()
   const [values, setValues] = useState({ name: '', email: '', password: '', role: '' })
 
   const create = useMutation({
@@ -118,10 +142,10 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
       <Card className="w-full max-w-md p-6">
-        <h2 className="mb-4 text-sm font-semibold">New person</h2>
+        <h2 className="mb-4 text-base font-semibold">{t('people.newPerson')}</h2>
 
         <form className="space-y-4" onSubmit={submit}>
-          <Field label="Name" required>
+          <Field label={t('people.name')} required>
             <Input
               required
               value={values.name}
@@ -129,7 +153,7 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
             />
           </Field>
 
-          <Field label="Email" required>
+          <Field label={t('login.email')} required>
             <Input
               type="email"
               required
@@ -138,7 +162,7 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
             />
           </Field>
 
-          <Field label="Password" help="At least twelve characters" required>
+          <Field label={t('login.password')} help={t('people.passwordHelp')} required>
             <Input
               type="password"
               required
@@ -148,12 +172,12 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
             />
           </Field>
 
-          <Field label="Role">
+          <Field label={t('people.role')}>
             <Select
               value={values.role}
               onChange={(event) => setValues({ ...values, role: event.target.value })}
             >
-              <option value="">No role</option>
+              <option value="">{t('people.noRole')}</option>
               {roles.map((role) => (
                 <option key={role.id} value={role.name}>
                   {role.label}
@@ -163,17 +187,17 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
           </Field>
 
           {create.isError && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-              {create.error instanceof ApiError ? create.error.message : 'Could not create them'}
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-base text-danger">
+              {create.error instanceof ApiError ? create.error.message : t('people.createFailed')}
             </p>
           )}
 
           <div className="flex gap-2">
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? 'Creating…' : 'Create'}
+              {create.isPending ? t('people.creating') : t('common.create')}
             </Button>
             <Button variant="secondary" onClick={onClose}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </div>
         </form>
@@ -185,6 +209,7 @@ const NewUser = ({ roles, onClose }: { roles: readonly Role[]; onClose(): void }
 const People = () => {
   const client = useQueryClient()
   const { viewer } = useSession()
+  const t = useT()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [creating, setCreating] = useState(false)
@@ -204,10 +229,9 @@ const People = () => {
   return (
     <>
       <div className="mb-4 flex items-center gap-3">
-        <Input
-          type="search"
-          placeholder="Search by name or email…"
-          className="max-w-xs"
+        <SearchField
+          className="max-w-[400px] flex-1"
+          placeholder={t('people.searchPlaceholder')}
           value={search}
           onChange={(event) => {
             setPage(1)
@@ -215,7 +239,7 @@ const People = () => {
           }}
         />
         <Button className="ml-auto" onClick={() => setCreating(true)}>
-          New person
+          {t('people.newPerson')}
         </Button>
       </div>
 
@@ -229,22 +253,22 @@ const People = () => {
           </div>
         )}
 
-        {users.data?.data.length === 0 && <Empty title="Nobody matches that" />}
+        {users.data?.data.length === 0 && <Empty title={t('people.noMatch')} />}
 
         {users.data !== undefined && users.data.data.length > 0 && (
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-base">
             <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-faint">
-                <th className="px-4 py-2.5 font-medium">Name</th>
-                <th className="px-4 py-2.5 font-medium">Email</th>
-                <th className="px-4 py-2.5 font-medium">Roles</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
+              <tr className="border-b border-line text-sm font-[650] tracking-[0.01em] text-ink-soft">
+                <th className="px-4 py-2.5 font-medium">{t('people.name')}</th>
+                <th className="px-4 py-2.5 font-medium">{t('login.email')}</th>
+                <th className="px-4 py-2.5 font-medium">{t('people.tab.roles')}</th>
+                <th className="px-4 py-2.5 font-medium">{t('pages.statusLabel')}</th>
                 <th className="w-0 px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {users.data.data.map((user) => (
-                <tr key={user.id} className="border-b border-line-soft last:border-0">
+                <tr key={user.id} className="border-b border-hairline last:border-0">
                   <td className="px-4 py-2.5 font-medium">{user.name}</td>
                   <td className="px-4 py-2.5 text-ink-soft">{user.email}</td>
                   <td className="px-4 py-2.5">
@@ -253,7 +277,7 @@ const People = () => {
                         <button
                           key={role}
                           type="button"
-                          title="Take this role away"
+                          title={t('people.takeRoleAway')}
                           onClick={() =>
                             change.mutate({
                               command: 'auth.roles.revoke',
@@ -265,9 +289,11 @@ const People = () => {
                         </button>
                       ))}
 
-                      <div className="w-28">
+                      {/* Wide enough for its own label: `Add role…` was clipped to
+                          `Add ro…`, which is a control asking to be guessed at. */}
+                      <div className="w-36">
                         <Select
-                          className="h-7 py-0 text-xs"
+                          size="small"
                           value=""
                           onChange={(event) =>
                             change.mutate({
@@ -276,7 +302,7 @@ const People = () => {
                             })
                           }
                         >
-                          <option value="">Add role…</option>
+                          <option value="">{t('people.addRole')}</option>
                           {(roles.data?.data ?? [])
                             .filter((role) => !user.roles.includes(role.name))
                             .map((role) => (
@@ -290,7 +316,7 @@ const People = () => {
                   </td>
                   <td className="px-4 py-2.5">
                     <Badge tone={user.active ? 'positive' : 'danger'}>
-                      {user.active ? 'active' : 'blocked'}
+                      {user.active ? t('people.active') : t('people.blocked')}
                     </Badge>
                   </td>
                   <td className="px-4 py-2.5 text-right">
@@ -298,7 +324,7 @@ const People = () => {
                       variant="ghost"
                       size="sm"
                       disabled={user.id === viewer?.id}
-                      title={user.id === viewer?.id ? 'You cannot block yourself' : undefined}
+                      title={user.id === viewer?.id ? t('people.cannotBlockSelf') : undefined}
                       onClick={() =>
                         change.mutate({
                           command: 'auth.users.update',
@@ -306,7 +332,7 @@ const People = () => {
                         })
                       }
                     >
-                      {user.active ? 'Block' : 'Unblock'}
+                      {user.active ? t('people.block') : t('people.unblock')}
                     </Button>
                   </td>
                 </tr>
@@ -327,6 +353,8 @@ const People = () => {
 
 const Roles = () => {
   const roles = useRoles()
+  const t = useT()
+  const woven = useWoven()
 
   const permissions = useQuery({
     queryKey: ['permissions'],
@@ -344,7 +372,7 @@ const Roles = () => {
           <Card key={role.id} className="space-y-2 p-4">
             <div className="flex items-baseline justify-between">
               <p className="font-medium">{role.label}</p>
-              <code className="font-mono text-xs text-ink-faint">{role.name}</code>
+              <code className="font-mono text-sm text-ink-faint">{role.name}</code>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {role.permissions.map((permission) => (
@@ -356,10 +384,11 @@ const Roles = () => {
       </div>
 
       <Card className="p-4">
-        <p className="mb-2 text-sm font-semibold">Every permission this application has recorded</p>
-        <p className="mb-3 text-sm text-ink-soft">
-          A permission name is a command name. <code className="font-mono">articles.*</code> grants
-          everything under it.
+        <p className="mb-2 text-base font-semibold">{t('people.allPermissions')}</p>
+        <p className="mb-3 text-base text-ink-soft">
+          {woven('people.permissionsAreCommands', {
+            example: <code className="font-mono">articles.*</code>,
+          })}
         </p>
         <div className="flex flex-wrap gap-1.5">
           {permissions.data?.data.map((permission) => (
@@ -372,14 +401,15 @@ const Roles = () => {
 }
 
 const DAYS = [
-  { label: '30 days', days: 30 },
-  { label: '90 days', days: 90 },
-  { label: 'A year', days: 365 },
-  { label: 'Never', days: 0 },
-] as const
+  { label: 'people.expiry.30', days: 30 },
+  { label: 'people.expiry.90', days: 90 },
+  { label: 'people.expiry.year', days: 365 },
+  { label: 'common.never', days: 0 },
+] as const satisfies readonly { label: MessageKey; days: number }[]
 
 const NewToken = ({ onIssued, onClose }: { onIssued(token: string): void; onClose(): void }) => {
   const client = useQueryClient()
+  const t = useT()
   const [name, setName] = useState('')
   const [chosen, setChosen] = useState<string[]>([])
   const [expiry, setExpiry] = useState(90)
@@ -414,78 +444,68 @@ const NewToken = ({ onIssued, onClose }: { onIssued(token: string): void; onClos
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
       <Card className="w-full max-w-md p-6">
-        <h2 className="mb-1 text-sm font-semibold">Issue an API token</h2>
-        <p className="mb-4 text-sm text-ink-soft">
-          A token can do exactly what you give it, and no more than you hold yourself.
-        </p>
+        <h2 className="mb-1 text-base font-semibold">{t('people.issueToken')}</h2>
+        <p className="mb-4 text-base text-ink-soft">{t('people.tokenScope')}</p>
 
         <form className="space-y-4" onSubmit={submit}>
-          <Field label="What is it for?" required>
+          <Field label={t('people.tokenPurpose')} required>
             <Input
               required
-              placeholder="Analytics export"
+              placeholder={t('people.tokenExample')}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
           </Field>
 
-          <Field
-            label="Expires"
-            help="A token that never expires is one nobody remembers to revoke"
-          >
+          <Field label={t('people.expires')} help={t('people.expiresHelp')}>
             <Select
               value={String(expiry)}
               onChange={(event) => setExpiry(Number(event.target.value))}
             >
               {DAYS.map((option) => (
                 <option key={option.label} value={option.days}>
-                  {option.label}
+                  {t(option.label)}
                 </option>
               ))}
             </Select>
           </Field>
 
           <Field
-            label="Permissions"
+            label={t('people.permissions')}
             required
-            {...(chosen.length === 0 ? { errors: ['Choose at least one'] } : {})}
+            {...(chosen.length === 0 ? { errors: [t('people.chooseOne')] } : {})}
           >
             <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
               {permissions.data?.data.map((permission) => (
-                <label
+                <Checkbox
                   key={permission.id}
-                  className="flex items-center gap-2 text-sm text-ink-soft"
+                  checked={chosen.includes(permission.name)}
+                  onChange={(ticked) =>
+                    setChosen((current) =>
+                      ticked
+                        ? [...current, permission.name]
+                        : current.filter((entry) => entry !== permission.name),
+                    )
+                  }
                 >
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-accent"
-                    checked={chosen.includes(permission.name)}
-                    onChange={(event) =>
-                      setChosen((current) =>
-                        event.target.checked
-                          ? [...current, permission.name]
-                          : current.filter((entry) => entry !== permission.name),
-                      )
-                    }
-                  />
-                  <code className="font-mono text-xs">{permission.name}</code>
-                </label>
+                  <code className="font-mono text-sm">{permission.name}</code>
+                </Checkbox>
               ))}
             </div>
           </Field>
 
           {create.isError && (
-            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-              {create.error instanceof ApiError ? create.error.message : 'Could not issue it'}
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-base text-danger">
+              {create.error instanceof ApiError ? create.error.message : t('people.issueFailed')}
             </p>
           )}
 
           <div className="flex gap-2">
             <Button type="submit" disabled={create.isPending || chosen.length === 0}>
-              {create.isPending ? 'Issuing…' : 'Issue'}
+              {create.isPending ? t('people.issuing') : t('people.issue')}
             </Button>
             <Button variant="secondary" onClick={onClose}>
-              Cancel
+              {t('common.cancel')}
             </Button>
           </div>
         </form>
@@ -496,6 +516,8 @@ const NewToken = ({ onIssued, onClose }: { onIssued(token: string): void; onClos
 
 const Tokens = () => {
   const client = useQueryClient()
+  const t = useT()
+  const dates = useDates()
   const [issued, setIssued] = useState<string>()
   const [issuing, setIssuing] = useState(false)
   const [page, setPage] = useState(1)
@@ -513,15 +535,13 @@ const Tokens = () => {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={() => setIssuing(true)}>Issue a token</Button>
+        <Button onClick={() => setIssuing(true)}>{t('people.issueAToken')}</Button>
       </div>
 
       {issued !== undefined && (
-        <Card className="border-positive/30 bg-positive-soft p-4">
-          <p className="mb-1 text-sm font-medium text-positive">
-            Copy this now. It is never shown again.
-          </p>
-          <code className="block break-all font-mono text-xs">{issued}</code>
+        <Card className="border-accent/30 bg-accent-wash p-4">
+          <p className="mb-1 text-base font-medium text-accent-ink">{t('people.copyNow')}</p>
+          <code className="block break-all font-mono text-sm">{issued}</code>
         </Card>
       )}
 
@@ -535,22 +555,22 @@ const Tokens = () => {
         )}
 
         {tokens.data?.data.length === 0 && (
-          <Empty title="No API tokens">A token authenticates an integration, not a person.</Empty>
+          <Empty title={t('people.noTokens')}>{t('people.noTokensBody')}</Empty>
         )}
 
         {tokens.data !== undefined && tokens.data.data.length > 0 && (
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-base">
             <thead>
-              <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-faint">
-                <th className="px-4 py-2.5 font-medium">Name</th>
-                <th className="px-4 py-2.5 font-medium">Permissions</th>
-                <th className="px-4 py-2.5 font-medium">Last used</th>
+              <tr className="border-b border-line text-sm font-[650] tracking-[0.01em] text-ink-soft">
+                <th className="px-4 py-2.5 font-medium">{t('people.name')}</th>
+                <th className="px-4 py-2.5 font-medium">{t('people.permissions')}</th>
+                <th className="px-4 py-2.5 font-medium">{t('people.lastUsed')}</th>
                 <th className="w-0 px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {tokens.data.data.map((token) => (
-                <tr key={token.id} className="border-b border-line-soft last:border-0">
+                <tr key={token.id} className="border-b border-hairline last:border-0">
                   <td className="px-4 py-2.5 font-medium">{token.name}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap gap-1">
@@ -560,9 +580,7 @@ const Tokens = () => {
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-ink-soft">
-                    {token.lastUsedAt === null
-                      ? 'Never'
-                      : new Date(token.lastUsedAt).toLocaleDateString()}
+                    {token.lastUsedAt === null ? t('common.never') : dates.date(token.lastUsedAt)}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <Button
@@ -570,12 +588,12 @@ const Tokens = () => {
                       size="sm"
                       className="text-danger"
                       onClick={() => {
-                        if (window.confirm(`Revoke “${token.name}”? It stops working at once.`)) {
+                        if (window.confirm(t('people.confirmRevoke', { name: token.name }))) {
                           revoke.mutate(token.id)
                         }
                       }}
                     >
-                      Revoke
+                      {t('people.revoke')}
                     </Button>
                   </td>
                 </tr>
@@ -594,6 +612,7 @@ const Tokens = () => {
 
 const Agents = () => {
   const client = useQueryClient()
+  const t = useT()
   const [page, setPage] = useState(1)
 
   const agents = useQuery({
@@ -619,19 +638,17 @@ const Agents = () => {
         )}
 
         {agents.data?.data.length === 0 && (
-          <Empty title="No agents yet">
-            An agent is an identity with its own permissions, audited like anyone else.
-          </Empty>
+          <Empty title={t('people.noAgents')}>{t('people.noAgentsBody')}</Empty>
         )}
 
         {agents.data?.data.map((agent) => (
           <div
             key={agent.id}
-            className="flex items-center gap-4 border-b border-line-soft px-4 py-3 last:border-0"
+            className="flex items-center gap-4 border-b border-hairline px-4 py-3 last:border-0"
           >
             <div className="min-w-0 flex-1">
               <p className="font-medium">{agent.name}</p>
-              <p className="truncate text-sm text-ink-soft">{agent.description}</p>
+              <p className="truncate text-base text-ink-soft">{agent.description}</p>
               <div className="mt-1 flex flex-wrap gap-1">
                 {agent.permissions.map((permission) => (
                   <Badge key={permission}>{permission}</Badge>
@@ -640,7 +657,7 @@ const Agents = () => {
             </div>
 
             <Badge tone={agent.enabled ? 'positive' : 'danger'}>
-              {agent.enabled ? 'enabled' : 'disabled'}
+              {agent.enabled ? t('people.enabled') : t('people.disabled')}
             </Badge>
 
             <Button
@@ -648,7 +665,7 @@ const Agents = () => {
               size="sm"
               onClick={() => update.mutate({ id: agent.id, enabled: !agent.enabled })}
             >
-              {agent.enabled ? 'Disable' : 'Enable'}
+              {agent.enabled ? t('people.disable') : t('people.enable')}
             </Button>
           </div>
         ))}
@@ -663,29 +680,32 @@ const Agents = () => {
 
 export const Users = () => {
   const [tab, setTab] = useState<Tab>('people')
+  const t = useT()
+
+  /* People, roles, tokens and agents are four views of one question — who may do what —
+     so they are tabs on one screen rather than four destinations in the sidebar. */
+  const views: readonly { value: Tab; label: string }[] = TABS.map((name) => ({
+    value: name,
+    label: t(LABELS[name]),
+  }))
 
   return (
-    <Page title="Users" description="Who may sign in, and what they may do">
-      <div className="mb-4 flex gap-1">
-        {TABS.map((name) => (
-          <button
-            key={name}
-            type="button"
-            className={[
-              'rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition',
-              tab === name ? 'bg-accent-soft text-accent' : 'text-ink-soft hover:bg-surface-sunken',
-            ].join(' ')}
-            onClick={() => setTab(name)}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
+    <Screen>
+      <ScreenHead>
+        <ScreenTitle
+          icon={<UsersIcon className="size-5" />}
+          title={t('nav.users')}
+          description={t('people.lede')}
+        />
+        <Tabs<Tab> value={tab} options={views} onChange={setTab} label={t('people.tabs')} />
+      </ScreenHead>
 
-      {tab === 'people' && <People />}
-      {tab === 'roles' && <Roles />}
-      {tab === 'tokens' && <Tokens />}
-      {tab === 'agents' && <Agents />}
-    </Page>
+      <ScreenBody className="pt-6 pb-10">
+        {tab === 'people' && <People />}
+        {tab === 'roles' && <Roles />}
+        {tab === 'tokens' && <Tokens />}
+        {tab === 'agents' && <Agents />}
+      </ScreenBody>
+    </Screen>
   )
 }

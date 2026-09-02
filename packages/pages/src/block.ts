@@ -17,6 +17,28 @@ import type { Issue } from '@assemora/schema'
 export type BlockOptions = {
   readonly label?: string
   readonly description?: string
+  /**
+   * What the palette draws this block as.
+   *
+   * ```ts
+   * block('hero', { … }, { icon: 'panel-top', group: 'Layout' })
+   * ```
+   *
+   * A name from the set the client ships, kebab-case, and never a picture — an icon set
+   * belongs to whatever is drawing (SPEC.md §58). Unsaid, and for a name Studio has
+   * never heard of, a block is drawn as the square every one of them was drawn as.
+   */
+  readonly icon?: string
+  /**
+   * The heading the palette files it under — `'Layout'`, `'Content'`.
+   *
+   * A dozen block types in one flat list is a list somebody reads to the end once. The
+   * grouping is the application's own division of its blocks, said where the block is
+   * declared, and it reaches Studio the way everything else does — through the registry.
+   * Unsaid, a block keeps the general heading, so an application that groups nothing
+   * looks exactly as it did.
+   */
+  readonly group?: string
   /** Whether this block may contain others (SPEC.md §56). */
   readonly acceptsChildren?: boolean
   /** Which block types it may contain. Empty means any, once children are accepted. */
@@ -29,6 +51,8 @@ export type Block = {
   readonly type: string
   readonly label: string
   readonly description: string | undefined
+  readonly icon: string | undefined
+  readonly group: string | undefined
   readonly fields: Readonly<Record<string, AnyField>>
   readonly acceptsChildren: boolean
   readonly allowedChildren: readonly string[]
@@ -40,6 +64,10 @@ export type BlockDescriptor = {
   readonly name: string
   readonly label: string
   readonly description?: string
+  /** What the palette draws it as: a name from the set that client ships (SPEC.md §58). */
+  readonly icon?: string
+  /** The heading the palette files it under, where the application named one. */
+  readonly group?: string
   readonly fields: readonly ResourceFieldDescriptor[]
   readonly acceptsChildren: boolean
   readonly allowedChildren: readonly string[]
@@ -71,6 +99,8 @@ export const block = (
   type,
   label: options.label ?? humanize(type),
   description: options.description,
+  icon: options.icon,
+  group: options.group,
   fields,
   acceptsChildren: options.acceptsChildren ?? false,
   allowedChildren: options.allowedChildren ?? [],
@@ -81,6 +111,8 @@ export const describeBlock = (definition: Block, module?: string): BlockDescript
   name: definition.type,
   label: definition.label,
   ...(definition.description === undefined ? {} : { description: definition.description }),
+  ...(definition.icon === undefined ? {} : { icon: definition.icon }),
+  ...(definition.group === undefined ? {} : { group: definition.group }),
   fields: Object.entries(definition.fields).map(([name, field]) => describeField(name, field)),
   acceptsChildren: definition.acceptsChildren,
   allowedChildren: definition.allowedChildren,

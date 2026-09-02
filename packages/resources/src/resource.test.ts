@@ -418,6 +418,22 @@ describe('what an entry is called (SPEC.md §35, §58)', () => {
     expect(Articles.descriptor.group).toBeUndefined()
   })
 
+  it('carries what it is drawn as, which is a name and never a picture', () => {
+    const Drawn = resource(
+      Article,
+      { title: text(), slug: slug('title') },
+      { name: 'drawn', icon: 'utensils' },
+    )
+
+    expect(Drawn.descriptor.icon).toBe('utensils')
+  })
+
+  it('leaves the icon unsaid, and a client draws whatever it draws a resource as', () => {
+    // Unsaid is the state every resource was in before, and the state a client has to
+    // keep working in: the glyphs belong to whatever is drawing, not to the registry.
+    expect(Articles.descriptor.icon).toBeUndefined()
+  })
+
   it('refuses a field the resource does not declare, and lists the ones it does', () => {
     expect(() =>
       resource(Article, { title: text() }, { name: 'unnamed', titleField: 'headline' }),

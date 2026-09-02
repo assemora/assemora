@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react'
 
 import type { FontStack, TokenValue } from '../api/theme.ts'
+import { useT } from '../i18n/translate.tsx'
 import { Button, Input, Select } from '../ui/index.tsx'
 import type { TokenKind } from './tokens.ts'
 
@@ -108,6 +109,7 @@ export const ColorInput = ({
   value: string
   onChange(value: string): void
 }) => {
+  const t = useT()
   const isHex = HEX.test(value)
   const pickable = /^#[0-9a-f]{6}$/i.test(value)
 
@@ -116,7 +118,7 @@ export const ColorInput = ({
       {pickable ? (
         <input
           type="color"
-          aria-label="Pick a colour"
+          aria-label={t('fields.pickColour')}
           value={value.toLowerCase()}
           className="size-8 shrink-0 cursor-pointer rounded-md border border-line bg-surface p-0.5"
           onChange={(event) => onChange(event.target.value)}
@@ -125,7 +127,7 @@ export const ColorInput = ({
         <span
           aria-hidden="true"
           title={value}
-          className="grid size-8 shrink-0 place-items-center rounded-md border border-dashed border-line text-[0.6rem] text-ink-faint"
+          className="grid size-8 shrink-0 place-items-center rounded-md border border-dashed border-line text-xs text-ink-faint"
           {...(isHex ? { style: { background: value } } : {})}
         >
           {isHex ? '' : 'abc'}
@@ -135,7 +137,7 @@ export const ColorInput = ({
       <Input
         value={value}
         spellCheck={false}
-        className="font-mono text-xs"
+        className="font-mono text-sm"
         onChange={(event) => onChange(event.target.value)}
       />
     </div>
@@ -149,6 +151,7 @@ export const LengthInput = ({
   value: string
   onChange(value: string): void
 }) => {
+  const t = useT()
   const { amount, unit } = partsOf(value)
 
   return (
@@ -160,7 +163,7 @@ export const LengthInput = ({
         onChange={(next) => onChange(composed(next, unit))}
       />
       <Select
-        aria-label="Unit"
+        aria-label={t('inputs.unit')}
         className="w-24 shrink-0"
         value={unit}
         onChange={(event) => onChange(composed(amount === '' ? '0' : amount, event.target.value))}
@@ -193,6 +196,7 @@ export const FontStackInput = ({
   value: FontStack
   onChange(value: FontStack): void
 }) => {
+  const t = useT()
   const [typed, setTyped] = useState('')
 
   const add = () => {
@@ -210,12 +214,12 @@ export const FontStackInput = ({
         {value.map((family, at) => (
           <li
             key={family}
-            className="flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-xs"
+            className="flex items-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-sm"
           >
             <span className="font-mono">{family}</span>
             <button
               type="button"
-              aria-label={`Move ${family} earlier`}
+              aria-label={t('inputs.moveEarlier', { name: family })}
               disabled={at === 0}
               className="text-ink-faint transition hover:text-ink disabled:opacity-30"
               onClick={() => {
@@ -231,7 +235,7 @@ export const FontStackInput = ({
             </button>
             <button
               type="button"
-              aria-label={`Remove ${family}`}
+              aria-label={t('row.removeNamed', { name: family })}
               className="text-ink-faint transition hover:text-danger"
               onClick={() => onChange(value.filter((entry) => entry !== family))}
             >
@@ -244,9 +248,9 @@ export const FontStackInput = ({
       <div className="flex gap-2">
         <Input
           value={typed}
-          placeholder="Add a family, such as Inter or sans-serif"
+          placeholder={t('inputs.addFamily')}
           spellCheck={false}
-          className="text-xs"
+          className="text-sm"
           onChange={(event) => setTyped(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Enter') return

@@ -80,7 +80,7 @@ describe('a collection with no entries in it', () => {
 
     expect(markup).toContain('No testimonial yet')
     expect(markup).toContain('An entry is one testimonial')
-    expect(markup).toContain('New Testimonial')
+    expect(markup).toContain('Create Testimonial')
   })
 
   it('says that the shape is still free, while it still is', () => {

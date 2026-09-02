@@ -14,6 +14,8 @@ import { api } from '../api/client.ts'
 import type { Paged } from '../api/pages.ts'
 import { usePage } from '../api/pages.ts'
 import { Page } from '../app/shell.tsx'
+import type { MessageKey } from '../i18n/messages.ts'
+import { useDates, useT } from '../i18n/translate.tsx'
 import { Badge, Button, Card, Empty, Failure, Spinner } from '../ui/index.tsx'
 
 type Revision = {
@@ -28,7 +30,11 @@ type Revision = {
   readonly createdAt: string
 }
 
-const ACTOR = { user: 'Person', agent: 'Agent', api: 'API token' } as const
+const ACTOR = {
+  user: 'history.actor.person',
+  agent: 'history.actor.agent',
+  api: 'history.actor.token',
+} as const satisfies Record<string, MessageKey>
 
 /** Bookkeeping every write touches. True, and not what anybody came to read. */
 const NOISE = new Set(['version', 'updatedAt', 'updatedBy'])
@@ -44,7 +50,7 @@ const Change = ({ field, from, to }: { field: string; from: unknown; to: unknown
   }
 
   return (
-    <li className="flex flex-wrap items-baseline gap-1.5 text-xs">
+    <li className="flex flex-wrap items-baseline gap-1.5 text-sm">
       <span className="font-medium text-ink">{field}</span>
       <span className="text-ink-faint line-through">{shorten(from)}</span>
       <span className="text-ink-faint">→</span>
@@ -63,20 +69,22 @@ const isTree = (value: unknown): value is BlockTree =>
  * The tree knows better, and it is the tree that is asked (SPEC.md §65).
  */
 const TreeChange = ({ from, to }: { from: unknown; to: unknown }) => {
+  const t = useT()
+
   if (!isTree(from) || !isTree(to)) return null
 
   const change = diffTrees(from, to)
 
   const lines = [
-    ...change.added.map((block) => `Added a ${block.type}`),
-    ...change.removed.map((block) => `Removed a ${block.type}`),
-    ...change.moved.map((block) => `Moved the ${block.type}`),
+    ...change.added.map((block) => t('history.tree.added', { type: block.type })),
+    ...change.removed.map((block) => t('history.tree.removed', { type: block.type })),
+    ...change.moved.map((block) => t('history.tree.moved', { type: block.type })),
     ...change.changed.map((block) =>
       block.fields.length > 0
-        ? `Changed the ${block.type}: ${block.fields.join(', ')}`
+        ? t('history.tree.changed', { type: block.type, fields: block.fields.join(', ') })
         : block.hidden
-          ? `Hid or showed the ${block.type}`
-          : `Restyled the ${block.type}`,
+          ? t('history.tree.hidden', { type: block.type })
+          : t('history.tree.restyled', { type: block.type }),
     ),
   ]
 
@@ -85,7 +93,7 @@ const TreeChange = ({ from, to }: { from: unknown; to: unknown }) => {
   return (
     <ul className="space-y-0.5">
       {lines.map((line) => (
-        <li key={line} className="text-xs text-ink-soft">
+        <li key={line} className="text-sm text-ink-soft">
           {line}
         </li>
       ))}
@@ -93,19 +101,31 @@ const TreeChange = ({ from, to }: { from: unknown; to: unknown }) => {
   )
 }
 
-const kindOf = (revision: Revision): string | undefined => {
-  if (typeof revision.metadata.undoOf === 'string') return 'undo'
-  if (typeof revision.metadata.redoOf === 'string') return 'redo'
-  if (typeof revision.metadata.restoredFrom === 'string') return 'restore'
+/**
+ * Which of the three special revisions this is, as the key that names it.
+ *
+ * Typed to the three keys rather than to `MessageKey`, because a message may take
+ * parameters and `t` asks for them at the call site — so a variable that could be *any*
+ * key is not callable. That is the machinery working: a table of keys has to declare
+ * which ones it holds.
+ */
+const kindOf = (
+  revision: Revision,
+): 'history.kind.undo' | 'history.kind.redo' | 'history.kind.restore' | undefined => {
+  if (typeof revision.metadata.undoOf === 'string') return 'history.kind.undo'
+  if (typeof revision.metadata.redoOf === 'string') return 'history.kind.redo'
+  if (typeof revision.metadata.restoredFrom === 'string') return 'history.kind.restore'
 
   return undefined
 }
 
 export const History = () => {
-  const { id } = useParams({ from: '/pages/$id/history' })
+  const { id } = useParams({ from: '/shell/pages/$id/history' })
   const navigate = useNavigate()
   const client = useQueryClient()
   const page = usePage(id, 'draft')
+  const t = useT()
+  const dates = useDates()
   const [compare, setCompare] = useState<string[]>([])
   const [at, setAt] = useState(1)
 
@@ -146,14 +166,14 @@ export const History = () => {
 
   return (
     <Page
-      title="History"
+      title={t('crumb.history')}
       description={page.data === undefined ? undefined : `${page.data.title} · /${page.data.slug}`}
       actions={
         <Button
           variant="secondary"
           onClick={() => void navigate({ to: '/pages/$id', params: { id } })}
         >
-          Back to builder
+          {t('history.backToBuilder')}
         </Button>
       }
     >
@@ -163,16 +183,16 @@ export const History = () => {
       {compare.length === 2 && (
         <Card className="mb-4 p-4">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Comparing two revisions</h2>
+            <h2 className="text-base font-semibold">{t('history.comparing')}</h2>
             <Button variant="ghost" size="sm" onClick={() => setCompare([])}>
-              Clear
+              {t('common.clear')}
             </Button>
           </div>
 
           {difference.isPending && <Spinner />}
           {difference.data !== undefined &&
             (Object.keys(difference.data.patch).length === 0 ? (
-              <p className="text-sm text-ink-soft">Nothing differs between them.</p>
+              <p className="text-base text-ink-soft">{t('history.noDifference')}</p>
             ) : (
               <ul className="space-y-1">
                 {Object.entries(difference.data.patch).map(([field, change]) => (
@@ -190,7 +210,7 @@ export const History = () => {
           </div>
         )}
 
-        {history.data?.data.length === 0 && <Empty title="Nothing has happened yet" />}
+        {history.data?.data.length === 0 && <Empty title={t('history.nothingYet')} />}
 
         <ol>
           {history.data?.data.map((revision) => {
@@ -199,24 +219,26 @@ export const History = () => {
             return (
               <li
                 key={revision.id}
-                className="flex gap-4 border-b border-line-soft px-4 py-3 last:border-0"
+                className="flex gap-4 border-b border-hairline px-4 py-3 last:border-0"
               >
                 <div className="w-28 shrink-0 space-y-0.5">
-                  <p className="text-sm font-medium">#{revision.sequence}</p>
-                  <p className="text-xs text-ink-faint">
-                    {new Date(revision.createdAt).toLocaleString()}
-                  </p>
+                  <p className="text-base font-medium">#{revision.sequence}</p>
+                  <p className="text-sm text-ink-faint">{dates.dateTime(revision.createdAt)}</p>
                 </div>
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <code className="font-mono text-xs text-ink-soft">{revision.command}</code>
-                    <Badge>{ACTOR[revision.actorType as keyof typeof ACTOR] ?? 'Unknown'}</Badge>
-                    {kind !== undefined && <Badge tone="accent">{kind}</Badge>}
+                    <code className="font-mono text-sm text-ink-soft">{revision.command}</code>
+                    <Badge>
+                      {t(
+                        ACTOR[revision.actorType as keyof typeof ACTOR] ?? 'history.actor.unknown',
+                      )}
+                    </Badge>
+                    {kind !== undefined && <Badge tone="accent">{t(kind)}</Badge>}
                   </div>
 
                   {revision.changed.length === 0 ? (
-                    <p className="text-xs text-ink-faint">Nothing changed.</p>
+                    <p className="text-sm text-ink-faint">{t('history.nothingChanged')}</p>
                   ) : (
                     <>
                       {Object.entries(revision.patch)
@@ -247,19 +269,19 @@ export const History = () => {
                     size="sm"
                     onClick={() => toggle(revision.id)}
                   >
-                    Compare
+                    {t('history.compare')}
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     disabled={restore.isPending}
                     onClick={() => {
-                      if (window.confirm('Put the page back the way it was at this revision?')) {
+                      if (window.confirm(t('history.confirmRestore'))) {
                         restore.mutate(revision.id)
                       }
                     }}
                   >
-                    Restore
+                    {t('history.restore')}
                   </Button>
                 </div>
               </li>
@@ -269,9 +291,12 @@ export const History = () => {
       </Card>
 
       {history.data !== undefined && history.data.lastPage > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
+        <div className="mt-4 flex items-center justify-between text-base text-ink-soft">
           <span>
-            Page {history.data.page} of {history.data.lastPage} · {history.data.total} revisions
+            {`${t('paging.page', {
+              page: history.data.page,
+              last: history.data.lastPage,
+            })} · ${t('history.revisionCount', { count: history.data.total })}`}
           </span>
           <div className="flex gap-2">
             <Button
@@ -280,7 +305,7 @@ export const History = () => {
               disabled={at <= 1}
               onClick={() => setAt((current) => current - 1)}
             >
-              Newer
+              {t('history.newer')}
             </Button>
             <Button
               variant="secondary"
@@ -288,7 +313,7 @@ export const History = () => {
               disabled={at >= history.data.lastPage}
               onClick={() => setAt((current) => current + 1)}
             >
-              Older
+              {t('history.older')}
             </Button>
           </div>
         </div>

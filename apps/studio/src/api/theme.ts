@@ -129,8 +129,14 @@ const CUSTOM_PROPERTY = /^--([a-z0-9-]+)\s*:\s*(.+)$/
  * `--text-muted` and `--text-md` sit in the same `:root` — what tells them apart is
  * that one holds a colour and the other a length.
  */
-export const colorTokensOf = (css: string): readonly string[] => {
-  const found: string[] = []
+export type ThemeColor = {
+  readonly name: string
+  /** What it is, so a swatch can be painted in it rather than named after it. */
+  readonly value: string
+}
+
+export const themeColorsOf = (css: string): readonly ThemeColor[] => {
+  const found: ThemeColor[] = []
 
   for (const block of css.matchAll(ROOT_BLOCK)) {
     // A declaration value can never hold a `;` — `@assemora/theme` checks every one
@@ -139,13 +145,17 @@ export const colorTokensOf = (css: string): readonly string[] => {
     for (const declaration of (block[1] ?? '').split(';')) {
       const match = CUSTOM_PROPERTY.exec(declaration.trim())
       const name = match?.[1]
+      const value = (match?.[2] ?? '').trim()
 
-      if (name !== undefined && COLOR_VALUE.test((match?.[2] ?? '').trim())) found.push(name)
+      if (name !== undefined && COLOR_VALUE.test(value)) found.push({ name, value })
     }
   }
 
-  return found.sort()
+  return found.sort((left, right) => left.name.localeCompare(right.name))
 }
+
+export const colorTokensOf = (css: string): readonly string[] =>
+  themeColorsOf(css).map((color) => color.name)
 
 /**
  * The stylesheet this application serves, as the list of colours in it.
@@ -154,11 +164,11 @@ export const colorTokensOf = (css: string): readonly string[] => {
  * this too: a colour added there is a background here, without the builder being told
  * about the Design screen.
  */
-export const useThemeColors = (): UseQueryResult<readonly string[]> =>
+export const useThemeColors = (): UseQueryResult<readonly ThemeColor[]> =>
   useQuery({
     queryKey: ['theme', 'stylesheet'],
     queryFn: ({ signal }) => api.text('/theme.css', signal),
-    select: colorTokensOf,
+    select: themeColorsOf,
     // A theme changes when a person or an applied proposal changes it, which is rare
     // and never in this tab without the invalidation above.
     staleTime: 5 * 60 * 1000,

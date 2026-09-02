@@ -1,6 +1,7 @@
 /**
  * The media library (SPEC.md §63, §115).
  */
+import { Image as ImageIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import {
@@ -12,46 +13,48 @@ import {
   useUpload,
 } from '../api/media.ts'
 import { Page } from '../app/shell.tsx'
+import { useT } from '../i18n/translate.tsx'
 import { Button, Card, Empty, Failure, Spinner } from '../ui/index.tsx'
 
 const Details = ({ item, onClose }: { item: MediaItem; onClose(): void }) => {
   const remove = useDeleteMedia()
+  const t = useT()
 
   return (
     <aside className="w-72 shrink-0 space-y-4 border-l border-line bg-surface p-5">
       {isImage(item) ? (
         <img src={item.url} alt={item.alt ?? ''} className="w-full rounded-lg border border-line" />
       ) : (
-        <div className="grid aspect-video place-items-center rounded-lg bg-surface-sunken text-sm text-ink-faint">
+        <div className="grid aspect-video place-items-center rounded-lg bg-surface-sunken text-base text-ink-faint">
           {item.mimeType}
         </div>
       )}
 
-      <dl className="space-y-2 text-sm">
+      <dl className="space-y-2 text-base">
         <div>
-          <dt className="text-xs text-ink-faint">Filename</dt>
+          <dt className="text-sm text-ink-faint">{t('media.filename')}</dt>
           <dd className="break-all">{item.filename}</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-faint">Type</dt>
+          <dt className="text-sm text-ink-faint">{t('media.type')}</dt>
           <dd>{item.mimeType}</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-faint">Size</dt>
+          <dt className="text-sm text-ink-faint">{t('media.sizeLabel')}</dt>
           <dd>
-            {readableSize(item.size)}
+            {readableSize(item.size, t)}
             {item.width !== null && ` · ${item.width}×${item.height}`}
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-faint">URL</dt>
-          <dd className="break-all font-mono text-xs">{item.url}</dd>
+          <dt className="text-sm text-ink-faint">{t('media.url')}</dt>
+          <dd className="break-all font-mono text-sm">{item.url}</dd>
         </div>
       </dl>
 
       <div className="flex gap-2">
         <Button variant="secondary" size="sm" onClick={onClose}>
-          Close
+          {t('common.close')}
         </Button>
         <Button
           variant="ghost"
@@ -59,12 +62,12 @@ const Details = ({ item, onClose }: { item: MediaItem; onClose(): void }) => {
           className="text-danger"
           disabled={remove.isPending}
           onClick={() => {
-            if (window.confirm(`Delete ${item.filename}?`)) {
+            if (window.confirm(t('media.confirmDelete', { name: item.filename }))) {
               remove.mutate(item.id, { onSuccess: onClose })
             }
           }}
         >
-          Delete
+          {t('common.delete')}
         </Button>
       </div>
     </aside>
@@ -72,6 +75,7 @@ const Details = ({ item, onClose }: { item: MediaItem; onClose(): void }) => {
 }
 
 export const MediaLibrary = () => {
+  const t = useT()
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<MediaItem>()
   const media = useMedia(page)
@@ -82,8 +86,9 @@ export const MediaLibrary = () => {
     <div className="flex min-h-dvh">
       <div className="min-w-0 flex-1">
         <Page
-          title="Media"
-          description={media.data === undefined ? undefined : `${media.data.total} files`}
+          icon={<ImageIcon className="size-5" />}
+          title={t('nav.media')}
+          count={media.data?.total}
           actions={
             <>
               <input
@@ -97,7 +102,7 @@ export const MediaLibrary = () => {
                 }}
               />
               <Button onClick={() => input.current?.click()} disabled={uploading.isPending}>
-                {uploading.isPending ? 'Uploading…' : 'Upload'}
+                {uploading.isPending ? t('media.uploading') : t('media.upload')}
               </Button>
             </>
           }
@@ -109,9 +114,7 @@ export const MediaLibrary = () => {
             {media.isPending && <Spinner />}
 
             {media.data?.data.length === 0 && (
-              <Empty title="The library is empty">
-                Upload an image and it becomes available to every `media()` field.
-              </Empty>
+              <Empty title={t('media.empty')}>{t('media.emptyBody')}</Empty>
             )}
 
             <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-4">
@@ -134,22 +137,20 @@ export const MediaLibrary = () => {
                       className="aspect-square w-full rounded object-cover"
                     />
                   ) : (
-                    <span className="grid aspect-square w-full place-items-center rounded bg-surface-sunken text-xs text-ink-faint">
-                      {item.mimeType.split('/')[1] ?? 'file'}
+                    <span className="grid aspect-square w-full place-items-center rounded bg-surface-sunken text-sm text-ink-faint">
+                      {item.mimeType.split('/')[1] ?? t('media.file')}
                     </span>
                   )}
-                  <span className="block truncate text-xs font-medium">{item.filename}</span>
-                  <span className="block text-xs text-ink-faint">{readableSize(item.size)}</span>
+                  <span className="block truncate text-sm font-medium">{item.filename}</span>
+                  <span className="block text-sm text-ink-faint">{readableSize(item.size, t)}</span>
                 </button>
               ))}
             </div>
           </Card>
 
           {media.data !== undefined && media.data.lastPage > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
-              <span>
-                Page {media.data.page} of {media.data.lastPage}
-              </span>
+            <div className="mt-4 flex items-center justify-between text-base text-ink-soft">
+              <span>{t('paging.page', { page: media.data.page, last: media.data.lastPage })}</span>
               <div className="flex gap-2">
                 <Button
                   variant="secondary"
@@ -157,7 +158,7 @@ export const MediaLibrary = () => {
                   disabled={page <= 1}
                   onClick={() => setPage((current) => current - 1)}
                 >
-                  Previous
+                  {t('paging.previous')}
                 </Button>
                 <Button
                   variant="secondary"
@@ -165,7 +166,7 @@ export const MediaLibrary = () => {
                   disabled={page >= media.data.lastPage}
                   onClick={() => setPage((current) => current + 1)}
                 >
-                  Next
+                  {t('paging.next')}
                 </Button>
               </div>
             </div>

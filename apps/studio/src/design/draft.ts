@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ApiError, api } from '../api/client.ts'
 import { type ThemeState, type TokenValue, useTheme } from '../api/theme.ts'
+import { useT } from '../i18n/translate.tsx'
 import { GROUPS, groupOfKey, keyOf, sameValue, type TokenGroup, valuesOf } from './tokens.ts'
 
 /** A document, one entry per token. */
@@ -172,6 +173,7 @@ const EMPTY: TokenMap = new Map()
 export const useThemeDraft = (): ThemeDraft => {
   const client = useQueryClient()
   const theme = useTheme()
+  const t = useT()
   const [state, setState] = useState<ThemeState>()
   const [edits, setEdits] = useState<Edits>(new Map())
   const [busy, setBusy] = useState(false)
@@ -296,11 +298,11 @@ export const useThemeDraft = (): ThemeDraft => {
         setFields(error.fields)
       }
 
-      setFailure(error instanceof Error ? error.message : 'That did not work')
+      setFailure(error instanceof Error ? error.message : t('design.didNotWork'))
     } finally {
       setBusy(false)
     }
-  }, [absorb, client, edits, state])
+  }, [absorb, client, edits, state, t])
 
   return {
     state,

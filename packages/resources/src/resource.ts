@@ -58,6 +58,18 @@ export type ResourceOptions = {
    * Unsaid, the resource stays under the general heading with everything else.
    */
   readonly group?: string
+  /**
+   * What Studio draws this resource as, in the sidebar and wherever else it is listed.
+   *
+   * ```ts
+   * resource(Dish, { … }, { label: 'Страви', group: 'Меню', icon: 'utensils' })
+   * ```
+   *
+   * A name from the set the client ships, kebab-case, and never a picture — an icon set
+   * belongs to whatever is drawing. Unsaid, and for a name Studio has never heard of, a
+   * resource is drawn as a document, which is how all of them were drawn before.
+   */
+  readonly icon?: string
   readonly perPage?: number
   readonly maxPerPage?: number
 }
@@ -217,6 +229,7 @@ export const resource = <
     ...(options.defaultSort === undefined ? {} : { defaultSort: options.defaultSort }),
     ...(options.titleField === undefined ? {} : { titleField: options.titleField }),
     ...(options.group === undefined ? {} : { group: options.group }),
+    ...(options.icon === undefined ? {} : { icon: options.icon }),
     perPage,
   }
 

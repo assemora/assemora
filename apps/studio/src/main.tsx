@@ -13,6 +13,7 @@ import { worthRetrying } from './api/client.ts'
 import { LocaleProvider } from './api/locale.tsx'
 import { SessionProvider } from './api/session.tsx'
 import { router } from './app/router.tsx'
+import { LanguageProvider } from './i18n/translate.tsx'
 import './styles.css'
 
 const client = new QueryClient({
@@ -30,12 +31,16 @@ if (container === null) throw new Error('Studio needs a #root element to mount i
 
 createRoot(container).render(
   <StrictMode>
-    <QueryClientProvider client={client}>
-      <SessionProvider>
-        <LocaleProvider>
-          <RouterProvider router={router} />
-        </LocaleProvider>
-      </SessionProvider>
-    </QueryClientProvider>
+    {/* Outermost, and above the session: the sign-in form is a screen too, and it is
+        the one somebody reads before this application knows who they are. */}
+    <LanguageProvider>
+      <QueryClientProvider client={client}>
+        <SessionProvider>
+          <LocaleProvider>
+            <RouterProvider router={router} />
+          </LocaleProvider>
+        </SessionProvider>
+      </QueryClientProvider>
+    </LanguageProvider>
   </StrictMode>,
 )
