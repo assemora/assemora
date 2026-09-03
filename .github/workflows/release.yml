@@ -1,0 +1,80 @@
+# Publishing, which happens because somebody decided to and never because a branch moved.
+#
+# `workflow_dispatch` on purpose. A tag trigger publishes whatever the tag pointed at,
+# and a push trigger publishes whatever merged; both turn a permanent, unrepeatable act
+# — npm allows an unpublish for 72 hours and then never — into a side effect of an
+# ordinary git operation. So the release is a button, and the version it publishes is
+# the one already committed to the branch it runs on.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The npm dist-tag. Keep "next" until the API stops moving.'
+        required: true
+        default: next
+        type: choice
+        options:
+          - next
+          - latest
+
+# `id-token` is what makes provenance possible: npm verifies the build against this
+# run rather than against a claim in the tarball.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      # The same gate every change passes. A release is not the moment to find out.
+      - run: pnpm verify
+
+      # `files` names `dist`, and `dist` is gitignored — so a publish from a checkout
+      # nobody built ships packages with nothing in them. `pnpm verify` has already
+      # built, and this proves it rather than assuming it.
+      - name: Check the build output is there
+        run: test -f packages/cli/dist/bin.js && test -f packages/core/dist/index.js
+
+      # Refuses before anything is published if the manifests disagree, rather than
+      # halfway through: pnpm rewrites `workspace:*` to the *exact* version at pack
+      # time, so two packages at different versions publish tarballs depending on
+      # versions no sibling satisfies.
+      - name: Check every publishable package carries one version
+        run: |
+          versions=$(pnpm -r --filter "./packages/**" --filter "./apps/studio" \
+            exec node -p "require('./package.json').version" | sort -u)
+          echo "$versions"
+          test "$(echo "$versions" | wc -l)" -eq 1
+
+      # `pnpm publish -r` skips a private manifest itself, so apps/, starters/,
+      # examples/ and tests/ are excluded by the field rather than by a list here.
+      # `--no-git-checks` because pnpm otherwise insists the checkout is on a branch it
+      # recognises as the publish branch and provably in sync with its remote, and a
+      # dispatched run is neither by default.
+      - name: Publish
+        run: pnpm publish -r --access public --provenance --no-git-checks --tag ${{ inputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

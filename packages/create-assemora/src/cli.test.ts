@@ -4,7 +4,7 @@ import { Readable } from 'node:stream'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { answered, type CliSession, parseArgs, run } from './cli.js'
+import { answered, type CliSession, nextSteps, parseArgs, run } from './cli.js'
 import { collector, conversation } from './streams.fixture.js'
 import { remove, temporaryDirectory, write, writeTemplate } from './template.fixture.js'
 
@@ -171,16 +171,30 @@ describe('run', () => {
     expect(out).toContain('no DATABASE_URL')
   })
 
-  it('finishes with the three commands to run next, in order', async () => {
-    const root = await temporary()
-    const template = await writeTemplate(root)
-
-    const { out } = await drive(['my-project', `--template=${template}`], { cwd: root })
-    const steps = out.split('\n').map((entry) => entry.trim())
+  it('finishes with the three commands to run next, in order, once there is a release', () => {
+    const steps = [...nextSteps('/work', '/work/my-project', true)].map((entry) => entry.trim())
 
     expect(steps.indexOf('cd my-project')).toBeGreaterThan(steps.indexOf('Next'))
     expect(steps.indexOf('pnpm install')).toBe(steps.indexOf('cd my-project') + 1)
     expect(steps.indexOf('pnpm dev')).toBe(steps.indexOf('pnpm install') + 1)
+  })
+
+  /**
+   * The one instruction, rather than an instruction and a retraction of it.
+   *
+   * Until the packages are published there is nothing for `pnpm install` to fetch, so
+   * printing it and then explaining that it does not work leaves whoever stops reading
+   * after the first line running a command that cannot resolve a single dependency.
+   */
+  it('names the checkout route instead, while nothing is published', async () => {
+    const root = await temporary()
+    const template = await writeTemplate(root)
+
+    const { out } = await drive(['my-project', `--template=${template}`], { cwd: root })
+
+    expect(out).toContain('not published yet')
+    expect(out).toContain('git clone https://github.com/assemora/assemora.git')
+    expect(out).not.toContain('  pnpm install\n')
   })
 
   it('writes the project where the name says, relative to the working directory', async () => {

@@ -1,10 +1,45 @@
 # Getting started
 
+Nothing is on npm yet, so the way in is a checkout. Four commands, one process:
+
+```bash
+git clone https://github.com/assemora/assemora.git
+cd assemora
+pnpm install
+pnpm demo
+```
+
+That builds the workspace and serves `examples/company` — three pages, seven block
+types, two resources and a theme, on an in-memory database that is seeded on every
+boot. It prints where everything is:
+
+```text
+listening on http://127.0.0.1:3000
+  studio   http://127.0.0.1:3000/studio
+  site     http://127.0.0.1:3000/preview
+  public   http://127.0.0.1:3000/api/site/pages/home
+```
+
+Sign in at `/studio` as `admin@example.com`. The password is generated on the first
+boot and written to `examples/company/.env`, which is where the boot line says to look:
+
+```bash
+grep ASSEMORA_SEED_PASSWORD examples/company/.env
+```
+
+`starters/bare` is the project the scaffolder writes and `starters/blog` is the same
+project with content in it; `starters/nextjs` runs Assemora beside a Next.js frontend,
+and `examples/` holds two more. All five are real workspace packages, so CI compiles
+them and they run from the checkout — their scripts call the `assemora` executable, so
+`pnpm build` has to have run first.
+
+## The scaffolder, and what it cannot do yet
+
 ```bash
 pnpm create assemora my-project
 ```
 
-It asks four questions, and every one of them has a flag that answers it:
+It asks five questions, and every one of them has a flag that answers it:
 
 ```text
 Project name          my-project
@@ -19,11 +54,14 @@ them. When stdin is not a terminal nothing is asked at all: the defaults are tak
 printed, because a scaffolder that blocks waiting for an answer nobody can type is a
 scaffolder that hangs a build.
 
-> **Today this stops one step short.** None of the `@assemora` packages are on npm
-> yet, so `pnpm install` in a generated project has nothing to fetch. The command says
-> so in as many words. Until the first release, run a project from a checkout of the
-> framework — `starters/bare` and `examples/` in this repository are real workspace
-> packages, and they are what the rest of this guide is written against.
+It writes the files, and that half works. What it cannot do is install them: none of
+the `@assemora` packages are on npm, so `pnpm install` in a generated project has
+nothing to fetch. The command says so where it would otherwise print `pnpm install`,
+and [`docs/releasing.md`](../releasing.md) is what the first release takes.
+
+The rest of this page describes a generated project as it will run once there is a
+release. Everything in it is true of `starters/bare` and `starters/blog` today, from a
+checkout.
 
 ## The first five minutes
 
@@ -38,7 +76,9 @@ in-memory adapter: everything works and nothing survives a restart. It announces
 on every single boot, which is the bargain — an in-memory database is honest only
 while it is saying so.
 
-The first boot seeds one administrator and prints the password it used, then tells you
+The first boot seeds one administrator. It does not print the password — it generates
+one, writes it to `.env` as `ASSEMORA_SEED_PASSWORD`, and prints only where it went,
+because `assemora start` inherits the streams of whatever supervises it. Then it says
 where everything is:
 
 ```text

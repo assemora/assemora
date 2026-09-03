@@ -133,8 +133,15 @@ export const NoEntries = ({
  * because it chose pnpm. This is the form that runs whichever one it was: `npx` ships
  * with the Node the project already requires, and prefers the local binary over the
  * registry.
+ *
+ * `--no` is what keeps it to the local one. Without it, a project that has not
+ * installed `@assemora/cli` sends npx to the registry for a package called `assemora`
+ * — and that name is the umbrella of SPEC.md §9, which carries no executable at all.
+ * So the fallback is not a slower success; it is a download followed by a different
+ * error, and today, with nothing published, a 404. `--no` refuses to fetch and says
+ * the binary is missing, which is the true thing and the one somebody can act on.
  */
-const MAKE_BLOCK = 'npx assemora make:block hero'
+const MAKE_BLOCK = 'npx --no assemora make:block hero'
 
 /**
  * The empty block palette, which is the one thing on this list Studio cannot fix.
