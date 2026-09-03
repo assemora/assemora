@@ -20,7 +20,7 @@ import { collections } from '@assemora/resources'
 import { assemora } from 'assemora'
 
 import { blog, Faq, Hero, Section } from './blog.ts'
-import { seed } from './seed.ts'
+import { ADMIN_EMAIL, ADMIN_PASSWORD, seed } from './seed.ts'
 
 const PORT = Number(process.env.PORT ?? 4000)
 
@@ -68,5 +68,24 @@ const app = assemora({
 await app.boot()
 await seed(app.app)
 
-console.log(`[playground] listening on ${await app.listen(PORT)}`)
-console.log(`[playground] studio origin allowed: ${STUDIO_ORIGIN}`)
+const address = await app.listen(PORT)
+
+/**
+ * Where to go, and how to get in.
+ *
+ * A demo that ends at a login nobody can pass is the dead end this output exists to
+ * close, and the password is printed here for one reason that does not generalise: it
+ * is a constant published in the file next to this one, guarding an in-memory database
+ * that exists inside this process and is gone when it stops. That is a fixture, not a
+ * credential.
+ *
+ * A scaffolded project does the opposite and must. `starters/bare/src/seed.ts`
+ * generates a password, writes it to `.env` and prints only where it went, because
+ * `assemora start` inherits the streams of whatever supervises it — and
+ * `tests/integration/starters.test.ts` fails if a starter or an example ever prints
+ * one (docs/rules/security.md).
+ */
+console.log(`[playground] api       ${address}/api`)
+console.log(`[playground] articles  ${address}/api/articles   (open — no session needed)`)
+console.log(`[playground] studio    ${STUDIO_ORIGIN}   (pnpm --filter @assemora/studio dev)`)
+console.log(`[playground] sign in   ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`)

@@ -348,6 +348,20 @@ Decisions phase 10 added (ADR-0021, ADR-0022):
   trusting it. All eight answers to §78's questions are asserted mechanically.
 - `server.mountAssets()` serves a single-page application outside the API prefix and
   outside the Schema Registry: a stylesheet is not an endpoint.
+- `server.mountRedirect(from, to)` is the second of those, and the only other one. The
+  origin root answered 404 in every deployment, because everything an application serves
+  lives under a path and the one address a person is handed is the origin itself. It is
+  a signpost rather than an endpoint, so it is undescribed — `settled()` checks that
+  everything *described* is served and never the reverse, which is what makes an
+  undescribed route allowed by construction rather than by exception. The umbrella
+  points it at the **site** when a frontend is mounted and at Studio only when there is
+  none: a deployment serving a frontend is a public address, and answering it with the
+  editor's login is a worse homepage than the 404 it replaces. It refuses a second claim
+  on a path, naming it, because Fastify's own refusal at `ready()` names neither mount.
+- `PORT` and `HOST` are read in the umbrella and nowhere else, because it is the
+  composition root and core must never learn what an environment variable is. Loopback
+  stays the default: a server that binds every interface because nobody said not to is a
+  development machine answering the office network.
 
 An adversarial pass after the phase found defects worth remembering, all fixed:
 
@@ -690,7 +704,9 @@ pnpm test          # Vitest
 pnpm test:types    # type-level tests only (*.test-d.ts)
 ```
 
-Two processes are needed to look at Studio:
+`pnpm demo` is the one-process route — `examples/company`, which serves Studio at
+`/studio` beside its own API, the way a deployed project does. `pnpm dev` is the pair
+Studio is *developed* against, and it is these two commands run together:
 
 ```bash
 pnpm --filter @assemora/playground dev   # the application, on :4000

@@ -1115,6 +1115,106 @@ describe('serving Studio (SPEC.md §58, ADR-0022)', () => {
   })
 })
 
+/**
+ * What the origin root answers, which before this was a 404 from the server library.
+ *
+ * Everything an application serves lives under a path, so the one address a person is
+ * handed — the origin itself — was the only one that answered with nothing. The rule is
+ * the site first: a deployment that serves a frontend is a public address, and greeting
+ * a visitor there with the editor's login is a worse homepage than the 404 it replaces.
+ */
+describe('the origin root is a signpost', () => {
+  it('sends a visitor to the site when there is one', async () => {
+    const root = await bundle('<!doctype html><title>Preview</title>')
+    const studio = await bundle('<!doctype html><title>Studio</title>')
+    const built = build({
+      modules: [auth(), notes()],
+      studio: { root: studio },
+      frontend: { root },
+    })
+
+    await built.boot()
+
+    const answered = await serverOf(built).inject({ method: 'GET', url: '/' })
+
+    expect(answered.statusCode).toBe(302)
+    expect(answered.headers.location).toBe('/preview')
+  })
+
+  it('sends them to Studio when the application serves no site', async () => {
+    const studio = await bundle('<!doctype html><title>Studio</title>')
+    const built = build({ modules: [auth(), notes()], studio: { root: studio } })
+
+    await built.boot()
+
+    expect((await serverOf(built).inject({ method: 'GET', url: '/' })).headers.location).toBe(
+      '/studio',
+    )
+  })
+
+  it('says nothing when the site is already at the root', async () => {
+    const root = await bundle('<!doctype html><title>Preview</title>')
+    const built = build({ modules: [notes()], frontend: { root, path: '/' } })
+
+    await built.boot()
+
+    // Served rather than redirected: a redirect to itself is a loop, and Fastify would
+    // refuse the duplicate route with a message naming neither mount.
+    const answered = await serverOf(built).inject({ method: 'GET', url: '/' })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.body).toContain('<title>Preview</title>')
+  })
+
+  it('leaves an application with neither alone', async () => {
+    const built = build({ modules: [notes()] })
+
+    await built.boot()
+
+    expect((await serverOf(built).inject({ method: 'GET', url: '/' })).statusCode).toBe(404)
+  })
+})
+
+/**
+ * `PORT` and `HOST` are the pair a process learns from the environment it was started
+ * in rather than from the application it runs, and the umbrella is the one package in
+ * the graph allowed to read either.
+ */
+describe('the interface to bind comes from the environment', () => {
+  it('binds what HOST names', async () => {
+    const before = process.env.HOST
+
+    try {
+      // A name reserved by RFC 2606 so it can never resolve, which makes the assertion
+      // about *which host was asked for* rather than about this machine's interfaces.
+      process.env.HOST = 'assemora.invalid'
+
+      const built = build({ modules: [notes()] })
+
+      await expect(built.listen(0)).rejects.toThrow(/assemora\.invalid/)
+    } finally {
+      if (before === undefined) delete process.env.HOST
+      else process.env.HOST = before
+    }
+  })
+
+  it('stays on loopback when nothing says otherwise', async () => {
+    const before = process.env.HOST
+
+    try {
+      delete process.env.HOST
+
+      const built = build({ modules: [notes()] })
+
+      // A server that binds every interface because nobody said not to is a
+      // development machine answering the office network.
+      expect(await built.listen(0)).toContain('127.0.0.1')
+    } finally {
+      if (before !== undefined) process.env.HOST = before
+    }
+  })
+})
+
 describe('the frontend the builder canvas frames (SPEC.md §59, §85)', () => {
   it('serves it at the origin root, and lets the origins it named frame it', async () => {
     const root = await bundle('<!doctype html><title>Preview</title>')

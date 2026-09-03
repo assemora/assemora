@@ -23,6 +23,8 @@
     "boundaries": "node --disable-warning=ExperimentalWarning scripts/check-boundaries.ts",
     "clean": "turbo run clean && rm -rf .turbo",
     "verify": "pnpm boundaries && pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm test:types",
+    "demo": "pnpm build && pnpm --filter @assemora/example-company dev",
+    "dev": "pnpm build && pnpm --filter @assemora/playground --filter @assemora/studio --parallel run dev",
     "test:integration": "vitest run tests/integration"
   },
   "engines": {
