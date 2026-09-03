@@ -469,3 +469,98 @@ describe('the ceiling counts agents, not tools (SPEC.md §76)', () => {
     expect(await call('assemora.blocks.types')).toBe('RATE_LIMITED')
   })
 })
+
+/**
+ * One endpoint, many callers (SPEC.md §68, §76).
+ *
+ * A JSON-RPC id is the client's to choose and every client starts at 1, so two agents
+ * holding one endpoint routinely send the same one. Correlating replies by that id
+ * handed the second caller an answer computed for the first — which, since an MCP call
+ * is authorized as the agent that made it, is a leak between actors rather than a
+ * mix-up — and left the first waiting for a reply already delivered elsewhere.
+ */
+describe('two callers sharing one endpoint', () => {
+  const answeredWithin = async <T>(work: Promise<T>, ms: number): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_, refuse) => {
+          timer = setTimeout(() => refuse(new Error('a caller was never answered')), ms)
+        }),
+      ])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
+
+  const shaken = async () => {
+    const endpoint = await connectDirectly(
+      createMcpServer({ registry: app.registry, commands: app.commands, queries: app.queries }),
+    )
+
+    await endpoint.handle({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      },
+    })
+
+    return endpoint
+  }
+
+  it('answers each of two requests that chose the same id', async () => {
+    const endpoint = await shaken()
+
+    // Both in flight before either is answered, which is the whole of the defect: the
+    // second `deliver` used to overwrite the first one's entry the moment it arrived.
+    const listing = endpoint.handle({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+    const ping = endpoint.handle({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} })
+
+    const [listed, ponged] = (await answeredWithin(Promise.all([listing, ping]), 3000)) as [
+      { id: number; result: { tools: unknown[] } },
+      { id: number; result: Record<string, unknown> },
+    ]
+
+    // Each answer is the one its own request asked for, and neither is the other's.
+    expect(listed.result.tools.length).toBeGreaterThan(0)
+    expect(ponged.result.tools).toBeUndefined()
+
+    await endpoint.close()
+  })
+
+  it('addresses each answer to the id its caller used, not to one of its own', async () => {
+    const endpoint = await shaken()
+
+    // A client matches replies to its own requests. A ticket this transport issued
+    // would match nothing the client ever sent.
+    const answered = (await answeredWithin(
+      endpoint.handle({ jsonrpc: '2.0', id: 'left', method: 'ping', params: {} }),
+      3000,
+    )) as { id: string }
+
+    expect(answered.id).toBe('left')
+
+    await endpoint.close()
+  })
+
+  it('keeps them apart across many at once', async () => {
+    const endpoint = await shaken()
+
+    const asked = Array.from({ length: 12 }, () =>
+      endpoint.handle({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} }),
+    )
+
+    const answers = (await answeredWithin(Promise.all(asked), 5000)) as { id: number }[]
+
+    expect(answers).toHaveLength(12)
+    expect(answers.every((answer) => answer.id === 1)).toBe(true)
+
+    await endpoint.close()
+  })
+})
