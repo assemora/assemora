@@ -27,25 +27,46 @@ Nothing else may be built first: every facet below rests on these.
 
 | # | Change | Package |
 | --- | --- | --- |
-| 0.0 | A policy is bound to the module that owns the subject — open; policies reach the Schema Registry — done | `auth` + `core` |
+| 0.0 | ~~A policy is bound to the module that owns the subject~~ — done | `auth` + `core` |
 | 0.1 | `ResourceDescriptor.module` | `resources` |
 | 0.2 | One namespace refusal at `createApplication()`, naming **both** modules | `core` + `resources` |
 | 0.3 | ~~A record-scoped action must prove stage two ran~~ — done | `auth` + `core` |
 | 0.4 | Close the four silent last-wins registries — command ∪ query done, the rest open | four call sites |
 | 0.5 | `sandbox` on the builder canvas iframe | `apps/studio` |
 
-**0.0 — the registry half is done.** `registerPolicy` records which module registered
-which subject, the policy facet describes each one where it is declared, and the auth
-module sweeps at boot for anything that reached `registerPolicy` without going through a
-module at all — described with no `module`, because that absence is the fact worth seeing.
-The section reaches `assemora.describe` and Studio's Developer screen, so an installed
-package that grants itself access is no longer invisible to the single source.
+**0.0 — done, both halves.** The registry half describes every policy where it is
+declared, so an installed package that grants itself access is visible to the single
+source. The half that *prevents* is `packages/auth/src/ownership.ts`: a module may write
+a policy only for a subject it declares, and an application that breaks the rule refuses
+to boot naming the module, the subject and what would have had to be true.
 
-What is still open is the half that *prevents* rather than reveals: the rule
-*"a subject the declaring module does not own"*. Deciding what owning a subject means —
-the models, resources and commands a module declares, presumably — is the work, and until
-it exists a package can still open `pages.create` in twelve lines. It is now twelve lines
-anybody can see.
+Owning a subject turned out to be two things a module already says out loud. Its **own
+name as a namespace** — `module('pages')` owns `pages` and `pages.drafts`, which is what
+every framework module relies on. And **a model or resource it registered** — an
+application's module is named after the area rather than the table, so
+`module('blog').models(Article)` owns `articles` and would own nothing under a name-only
+rule. The second needed `SchemaRegistry.registeredBy`: an entry said what a thing was and
+nothing about where it came from, and `contextFor` now hands each module a view of the
+registry that records its name without the module being asked and without it being able
+to give another.
+
+The application is the exemption, and deliberately: `auth({ policies })` is written at
+the composition root by whoever assembled the modules, so it speaks for the whole
+application and is held to no ownership rule. It is described with no `module`, which is
+what "not a package" has looked like since the section existed.
+
+Two of the three cases this was expected to fight turned out not to exist. `blocks.update`
+declares subject `pages` and lives in `module('pages')` — the same module, and no
+production command in this repository names a subject outside its own module.
+`revisions.restore` *consumes* a policy for an arbitrary subject through
+`context.authorize` and never registers one, so a registration-time rule does not touch
+it. The third — a policy registered outside any module — is now a refusal rather than a
+note.
+
+It is not a sandbox, and `ownership.ts` says so in its own words: one process, and a
+package determined to grant itself access can patch past any of this. What it removes is
+the casual case, which is the one that happens — self-granting now requires impersonating
+a module, and impersonation reads as impersonation in a diff.
 
 **0.1** `packages/resources/src/module.ts:49` is the only facet registration that does not
 pass its module name — compare `packages/data/src/module.ts:43`,

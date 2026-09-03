@@ -665,11 +665,16 @@ urgent:
 - A collection has no `titleField`: a dynamic definition does not carry one, so a
   collection made in Studio still falls to the guess. The picker itself works there,
   because a relation's target is in the descriptor either way.
-- A policy is *described* now but not *bound*. The registry carries the subject, the
-  actions and the module that registered one, and `assemora.describe` and Studio both
-  read it — so an installed package that grants itself access is visible. Nothing yet
-  refuses a policy for a subject the declaring module does not own, which is the other
-  half of site-kits.md 0.0 and the half that prevents rather than reveals.
+- A policy is described *and* bound (ADR-0027, amended). A module may write one only for
+  a subject it declares — its own name as a namespace, or a model or resource it
+  registered — and an application that breaks the rule refuses to boot, naming the
+  module, the subject and what would have had to be true. `auth({ policies })` is the
+  application's exemption, because the composition root speaks for the whole application
+  and a package does not. It needed one new fact in core: a registry entry said what a
+  thing was and nothing about where it came from, so `SchemaRegistry.registeredBy` and
+  `forModule` record who registered what, without a module being asked and without it
+  being able to name another. Not a sandbox — one process — but self-granting now
+  requires impersonating a module.
 - The builder canvas frames `/preview` same-origin with no `sandbox`, and the CSRF cookie
   is `httpOnly: false` at `Path=/` — so a block view can read the parent's cookies.
 - `datetime` renders through `toISOString()` into a `datetime-local`, so 18:00 Kyiv

@@ -3,10 +3,11 @@ import {
   createContext,
   createLogger,
   ForbiddenError,
+  type ModuleBuilder,
   module,
   silentWriter,
 } from '@assemora/core'
-import { useAdapter } from '@assemora/data'
+import { model, string, useAdapter, uuid } from '@assemora/data'
 import { createMemoryAdapter, type MemoryAdapter } from '@assemora/database'
 import { beforeEach, describe, expect, it } from 'vitest'
 
@@ -19,6 +20,7 @@ import {
   describedPolicies,
   describePolicy,
   policy,
+  registerModulePolicy,
   registerPolicy,
 } from './policies.js'
 
@@ -389,7 +391,7 @@ describe('what the registry is told about a policy', () => {
   })
 
   it('remembers which module each subject came from', () => {
-    registerPolicy(ownership as never, 'blog')
+    registerModulePolicy(ownership as never, 'blog')
 
     expect(describedPolicies()).toEqual([
       { name: 'articles', actions: ['read', 'update'], module: 'blog' },
@@ -414,10 +416,14 @@ describe('a policy reaches the registry (SPEC.md §51, ADR-0002)', () => {
     ])
   })
 
-  it('is described at boot even when it never went through a module', async () => {
-    // The ADR-0027 case: an installed package reaches for `registerPolicy` at import
-    // time, grants itself access, and declares nothing. It is described anyway, with no
-    // module — which is the fact worth seeing.
+  /**
+   * The ADR-0027 case, and the half that prevents rather than reveals.
+   *
+   * An installed package reaches for `registerPolicy` at import time, grants itself
+   * access and declares nothing. Until now it was *described* — visible to anybody who
+   * went looking, which is not a control. Now the application refuses to start.
+   */
+  it('refuses to boot on a policy that went through no module at all', async () => {
     registerPolicy(ownership as never)
 
     const app = createApplication({
@@ -425,11 +431,99 @@ describe('a policy reaches the registry (SPEC.md §51, ADR-0002)', () => {
       logger: createLogger(silentWriter),
     })
 
+    await expect(app.boot()).rejects.toThrow(/registered outside any module/)
+  })
+})
+
+/**
+ * Which subjects a module may speak for (SPEC.md §51, ADR-0027).
+ *
+ * A policy is a grant — `authorize` lets a caller through on a permission *or* a
+ * policy — so a module writing one for somebody else's subject is a module opening it.
+ */
+describe('a module may only write a policy for a subject it declares', () => {
+  const forPages = policy('pages', { create: () => true })
+
+  /** A module named after the area, declaring a table named after the thing. */
+  const Article = model('articles', { id: uuid().primary(), title: string() })
+
+  const boot = async (...modules: ModuleBuilder[]) => {
+    const app = createApplication({ modules, logger: createLogger(silentWriter) })
+
     await app.boot()
 
+    return app
+  }
+
+  it('refuses a subject the module has nothing to do with', async () => {
+    // Twelve lines in a dependency, which is the whole of the attack: `pages.create`
+    // for everybody, from a package that has never heard of a page.
+    await expect(boot(auth(), module('analytics').policies(forPages as never))).rejects.toThrow(
+      /Module "analytics" registered a policy for "pages", which it does not declare/,
+    )
+  })
+
+  it('says what would have had to be true, because it is read once by somebody else', async () => {
+    const refusal = await boot(auth(), module('analytics').policies(forPages as never)).catch(
+      (error: Error) => error.message,
+    )
+
+    expect(refusal).toContain('name "pages" as a model or a resource')
+    expect(refusal).toContain('auth({ policies: [...] })')
+  })
+
+  it('allows a module its own name, and the namespace under it', async () => {
+    const app = await boot(auth(), module('pages').policies(forPages as never))
+
+    expect(app.registry.section('policies')).toContainEqual(
+      expect.objectContaining({ name: 'pages', module: 'pages' }),
+    )
+  })
+
+  /**
+   * The case a name-only rule would break.
+   *
+   * An application's module is named after the area rather than the table:
+   * `module('blog')` declaring `articles` is the ordinary shape, and it owns `articles`
+   * because it *said so* — which the registry now records.
+   */
+  it('allows a subject the module declared under a name of its own', async () => {
+    const app = await boot(
+      auth(),
+      module('blog')
+        .models(Article)
+        .policies(policy('articles', { read: () => true }) as never),
+    )
+
+    expect(app.registry.section('policies')).toContainEqual(
+      expect.objectContaining({ name: 'articles', module: 'blog' }),
+    )
+  })
+
+  it('does not let one module claim what another declared', async () => {
+    await expect(
+      boot(
+        auth(),
+        module('blog').models(Article),
+        module('analytics').policies(policy('articles', { read: () => true }) as never),
+      ),
+    ).rejects.toThrow(/Module "analytics" registered a policy for "articles"/)
+  })
+
+  /**
+   * The application's own door.
+   *
+   * A policy over somebody else's subject is a decision the application is entitled to
+   * make and a package is not, so it is written at the composition root and held to no
+   * ownership rule. It is described with no module, which is what "not a package" has
+   * looked like since the section existed.
+   */
+  it('lets the application write one for any subject, from the composition root', async () => {
+    const app = await boot(auth({ policies: [forPages as never] }))
+
     expect(app.registry.section('policies')).toContainEqual({
-      name: 'articles',
-      actions: ['read', 'update'],
+      name: 'pages',
+      actions: ['create'],
     })
   })
 })

@@ -92,10 +92,47 @@ export const describePolicy = (definition: Policy<never>, module?: string): Poli
 
 const registered = new Map<string, Policy<never>>()
 
-/** Which module registered which subject, for the sweep at boot to be able to say. */
-const sources = new Map<string, string>()
+/** Which module registered which subject, for the check at boot to be able to say. */
+const sources = new Map<string, PolicySource>()
 
-export const registerPolicy = (definition: Policy<never>, module?: string): void => {
+/**
+ * What the application's own policies are attributed to.
+ *
+ * A policy passed as `auth({ policies: [...] })` is written at the composition root by
+ * the person who assembled the application, so it speaks for the whole of it and is
+ * held to no ownership rule — the application *is* the trust boundary the rule exists
+ * to protect. A symbol rather than a name so that no module can be called this, and so
+ * that a descriptor never carries it: the section shows such a policy with no `module`,
+ * which is what "the application, not a package" has looked like since #5.
+ */
+export const APPLICATION: unique symbol = Symbol('assemora.application')
+
+export type PolicySource = string | typeof APPLICATION
+
+/**
+ * Puts a rule in the map, attributed to whoever is registering it.
+ *
+ * Deliberately *not* exported from this package. The source is what the ownership rule
+ * is checked against, so a caller able to supply one is a caller able to claim to be
+ * `pages` — and a package outside this file cannot reach this function to try
+ * (ADR-0027). The two callers are the module facet, which passes the module the
+ * builder is registering, and `auth({ policies })`, which passes `APPLICATION`.
+ */
+export const registerModulePolicy = (definition: Policy<never>, module: PolicySource): void => {
+  registerPolicy(definition)
+  sources.set(definition.subject, module)
+}
+
+/**
+ * Puts a rule in the map, attributed to nobody.
+ *
+ * Exported, because a test of the authorization port needs a policy in front of it and
+ * never boots an application. An application *does* boot, and refuses to start on a
+ * policy nothing declares — so this is a harness seam rather than a way in: a package
+ * that calls it at import time takes the application down at boot, naming the subject
+ * and itself (`ownership.ts`).
+ */
+export const registerPolicy = (definition: Policy<never>): void => {
   if (registered.has(definition.subject)) {
     throw new AssemoraError(
       'CONFIGURATION_ERROR',
@@ -105,9 +142,15 @@ export const registerPolicy = (definition: Policy<never>, module?: string): void
   }
 
   registered.set(definition.subject, definition)
-
-  if (module !== undefined) sources.set(definition.subject, module)
 }
+
+/**
+ * Who registered each policy, including the ones the application registered itself.
+ *
+ * `describedPolicies` cannot answer this: a descriptor carries a module *name*, and
+ * the application is deliberately not one. The check at boot needs the difference.
+ */
+export const policySources = (): ReadonlyMap<string, PolicySource> => sources
 
 export const policyFor = (subject: string): Policy<never> | undefined => registered.get(subject)
 
@@ -115,9 +158,14 @@ export const registeredPolicies = (): readonly Policy<never>[] => [...registered
 
 /** Every policy as the registry describes it, whoever registered it and however. */
 export const describedPolicies = (): readonly PolicyDescriptor[] =>
-  [...registered.values()].map((definition) =>
-    describePolicy(definition, sources.get(definition.subject)),
-  )
+  [...registered.values()].map((definition) => {
+    const source = sources.get(definition.subject)
+
+    // The application's policies are described with no module, which is the shape a
+    // registration outside any module has always had — and the right one: naming a
+    // module there would claim a package wrote what the application wrote.
+    return describePolicy(definition, typeof source === 'string' ? source : undefined)
+  })
 
 export const clearPolicies = (): void => {
   registered.clear()

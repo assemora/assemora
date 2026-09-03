@@ -194,7 +194,9 @@ export const createApplication = (options: ApplicationOptions = {}): Application
     queries,
     jobs,
     events,
-    registry,
+    // Attributed, so what a module registers is recorded as its own without the module
+    // being asked and without it being able to name another (ADR-0027).
+    registry: registry.forModule(module),
     logger: logger.child({ module }),
     module,
     // Appended rather than set: two hooks of one module can each fail at something,

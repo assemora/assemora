@@ -185,6 +185,30 @@ export type SchemaRegistry = {
    * the section you derive *from*, never to the one you write.
    */
   onChange(listener: RegistryListener): Unsubscribe
+  /**
+   * Which module registered an entry, when one did (ADR-0027).
+   *
+   * A registry entry says what a thing is and, until now, nothing about where it came
+   * from. That is enough while every module is first-party, and it stops being enough
+   * the day a package is installable: a rule of the form "a module may only speak for
+   * what it declared" cannot be written unless somebody remembers who declared what.
+   *
+   * Absent means the entry did not arrive through a module's registration — a
+   * collection created by a command while the process runs, or a registration made
+   * directly against the application's own registry.
+   */
+  registeredBy(section: string, name: string): string | undefined
+  /**
+   * The same registry, attributing everything registered through it to `module`.
+   *
+   * Handed to a module by the application, so a facet writes its own name without
+   * being asked and without being able to give another. It is not a sandbox — a
+   * package that calls this itself can name anybody, and inside one process nothing
+   * short of a separate realm could stop it. What it removes is the *casual* case:
+   * writing an entry attributed to a module you are not is now a deliberate act that
+   * reads as one, rather than the default.
+   */
+  forModule(module: string): SchemaRegistry
 }
 
 /** Any entry the registry can hold — the union over every declared section. */
@@ -239,7 +263,15 @@ export const createSchemaRegistry = (): SchemaRegistry => {
     return created
   }
 
-  return {
+  /** `section` and `name` together, which is what an entry is addressed by. */
+  const owners = new Map<string, string>()
+
+  const attributionKey = (section: string, name: string): string => `${section}\u0000${name}`
+
+  /**
+   * @param attributedTo the module a registration through this view belongs to.
+   */
+  const build = (attributedTo?: string): SchemaRegistry => ({
     register(section, entry) {
       const entries = bucket(section)
 
@@ -262,6 +294,9 @@ export const createSchemaRegistry = (): SchemaRegistry => {
       }
 
       entries.set(entry.name, entry)
+
+      if (attributedTo !== undefined) owners.set(attributionKey(section, entry.name), attributedTo)
+
       announce({ section, name: entry.name, change: 'registered' })
     },
 
@@ -270,6 +305,10 @@ export const createSchemaRegistry = (): SchemaRegistry => {
       // that rebuilt a derived section on every failed withdrawal would do the work of
       // the registry's whole contents for a call that did nothing.
       if (!bucket(section).delete(name)) return false
+
+      // Or a name registered, withdrawn and registered again by somebody else would
+      // still answer with the first module.
+      owners.delete(attributionKey(section, name))
 
       announce({ section, name, change: 'withdrawn' })
 
@@ -314,5 +353,17 @@ export const createSchemaRegistry = (): SchemaRegistry => {
         listeners.delete(listener)
       }
     },
-  }
+
+    registeredBy(section, name) {
+      return owners.get(attributionKey(section, name))
+    },
+
+    // The attribution is the only thing a view changes, so a view of a view is the
+    // inner one's — there is nothing else to carry over.
+    forModule(module) {
+      return build(module)
+    },
+  })
+
+  return build()
 }

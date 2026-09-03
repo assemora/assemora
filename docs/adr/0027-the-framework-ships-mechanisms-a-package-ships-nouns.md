@@ -108,6 +108,46 @@ somebody runs it.
 Severity today is low, because nothing is published and every module is first-party. It
 becomes critical on the day a package is installable, which is the day this ADR is for.
 
+> **Amended — the precondition is met.** Both halves are built.
+> `packages/auth/src/ownership.ts` holds the rule, and an application that breaks it
+> refuses to boot naming the module, the subject and what would have had to be true.
+>
+> *Owning a subject* is two things a module already says out loud. **Its own name as a
+> namespace**: `module('pages')` owns `pages` and `pages.drafts`, which is what every
+> framework module relies on and where the module name *is* the domain. **A model or a
+> resource it registered**: an application's module is named after the area rather than
+> the table, so `module('blog').models(Article).resources(Articles)` owns `articles` and
+> would own nothing at all under a name-only rule.
+>
+> The second half needed a fact the registry did not keep. An entry said what a thing was
+> and nothing about where it came from, so `SchemaRegistry` gained `registeredBy` and
+> `forModule`: the application hands each module a view of the registry that records the
+> module's name without the module being asked and without it being able to give another.
+> That attribution is general rather than policy-specific. It is not the whole of 0.1 in
+> `docs/architecture/site-kits.md`: the registry can now *answer* who registered a
+> resource, and whether `ResourceDescriptor` should also carry the name as a field — so
+> that `describe()` and Studio read it without a second lookup — is still open.
+>
+> **The application is the exemption, deliberately.** `auth({ policies })` is written at
+> the composition root by whoever assembled the modules, so it speaks for the whole
+> application and is held to no ownership rule; a policy over somebody else's subject is
+> a decision the application is entitled to make and a package is not. It is described
+> with no `module`, which is what "not a package" has looked like since the section
+> existed. `registerPolicy` keeps its place as a test harness seam and lost its module
+> parameter: the attributed form is not exported, so a caller outside `@assemora/auth`
+> cannot claim to be `pages`, and an unattributed policy is refused at boot.
+>
+> **The check runs at boot, not at registration**, and that is not a detail. Ownership is
+> decided against what a module *registered*, and a facet runs in the order the builder
+> was written — `.policies(P).resources(Articles)` would be refused and
+> `.resources(Articles).policies(P)` allowed, for one declaration. By boot every module
+> has registered everything.
+>
+> **It is not a sandbox.** One process, and a package determined to grant itself access
+> can patch past any of this. What it removes is the casual case, which is the one that
+> happens: self-granting now requires impersonating a module, and impersonation reads as
+> impersonation in a diff.
+
 **Namespacing is forced, and should be chosen rather than discovered.** Two packages
 declaring `resource(…, { name: 'orders' })` fail with a stack trace naming neither module
 and offering no remedy, during module registration — earlier than any end-of-boot check
