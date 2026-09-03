@@ -203,7 +203,23 @@ export const validateProps = (
       continue
     }
 
-    const result = field.schema.parse(source[name])
+    const value = source[name]
+
+    // Clearing a field is a normal edit: Studio's empty input, an agent's explicit
+    // `null`. `validateAgainstFields` in `@assemora/resources` accepts it wherever the
+    // value can be held, and a block's props are the same kind of thing — the tree is
+    // JSON, which holds a `null` under any key, so there is no column here that could
+    // refuse. Without this, emptying a block's image, number, date or link answered
+    // "Expected a string" for an edit the same field in an entry form performs.
+    //
+    // A required field still refuses, exactly as it does there: `complete` is what
+    // publishing checks, and clearing a required prop is what it exists to catch.
+    if (value === null && !field.isRequired) {
+      checked[name] = null
+      continue
+    }
+
+    const result = field.schema.parse(value)
 
     if (result.ok) checked[name] = result.value
     else issues.push(...result.issues.map((issue) => ({ ...issue, path: [name, ...issue.path] })))

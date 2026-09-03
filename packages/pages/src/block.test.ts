@@ -6,7 +6,7 @@
  * both, and every one of them is answered by `Object.prototype` on a record that has
  * never been given the key — which is why nothing here may ask `in`.
  */
-import { text } from '@assemora/resources'
+import { date, image, link, number, text } from '@assemora/resources'
 import { describe, expect, it } from 'vitest'
 
 import { block, describeBlock, validateProps } from './block.js'
@@ -77,5 +77,74 @@ describe("props checked against a block's fields", () => {
         message: '"toString" is not a field of the plain block',
       },
     ])
+  })
+})
+
+/**
+ * Reported in the audit as a difference between a block's props and a resource's
+ * fields, and confirmed by reproducing it before anything was changed: every kind
+ * refused a `null`, answering "Expected a string" for an edit the same field in an
+ * entry form performs.
+ *
+ * `validateAgainstFields` in `@assemora/resources` accepts `null` wherever the value
+ * can be held. A block tree is JSON, which holds a `null` under any key, so there is
+ * no column here that could refuse — the rule is the same one, and the two now agree.
+ */
+describe('clearing a block field (#15)', () => {
+  const kinds = {
+    image: image(),
+    number: number(),
+    date: date(),
+    link: link(),
+    text: text(),
+  }
+
+  for (const [name, field] of Object.entries(kinds)) {
+    it(`clears an optional ${name}`, () => {
+      const hero = block('hero', { [name]: field })
+
+      expect(validateProps(hero, { [name]: null }, 'editing')).toEqual({
+        ok: true,
+        value: { [name]: null },
+      })
+    })
+  }
+
+  it('clears when publishing too, not only while editing', () => {
+    // An optional field left empty is a publishable page; `complete` is about
+    // *required* fields, and clearing an optional one is not an unfinished block.
+    const hero = block('hero', { image: image() })
+
+    expect(validateProps(hero, { image: null }, 'complete')).toEqual({
+      ok: true,
+      value: { image: null },
+    })
+  })
+
+  it('still refuses to clear a required field', () => {
+    const hero = block('hero', { title: text().required() })
+
+    expect(issues(validateProps(hero, { title: null }, 'complete'))).toEqual([
+      { path: ['title'], code: 'type', message: 'Expected a string' },
+    ])
+  })
+
+  it('still refuses a wrong type that is not null', () => {
+    // The guard must clear on `null` only, not wave through anything falsy.
+    const hero = block('hero', { count: number() })
+
+    expect(issues(validateProps(hero, { count: 'seven' }, 'editing'))).toEqual([
+      { path: ['count'], code: 'type', message: 'Expected a number' },
+    ])
+  })
+
+  it('does not invent a key for a field that was not sent', () => {
+    // Clearing is an explicit `null`; an absent prop stays absent.
+    const hero = block('hero', { image: image(), title: text() })
+
+    expect(validateProps(hero, { title: 'A heading' }, 'editing')).toEqual({
+      ok: true,
+      value: { title: 'A heading' },
+    })
   })
 })
