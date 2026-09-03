@@ -666,8 +666,9 @@ urgent:
   collection made in Studio still falls to the guess. The picker itself works there,
   because a relation's target is in the descriptor either way.
 - A policy is described *and* bound (ADR-0027, amended). A module may write one only for
-  a subject it declares — its own name as a namespace, or a model or resource it
-  registered — and an application that breaks the rule refuses to boot, naming the
+  a subject it declares — its own name as a namespace, a model or resource it registered,
+  or the group of a command or query it registered — and an application that breaks the
+  rule refuses to boot, naming the
   module, the subject and what would have had to be true. `auth({ policies })` is the
   application's exemption, because the composition root speaks for the whole application
   and a package does not. It needed one new fact in core: a registry entry said what a

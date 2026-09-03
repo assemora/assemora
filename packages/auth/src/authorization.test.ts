@@ -5,6 +5,7 @@ import {
   ForbiddenError,
   type ModuleBuilder,
   module,
+  query,
   silentWriter,
 } from '@assemora/core'
 import { model, string, useAdapter, uuid } from '@assemora/data'
@@ -498,6 +499,45 @@ describe('a module may only write a policy for a subject it declares', () => {
     expect(app.registry.section('policies')).toContainEqual(
       expect.objectContaining({ name: 'articles', module: 'blog' }),
     )
+  })
+
+  /**
+   * The case that proved a two-clause rule wrong, taken from a real project.
+   *
+   * A delivery site declares `menu.list`, `menu.get` and `menu.dish` and a
+   * `policy('menu', …)` beside them — deliberately on `menu` rather than on `dishes`,
+   * because the menu is public and the generated CRUD over dishes is not. A rule that
+   * knew only names and resources refused it, and the only way to keep booting would
+   * have been to move the policy onto `dishes`, which opens the admin surface.
+   *
+   * So: a module owns the group of a command or query it declared. A rule that pushes
+   * an author toward the less safe design is a wrong rule, whatever else it prevents.
+   */
+  it('allows the group of a query the module declared, which is what a subject is', async () => {
+    const ListMenu = query('menu.list', { input: {}, handle: async () => [] })
+
+    const app = await boot(
+      auth(),
+      module('content')
+        .queries(ListMenu)
+        .policies(policy('menu', { read: () => true }) as never),
+    )
+
+    expect(app.registry.section('policies')).toContainEqual(
+      expect.objectContaining({ name: 'menu', module: 'content' }),
+    )
+  })
+
+  it('does not extend that to a group somebody else declared', async () => {
+    const ListMenu = query('menu.list', { input: {}, handle: async () => [] })
+
+    await expect(
+      boot(
+        auth(),
+        module('content').queries(ListMenu),
+        module('analytics').policies(policy('menu', { read: () => true }) as never),
+      ),
+    ).rejects.toThrow(/Module "analytics" registered a policy for "menu"/)
   })
 
   it('does not let one module claim what another declared', async () => {

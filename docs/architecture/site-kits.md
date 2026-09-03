@@ -40,12 +40,16 @@ source. The half that *prevents* is `packages/auth/src/ownership.ts`: a module m
 a policy only for a subject it declares, and an application that breaks the rule refuses
 to boot naming the module, the subject and what would have had to be true.
 
-Owning a subject turned out to be two things a module already says out loud. Its **own
+Owning a subject turned out to be three things a module already says out loud. Its **own
 name as a namespace** — `module('pages')` owns `pages` and `pages.drafts`, which is what
-every framework module relies on. And **a model or resource it registered** — an
+every framework module relies on. **A model or resource it registered** — an
 application's module is named after the area rather than the table, so
 `module('blog').models(Article)` owns `articles` and would own nothing under a name-only
-rule. The second needed `SchemaRegistry.registeredBy`: an entry said what a thing was and
+rule. And **the group of a command or query it registered** — a module declaring
+`menu.list` and `menu.dish` owns `menu`, which is what the authorizer takes as the
+subject anyway. The third clause was added after the first two refused a real project
+whose policy was written on the *narrow* subject on purpose; a rule that pushes an author
+toward the wider one is a wrong rule. The second needed `SchemaRegistry.registeredBy`: an entry said what a thing was and
 nothing about where it came from, and `contextFor` now hands each module a view of the
 registry that records its name without the module being asked and without it being able
 to give another.

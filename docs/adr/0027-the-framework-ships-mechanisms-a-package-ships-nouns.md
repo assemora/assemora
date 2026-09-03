@@ -112,12 +112,21 @@ becomes critical on the day a package is installable, which is the day this ADR 
 > `packages/auth/src/ownership.ts` holds the rule, and an application that breaks it
 > refuses to boot naming the module, the subject and what would have had to be true.
 >
-> *Owning a subject* is two things a module already says out loud. **Its own name as a
+> *Owning a subject* is three things a module already says out loud. **Its own name as a
 > namespace**: `module('pages')` owns `pages` and `pages.drafts`, which is what every
 > framework module relies on and where the module name *is* the domain. **A model or a
 > resource it registered**: an application's module is named after the area rather than
 > the table, so `module('blog').models(Article).resources(Articles)` owns `articles` and
-> would own nothing at all under a name-only rule.
+> would own nothing at all under a name-only rule. **The group of a command or query it
+> registered**: a subject is what the authorizer derives from a command's name, so a
+> module declaring `menu.list` and `menu.dish` owns `menu`.
+>
+> The third clause was added after the first two refused a real project. A delivery site
+> declares those queries and a `policy('menu', …)` beside them, deliberately on `menu`
+> rather than on `dishes`, because the menu is public and the generated CRUD over dishes
+> is not. Under a two-clause rule the only way to keep booting was to move the policy
+> onto `dishes` — which opens the admin surface. A rule that pushes an author toward the
+> less safe design is a wrong rule, whatever else it prevents.
 >
 > The second half needed a fact the registry did not keep. An entry said what a thing was
 > and nothing about where it came from, so `SchemaRegistry` gained `registeredBy` and

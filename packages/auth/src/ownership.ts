@@ -9,8 +9,8 @@
  * application, and describing the registration (as `assemora.describe` and Studio now
  * do) makes it *visible* rather than *impossible*. Looking is not a control.
  *
- * So a module may only write a policy for a subject it declared. Two ways to have
- * declared one, and both are things the module already says out loud:
+ * So a module may only write a policy for a subject it declared. Three ways to have
+ * declared one, and each is something the module already says out loud:
  *
  * **Its own name, as a namespace.** `module('pages')` owns `pages` and `pages.drafts`.
  * This is what every framework module relies on — `@assemora/pages` names `pages` as
@@ -21,6 +21,18 @@
  * after the area rather than the table: `module('blog').models(Article)
  * .resources(Articles)` owns `articles`, and would own nothing at all under a
  * name-only rule. The registry knows who registered each entry, so this asks it.
+ *
+ * **The group of a command or query it registered.** A subject is what the authorizer
+ * derives from a command's name — everything before the last dot — so a module
+ * declaring `menu.list`, `menu.get` and `menu.dish` owns `menu`, and writing a policy
+ * for it is writing one for its own reads.
+ *
+ * That third one is not a convenience. A real project declares exactly those queries
+ * and a `policy('menu', …)` beside them, *on purpose*: the menu is public and the
+ * generated CRUD over `dishes` is not, so the rule is written on the narrow subject
+ * rather than the wide one. Without this clause the only way to keep booting would have
+ * been to move the policy onto `dishes` — which opens the admin surface. A rule that
+ * pushes an author toward the less safe design is a wrong rule, whatever it prevents.
  *
  * ## What this is not
  *
@@ -37,14 +49,24 @@
 import type { SchemaRegistry } from '@assemora/core'
 
 /**
- * The sections whose entries name a subject.
+ * The sections whose entry names *are* subjects.
  *
  * A model is registered under its table and a resource under its name, and both of
- * those are what a subject is spelled as — `articles`, `pages`, `media`. Nothing else
- * in the registry names one: a command is `articles.update`, and the subject inside it
- * is the part before the dot, which the namespace half of the rule already covers.
+ * those are what a subject is spelled as — `articles`, `pages`, `media`.
  */
-const DECLARING_SECTIONS = ['resources', 'models'] as const
+const NAMING_SECTIONS = ['resources', 'models'] as const
+
+/**
+ * The sections whose entry names *contain* a subject.
+ *
+ * A command or a query is `menu.list`, and the subject the authorizer takes from it is
+ * everything before the last dot. These carry the registering module in the descriptor
+ * itself, so they are read rather than attributed.
+ */
+const GROUPING_SECTIONS = ['commands', 'queries'] as const
+
+/** What `subjectOf` takes as the subject of `menu.list`. Kept identical to it. */
+const groupOf = (name: string): string => name.slice(0, Math.max(name.lastIndexOf('.'), 0))
 
 /**
  * Whether `module` declared `subject`, and may therefore write a policy for it.
@@ -55,7 +77,15 @@ const DECLARING_SECTIONS = ['resources', 'models'] as const
 export const ownsSubject = (registry: SchemaRegistry, module: string, subject: string): boolean => {
   if (subject === module || subject.startsWith(`${module}.`)) return true
 
-  return DECLARING_SECTIONS.some((section) => registry.registeredBy(section, subject) === module)
+  if (NAMING_SECTIONS.some((section) => registry.registeredBy(section, subject) === module)) {
+    return true
+  }
+
+  return GROUPING_SECTIONS.some((section) =>
+    registry
+      .section(section)
+      .some((entry) => entry.module === module && groupOf(entry.name) === subject),
+  )
 }
 
 /**
@@ -69,7 +99,7 @@ export const foreignSubject = (module: string, subject: string): string =>
   `Module "${module}" registered a policy for "${subject}", which it does not declare. ` +
   `A policy is a grant: it lets a caller through where a permission would have been ` +
   `required, so a module may only write one for a subject of its own. "${module}" would ` +
-  `have to name "${subject}" as a model or a resource, or be named "${subject}" itself. ` +
+  `have to name "${subject}" as a model or a resource, declare a command or query in the "${subject}." group, or be named "${subject}" itself. ` +
   `If this policy belongs to the application rather than to a module, pass it as ` +
   `auth({ policies: [...] }) at the composition root, where the application speaks for itself.`
 
