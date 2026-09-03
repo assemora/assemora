@@ -27,17 +27,25 @@ Nothing else may be built first: every facet below rests on these.
 
 | # | Change | Package |
 | --- | --- | --- |
-| 0.0 | A policy is bound to the module that owns the subject, and policies reach the Schema Registry | `auth` + `core` |
+| 0.0 | A policy is bound to the module that owns the subject — open; policies reach the Schema Registry — done | `auth` + `core` |
 | 0.1 | `ResourceDescriptor.module` | `resources` |
 | 0.2 | One namespace refusal at `createApplication()`, naming **both** modules | `core` + `resources` |
 | 0.3 | ~~A record-scoped action must prove stage two ran~~ — done | `auth` + `core` |
 | 0.4 | Close the four silent last-wins registries — command ∪ query done, the rest open | four call sites |
 | 0.5 | `sandbox` on the builder canvas iframe | `apps/studio` |
 
-**0.0** is the one with a live consequence and ADR-0027 records the measurement. The rule
-is *"a subject the declaring module does not own"*. Policies in the registry is the other
-half: an application's access control is currently invisible to OpenAPI, Studio, MCP and
-`assemora describe`, which contradicts the single-source rule.
+**0.0 — the registry half is done.** `registerPolicy` records which module registered
+which subject, the policy facet describes each one where it is declared, and the auth
+module sweeps at boot for anything that reached `registerPolicy` without going through a
+module at all — described with no `module`, because that absence is the fact worth seeing.
+The section reaches `assemora.describe` and Studio's Developer screen, so an installed
+package that grants itself access is no longer invisible to the single source.
+
+What is still open is the half that *prevents* rather than reveals: the rule
+*"a subject the declaring module does not own"*. Deciding what owning a subject means —
+the models, resources and commands a module declares, presumably — is the work, and until
+it exists a package can still open `pages.create` in twelve lines. It is now twelve lines
+anybody can see.
 
 **0.1** `packages/resources/src/module.ts:49` is the only facet registration that does not
 pass its module name — compare `packages/data/src/module.ts:43`,

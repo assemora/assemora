@@ -665,8 +665,11 @@ urgent:
 - A collection has no `titleField`: a dynamic definition does not carry one, so a
   collection made in Studio still falls to the guess. The picker itself works there,
   because a relation's target is in the descriptor either way.
-- A policy is invisible: `registerPolicy` writes nothing to the Schema Registry, so an
-  application's access control is the one thing the single source does not describe.
+- A policy is *described* now but not *bound*. The registry carries the subject, the
+  actions and the module that registered one, and `assemora.describe` and Studio both
+  read it — so an installed package that grants itself access is visible. Nothing yet
+  refuses a policy for a subject the declaring module does not own, which is the other
+  half of site-kits.md 0.0 and the half that prevents rather than reveals.
 - The builder canvas frames `/preview` same-origin with no `sandbox`, and the CSRF cookie
   is `httpOnly: false` at `Path=/` — so a block view can read the parent's cookies.
 - `datetime` renders through `toISOString()` into a `datetime-local`, so 18:00 Kyiv

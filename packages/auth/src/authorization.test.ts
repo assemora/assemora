@@ -1,12 +1,26 @@
-import { createContext, ForbiddenError } from '@assemora/core'
+import {
+  createApplication,
+  createContext,
+  createLogger,
+  ForbiddenError,
+  module,
+  silentWriter,
+} from '@assemora/core'
 import { useAdapter } from '@assemora/data'
 import { createMemoryAdapter, type MemoryAdapter } from '@assemora/database'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { policies, subjectOf } from './authorization.js'
 import { Agent, ApiToken, Permission, Role, RolePermission, UserRole } from './models.js'
+import { auth } from './module.js'
 import { holds } from './permissions.js'
-import { clearPolicies, policy, registerPolicy } from './policies.js'
+import {
+  clearPolicies,
+  describedPolicies,
+  describePolicy,
+  policy,
+  registerPolicy,
+} from './policies.js'
 
 /** The models validate a user id as a UUID, so the fixtures use real ones. */
 const USER = '11111111-1111-4111-8111-111111111111'
@@ -329,5 +343,93 @@ describe('reading an entry across languages (SPEC.md §131)', () => {
     // A role that may read an entry should not need a second grant to be told which
     // languages it is written in.
     expect(subjectOf(request)).toEqual({ subject: 'articles', action: 'read' })
+  })
+})
+
+/**
+ * A policy is described, because access control is the one thing the single source of
+ * truth must not be silent about (SPEC.md §51, ADR-0002, ADR-0027).
+ *
+ * `registerPolicy` grants access and wrote nothing anywhere. An installed package could
+ * open `pages.create` to everybody in twelve lines, and the registry — which describes
+ * every model, resource, command, query, route and block — said nothing about it.
+ */
+describe('what the registry is told about a policy', () => {
+  const ownership = policy<{ authorId: string }>('articles', {
+    read: () => true,
+    update: ({ actor, record }) => actor?.id === record.authorId,
+  })
+
+  it('names the subject and the actions it answers for', () => {
+    expect(describePolicy(ownership as never)).toEqual({
+      name: 'articles',
+      actions: ['read', 'update'],
+    })
+  })
+
+  it('carries no rule, because a function is not data', () => {
+    // A descriptor travels to Studio as JSON, and a function does not survive the trip:
+    // carrying one would arrive as an empty object and say less than nothing (ADR-0027).
+    const described = describePolicy(ownership as never, 'blog') as Record<string, unknown>
+
+    expect(Object.keys(described).sort()).toEqual(['actions', 'module', 'name'])
+    expect(JSON.parse(JSON.stringify(described))).toEqual(described)
+  })
+
+  it('names the module that registered it', () => {
+    expect(describePolicy(ownership as never, 'blog')).toMatchObject({ module: 'blog' })
+  })
+
+  it('leaves the module out when nothing went through one', () => {
+    // Legal, and exactly the registration worth being able to see: the absence is the
+    // signal that `registerPolicy` was reached for directly.
+    registerPolicy(ownership as never)
+
+    expect(describedPolicies()).toEqual([{ name: 'articles', actions: ['read', 'update'] }])
+  })
+
+  it('remembers which module each subject came from', () => {
+    registerPolicy(ownership as never, 'blog')
+
+    expect(describedPolicies()).toEqual([
+      { name: 'articles', actions: ['read', 'update'], module: 'blog' },
+    ])
+  })
+})
+
+describe('a policy reaches the registry (SPEC.md §51, ADR-0002)', () => {
+  const ownership = policy<{ authorId: string }>('articles', {
+    read: () => true,
+    update: ({ actor, record }) => actor?.id === record.authorId,
+  })
+
+  it('is described by the module that declared it, at registration', () => {
+    const app = createApplication({
+      modules: [module('blog').policies(ownership as never)],
+      logger: createLogger(silentWriter),
+    })
+
+    expect(app.registry.section('policies')).toEqual([
+      { name: 'articles', actions: ['read', 'update'], module: 'blog' },
+    ])
+  })
+
+  it('is described at boot even when it never went through a module', async () => {
+    // The ADR-0027 case: an installed package reaches for `registerPolicy` at import
+    // time, grants itself access, and declares nothing. It is described anyway, with no
+    // module — which is the fact worth seeing.
+    registerPolicy(ownership as never)
+
+    const app = createApplication({
+      modules: [auth()],
+      logger: createLogger(silentWriter),
+    })
+
+    await app.boot()
+
+    expect(app.registry.section('policies')).toContainEqual({
+      name: 'articles',
+      actions: ['read', 'update'],
+    })
   })
 })

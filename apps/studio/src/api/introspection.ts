@@ -149,6 +149,21 @@ export type LocaleDescriptor = {
   readonly default: boolean
 }
 
+/**
+ * A policy, as the registry describes it (SPEC.md §51).
+ *
+ * The rules are functions and stay in the process — what travels is which subject is
+ * decided per record, for which actions, and which module put the rule there. That last
+ * field is the point: a policy grants access, and an installed package registering one
+ * is the change an application most needs to be able to see.
+ */
+export type PolicyDescriptor = {
+  readonly name: string
+  readonly actions: readonly string[]
+  /** Absent when `registerPolicy` was called outside module registration. */
+  readonly module?: string
+}
+
 export type Introspection = {
   readonly resources?: readonly ResourceDescriptor[]
   readonly routes?: readonly RouteDescriptor[]
@@ -157,6 +172,7 @@ export type Introspection = {
   readonly queries?: readonly CommandDescriptor[]
   readonly blocks?: readonly BlockDescriptor[]
   readonly models?: readonly ModelDescriptor[]
+  readonly policies?: readonly PolicyDescriptor[]
   /** Empty in an application that serves one language, which is most of them. */
   readonly locales?: readonly LocaleDescriptor[]
   /**

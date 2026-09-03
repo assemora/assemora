@@ -13,7 +13,7 @@ import { defineModuleFacet, type ModuleBuilder, module } from '@assemora/core'
 
 import { authCommands, publicAuthPolicy } from './commands.js'
 import { authModels } from './models.js'
-import { type Policy, registerPolicy } from './policies.js'
+import { describedPolicies, describePolicy, type Policy, registerPolicy } from './policies.js'
 import { authQueries } from './queries.js'
 
 declare module '@assemora/core' {
@@ -29,11 +29,18 @@ export const definePolicyFacet = (): void => {
   if (defined) return
 
   defineModuleFacet('policies', (internals, args) => {
-    internals.addRegistration(() => {
+    internals.addRegistration((context) => {
       for (const candidate of args) {
         const declared = candidate as Policy<never>
 
-        if (declared?.node === 'policy') registerPolicy(declared)
+        if (declared?.node !== 'policy') continue
+
+        registerPolicy(declared, context.module)
+
+        // Described where it is registered, by the module that registered it. A policy
+        // grants access, so the one thing the single source must not be silent about
+        // is which package put one there (ADR-0002, ADR-0027).
+        context.registry.register('policies', describePolicy(declared, context.module))
       }
     })
   })
@@ -54,3 +61,23 @@ export const auth = (options: AuthModuleOptions = {}): ModuleBuilder =>
     .commands(...authCommands)
     .queries(...authQueries)
     .policies(publicAuthPolicy, ...(options.policies ?? []))
+    /**
+     * Anything that got in without going through a module.
+     *
+     * `registerPolicy` is exported, so a package can call it at import time and never
+     * declare a facet — and that is precisely the registration worth being able to see,
+     * because it is the one nothing else records. Such a policy is described here with
+     * no `module`, and the absence is the signal.
+     *
+     * At boot rather than at registration: every module has registered by then, so what
+     * is left in the map and not yet in the section got there some other way.
+     */
+    .boot((context) => {
+      const described = new Set(context.registry.section('policies').map((entry) => entry.name))
+
+      for (const descriptor of describedPolicies()) {
+        if (described.has(descriptor.name)) continue
+
+        context.registry.register('policies', descriptor)
+      }
+    })

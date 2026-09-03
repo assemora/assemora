@@ -71,9 +71,12 @@ export {
 } from './permissions.js'
 export {
   clearPolicies,
+  describedPolicies,
+  describePolicy,
   type Policy,
   type PolicyActor,
   type PolicyContext,
+  type PolicyDescriptor,
   type PolicyRule,
   type PolicyRules,
   policy,

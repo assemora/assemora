@@ -30,6 +30,7 @@ export const DEVELOPER_VIEWS = [
   'commands',
   'queries',
   'models',
+  'policies',
 ] as const
 
 export type DeveloperView = (typeof DEVELOPER_VIEWS)[number]
@@ -47,6 +48,7 @@ const LABELS = {
   commands: 'developer.tab.commands',
   queries: 'developer.tab.queries',
   models: 'developer.tab.models',
+  policies: 'developer.tab.policies',
 } as const satisfies Record<Tab, MessageKey>
 
 /** The four answers the log can be filtered to, and the word each is filed under. */
@@ -279,6 +281,7 @@ export const Developer = () => {
     commands = [],
     queries = [],
     models = [],
+    policies = [],
   } = introspection.data
   const needle = filter.trim().toLowerCase()
   const matches = (name: string) => needle === '' || name.toLowerCase().includes(needle)
@@ -379,6 +382,34 @@ export const Developer = () => {
                     <p className="text-base text-ink-soft">{entry.description}</p>
                   )}
                   <Schema value={entry.input} />
+                </Card>
+              ))}
+          </div>
+        )}
+
+        {tab === 'policies' && (
+          <div className="space-y-2">
+            {policies.length === 0 && <Empty title={t('developer.noPolicies')} />}
+            {policies
+              .filter((entry) => matches(entry.name))
+              .map((entry) => (
+                <Card key={entry.name} className="space-y-2 p-4">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <code className="font-mono text-base font-medium">{entry.name}</code>
+                    {/*
+                      The module, or the fact that there is none. A policy grants access,
+                      so where a rule came from is the thing worth reading first — and a
+                      rule that went through no module is the one worth reading hardest.
+                    */}
+                    {entry.module === undefined ? (
+                      <Badge>{t('developer.policy.noModule')}</Badge>
+                    ) : (
+                      <Badge>{entry.module}</Badge>
+                    )}
+                  </div>
+                  <p className="text-base text-ink-soft">
+                    {t('developer.policy.answers', { actions: entry.actions.join(', ') })}
+                  </p>
                 </Card>
               ))}
           </div>

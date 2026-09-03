@@ -93,8 +93,13 @@ describe('assemora.describe (SPEC.md §71)', () => {
       app.queries.execute('assemora.describe', {}),
     )) as Record<string, unknown>
 
-    // The nine of §71, plus `queries` — an agent that can only see commands would
-    // not know how to read anything.
+    // The nine of §71, plus two.
+    //
+    // `queries` — an agent that can only see commands would not know how to read
+    // anything. `policies` — `permissions` alone says what an actor *can be granted*,
+    // and a subject with a policy is decided per record, so holding the permission is
+    // not the whole story and a refusal the agent did not predict is not a fault it
+    // should retry around. The rules themselves never leave the process.
     expect(Object.keys(described).sort()).toEqual([
       'blocks',
       'capabilities',
@@ -103,6 +108,7 @@ describe('assemora.describe (SPEC.md §71)', () => {
       'models',
       'pages',
       'permissions',
+      'policies',
       'project',
       'queries',
       'resources',

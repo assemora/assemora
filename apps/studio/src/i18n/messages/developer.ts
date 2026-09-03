@@ -511,6 +511,22 @@ export const DEVELOPER = {
   'developer.tab.commands': { en: 'Commands', uk: 'Команди', ru: 'Команды' },
   'developer.tab.queries': { en: 'Queries', uk: 'Запити', ru: 'Запросы' },
   'developer.tab.models': { en: 'Models', uk: 'Моделі', ru: 'Модели' },
+  'developer.tab.policies': { en: 'Policies', uk: 'Політики', ru: 'Политики' },
+  'developer.policy.answers': {
+    en: 'Answers for: {actions}',
+    uk: 'Відповідає за: {actions}',
+    ru: 'Отвечает за: {actions}',
+  },
+  'developer.policy.noModule': {
+    en: 'registered outside a module',
+    uk: 'зареєстровано поза модулем',
+    ru: 'зарегистрирована вне модуля',
+  },
+  'developer.noPolicies': {
+    en: 'No policies registered',
+    uk: 'Політик не зареєстровано',
+    ru: 'Политики не зарегистрированы',
+  },
   'developer.sortable': { en: 'sortable', uk: 'сортується', ru: 'сортируется' },
   'developer.model': { en: 'model: {name}', uk: 'модель: {name}', ru: 'модель: {name}' },
   'developer.noResources': {

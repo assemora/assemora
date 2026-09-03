@@ -95,6 +95,11 @@ export const mcpQueries = (options: McpQueryOptions) => {
         // else here (SPEC.md §131). Empty for an application in one language, which is
         // what it always answered.
         locales: all.locales ?? [],
+        // Which subjects a policy answers for, and which module put it there (SPEC.md
+        // §51). The rules are functions and stay in the process; what an agent is told
+        // is that a decision about this subject is made per record, so a permission is
+        // not the whole story and a refusal it did not expect is not a fault.
+        policies: all.policies ?? [],
       }
     },
   })

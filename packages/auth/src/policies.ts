@@ -51,9 +51,51 @@ export const policy = <R = Record<string, unknown>>(
   rules: PolicyRules<R>,
 ): Policy<R> => ({ node: 'policy', subject, rules })
 
+/**
+ * What the Schema Registry is told about a policy (SPEC.md §51, ADR-0002).
+ *
+ * The rules themselves are functions and stay here: a function does not survive
+ * `JSON.stringify`, so a descriptor that carried one would arrive at Studio as an empty
+ * object and be worse than saying nothing (ADR-0027). What travels is the shape of the
+ * thing — which subject, which actions it answers for, and which module put it there.
+ *
+ * That last field is the reason this section exists at all. `registerPolicy` grants
+ * access, and until now it wrote nothing anywhere: an installed package could open
+ * `pages.create` to everybody in twelve lines and the application's single source of
+ * truth described the rest of the system perfectly while saying nothing about that.
+ */
+export type PolicyDescriptor = {
+  /** The subject the policy is about, which is what it is addressed by. */
+  readonly name: string
+  /** The actions it answers for, in declaration order. */
+  readonly actions: readonly string[]
+  /**
+   * The module that registered it, when a module did.
+   *
+   * Absent means `registerPolicy` was called outside module registration — which is
+   * legal, and is exactly the case worth being able to see.
+   */
+  readonly module?: string
+}
+
+declare module '@assemora/core' {
+  interface RegistrySections {
+    policies: PolicyDescriptor
+  }
+}
+
+export const describePolicy = (definition: Policy<never>, module?: string): PolicyDescriptor => ({
+  name: definition.subject,
+  actions: Object.keys(definition.rules),
+  ...(module === undefined ? {} : { module }),
+})
+
 const registered = new Map<string, Policy<never>>()
 
-export const registerPolicy = (definition: Policy<never>): void => {
+/** Which module registered which subject, for the sweep at boot to be able to say. */
+const sources = new Map<string, string>()
+
+export const registerPolicy = (definition: Policy<never>, module?: string): void => {
   if (registered.has(definition.subject)) {
     throw new AssemoraError(
       'CONFIGURATION_ERROR',
@@ -63,12 +105,21 @@ export const registerPolicy = (definition: Policy<never>): void => {
   }
 
   registered.set(definition.subject, definition)
+
+  if (module !== undefined) sources.set(definition.subject, module)
 }
 
 export const policyFor = (subject: string): Policy<never> | undefined => registered.get(subject)
 
 export const registeredPolicies = (): readonly Policy<never>[] => [...registered.values()]
 
+/** Every policy as the registry describes it, whoever registered it and however. */
+export const describedPolicies = (): readonly PolicyDescriptor[] =>
+  [...registered.values()].map((definition) =>
+    describePolicy(definition, sources.get(definition.subject)),
+  )
+
 export const clearPolicies = (): void => {
   registered.clear()
+  sources.clear()
 }
