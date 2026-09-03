@@ -35,6 +35,51 @@ describe('schema registry', () => {
     )
   })
 
+  /**
+   * Commands and queries are separate sections and one namespace (ADR-0002, ADR-0015).
+   *
+   * They are separate because one writes and one does not. They share a namespace
+   * because everything downstream addresses them by a single flat name — a command name
+   * *is* a permission name, and `@assemora/mcp` generates one tool per command and per
+   * query and finds the one to call by name. A name that means two things means one of
+   * them cannot be reached, and reads are generated first, so the half that disappears
+   * is the mutation.
+   */
+  it('refuses a query named after a command, and names both sides', () => {
+    const registry = createSchemaRegistry()
+    registry.register('commands', descriptor('orders.sync'))
+
+    expect(() => registry.register('queries', descriptor('orders.sync'))).toThrowError(
+      /already registered in commands.*cannot also be registered in queries/s,
+    )
+  })
+
+  it('refuses it in the other direction too', () => {
+    const registry = createSchemaRegistry()
+    registry.register('queries', descriptor('orders.sync'))
+
+    expect(() => registry.register('commands', descriptor('orders.sync'))).toThrowError(
+      ConfigurationError,
+    )
+  })
+
+  it('frees the name again once the other side withdraws it', () => {
+    const registry = createSchemaRegistry()
+    registry.register('commands', descriptor('orders.sync'))
+    registry.withdraw('commands', 'orders.sync')
+
+    expect(() => registry.register('queries', descriptor('orders.sync'))).not.toThrow()
+  })
+
+  it('does not conjure the section it looked in', () => {
+    // `bucket()` creates what it is asked for, so checking the other half with it would
+    // put an empty `queries` into a registry that has only ever seen commands.
+    const registry = createSchemaRegistry()
+    registry.register('commands', descriptor('pages.publish'))
+
+    expect(Object.keys(registry.describe())).toEqual(['commands'])
+  })
+
   it('returns an empty section rather than undefined', () => {
     expect(createSchemaRegistry().section('commands')).toEqual([])
   })

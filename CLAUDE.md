@@ -665,9 +665,6 @@ urgent:
 - A collection has no `titleField`: a dynamic definition does not carry one, so a
   collection made in Studio still falls to the guess. The picker itself works there,
   because a relation's target is in the descriptor either way.
-- A command and a query may share a name, and that produces two MCP tools with one name.
-  `packages/mcp/src/server.ts:97` is a `find`, so the read wins and the mutation is
-  unreachable.
 - A policy is invisible: `registerPolicy` writes nothing to the Schema Registry, so an
   application's access control is the one thing the single source does not describe.
 - The builder canvas frames `/preview` same-origin with no `sandbox`, and the CSRF cookie

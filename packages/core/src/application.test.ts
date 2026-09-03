@@ -8,6 +8,7 @@ import { ConfigurationError, ForbiddenError } from './errors.js'
 import { createLogger, type LogRecord } from './logger.js'
 import { module, type NotStarted } from './module.js'
 import { collectAudit, permitAll } from './ports.js'
+import { query } from './queries.js'
 
 const Rename = command('blog.rename', {
   input: { title: string().min(2) },
@@ -20,6 +21,25 @@ describe('application lifecycle', () => {
 
     expect(app.modules).toEqual(['blog'])
     expect(app.commands.has('blog.rename')).toBe(true)
+  })
+
+  /**
+   * The failure this refuses used to be silent and to cost the mutation.
+   *
+   * A command name is a permission name (ADR-0015), and `@assemora/mcp` generates a tool
+   * per command and per query and finds the one to call by name. Declared as both,
+   * `blog.rename` was one permission covering a read and a write, and two tools with one
+   * name — of which an agent could only ever reach the first, which is the read.
+   */
+  it('refuses one name declared as both a command and a query', () => {
+    const Renamed = query('blog.rename', {
+      input: { title: string() },
+      handle: async () => 'nothing',
+    })
+
+    expect(() =>
+      createApplication({ modules: [module('blog').commands(Rename).queries(Renamed)] }),
+    ).toThrowError(/blog\.rename/)
   })
 
   it('runs boot hooks, then ready hooks, in module order', async () => {

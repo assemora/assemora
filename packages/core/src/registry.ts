@@ -178,6 +178,31 @@ export type SchemaRegistry = {
 /** Any entry the registry can hold — the union over every declared section. */
 type AnyEntry = RegistrySections[SectionName]
 
+/**
+ * Sections whose names come out of one namespace, so a name in either is taken in both.
+ *
+ * Commands and queries are the pair. They are separate sections because they are
+ * separate things — one writes and one does not — but everything downstream addresses
+ * them by a single flat name, and a name that means two things means one of them is
+ * unreachable:
+ *
+ * - A command name *is* a permission name (ADR-0015), so `orders.sync` declared as both
+ *   makes one permission cover a read and a write, and no role can grant one without
+ *   the other.
+ * - `@assemora/mcp` generates a tool per command and per query, and finds the tool to
+ *   call by name. Two tools with one name is a `find`, so the first wins — and since
+ *   reads are generated first, the mutation is the half that disappears.
+ *
+ * Within a section this is already refused. Across the pair it was not, and being
+ * separate maps is the whole reason: neither could see the other.
+ */
+const SHARED_NAMESPACES: readonly (readonly string[])[] = [['commands', 'queries']]
+
+/** The other sections a name registered in this one also claims. */
+const alsoClaims = (section: string): readonly string[] =>
+  SHARED_NAMESPACES.find((group) => group.includes(section))?.filter((name) => name !== section) ??
+  []
+
 export const createSchemaRegistry = (): SchemaRegistry => {
   const sections = new Map<string, Map<string, AnyEntry>>()
   const listeners = new Set<RegistryListener>()
@@ -208,6 +233,20 @@ export const createSchemaRegistry = (): SchemaRegistry => {
 
       if (entries.has(entry.name)) {
         throw new ConfigurationError(`"${entry.name}" is already registered in ${section}`)
+      }
+
+      // Named in the other half of a shared namespace. Refused here, at the moment the
+      // second one arrives, because that is the only moment both are known and the only
+      // moment the message can name them both.
+      for (const claimed of alsoClaims(section)) {
+        // Looked up rather than `bucket`ed: that one creates the section it is asked
+        // for, and an empty `queries` conjured by registering a command is a section
+        // `describe()` would then carry.
+        if (sections.get(claimed)?.has(entry.name) !== true) continue
+
+        throw new ConfigurationError(
+          `"${entry.name}" is already registered in ${claimed}, so it cannot also be registered in ${section}. A command and a query are addressed by one name — as a permission, and as a tool an agent calls — so one of the two would be unreachable. Rename one of them.`,
+        )
       }
 
       entries.set(entry.name, entry)

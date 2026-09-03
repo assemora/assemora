@@ -31,7 +31,7 @@ Nothing else may be built first: every facet below rests on these.
 | 0.1 | `ResourceDescriptor.module` | `resources` |
 | 0.2 | One namespace refusal at `createApplication()`, naming **both** modules | `core` + `resources` |
 | 0.3 | ~~A record-scoped action must prove stage two ran~~ — done | `auth` + `core` |
-| 0.4 | Close the four silent last-wins registries | four call sites |
+| 0.4 | Close the four silent last-wins registries — command ∪ query done, the rest open | four call sites |
 | 0.5 | `sandbox` on the builder canvas iframe | `apps/studio` |
 
 **0.0** is the one with a live consequence and ADR-0027 records the measurement. The rule
@@ -75,11 +75,22 @@ defers on `revisions` and then asks about the page or article it is restoring, w
 stronger question than the one deferred, and demanding a match would refuse the most
 careful command there is.
 
-**0.4** `registerFieldKind`, `registerRestorer`, `model()`'s table registry and the shared
-command ∪ query name are all silent last-wins. Measured: `orders.sync` declared as both a
-command and a query produces **two MCP tools with one name**, and
-`packages/mcp/src/server.ts:97` is a `find` — so the read wins and the mutating tool is
-unreachable. `useAdapter`, `useStorage` and `registerJobBus` are the same shape.
+**0.4 — the command ∪ query half is done.** Commands and queries are separate sections of
+the Schema Registry and one namespace, because everything downstream addresses them by a
+single flat name: a command name *is* a permission name (ADR-0015), and `@assemora/mcp`
+generates a tool per command and per query and finds the one to call by name. `orders.sync`
+declared as both was one permission covering a read and a write, and two tools with one
+name — and since reads are generated first, the mutation was the half that disappeared.
+The second registration is now refused, naming both sides.
+
+Within a section this was already refused; across the pair it was not, and being separate
+maps is the whole reason neither could see the other. `SHARED_NAMESPACES` in
+`packages/core/src/registry.ts` is where a second such pair would go.
+
+Still silent last-wins, and not fixed here: `registerFieldKind`, `registerRestorer`,
+`model()`'s table registry, `useAdapter`, `useStorage` and `registerJobBus`. They are the
+same shape and a different seam — none of them goes through the registry, so each needs
+its own refusal where it stores.
 
 ## Tier 1 — what blocks the client site
 
