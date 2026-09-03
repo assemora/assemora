@@ -84,15 +84,43 @@ const asWords = (value: unknown): readonly string[] =>
 const asRows = (value: unknown): readonly (readonly string[])[] =>
   asList(value).map((row) => asWords(row))
 
-/** A date input wants `2026-08-26`, and a timestamp arrives as an ISO string. */
-const asDateInput = (value: unknown, withTime: boolean): string => {
+const pad = (value: number): string => String(value).padStart(2, '0')
+
+/**
+ * What a `date` or `datetime-local` input wants, from what the API sent.
+ *
+ * The two kinds are formatted in different zones, and getting that backwards is wrong
+ * in both directions.
+ *
+ * A `datetime` is an **instant**, and the input holds wall-clock time with no zone
+ * attached — so it has to be the reader's wall clock. Formatted through
+ * `toISOString()` it was UTC's: 18:00 in Kyiv was stored correctly as 15:00Z and then
+ * displayed as 15:00, so an editor read back three hours earlier than they had typed.
+ * The write path was always right — a `datetime-local` value has no zone, and
+ * `new Date('2026-09-03T18:00')` reads it as local — which is why the error never
+ * compounded, and why nobody caught it from the data.
+ *
+ * A `date` is a **calendar day** and not an instant. Midnight UTC read in any negative
+ * offset is the day before, so formatting one in local time would move somebody's
+ * birthday. It stays as written.
+ *
+ * Local formatting is done with the local getters rather than by shifting the epoch by
+ * `getTimezoneOffset()`: the offset is the one at *that* instant, so the getters are
+ * right across a daylight-saving boundary and the arithmetic is only right away from
+ * one.
+ */
+export const asDateInput = (value: unknown, withTime: boolean): string => {
   if (value === null || value === undefined || value === '') return ''
 
   const date = new Date(String(value))
 
   if (Number.isNaN(date.getTime())) return ''
 
-  return withTime ? date.toISOString().slice(0, 16) : date.toISOString().slice(0, 10)
+  if (!withTime) return date.toISOString().slice(0, 10)
+
+  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+
+  return `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 const MediaInput = ({

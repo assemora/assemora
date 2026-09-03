@@ -139,8 +139,16 @@ const Cell = ({ field, value }: { field: FieldDescriptor; value: unknown }) => {
     )
   }
 
-  if (field.kind === 'datetime' || field.kind === 'date') {
-    return <span>{dates.date(String(value))}</span>
+  // The two are read on different clocks, because they are different things. A
+  // `datetime` is an instant and belongs on the reader's, hour included — a listing that
+  // prints only the day cannot tell 00:30 from 18:00. A `date` is a calendar day, stored
+  // as midnight UTC, and is read where it was written or it moves a day westward.
+  if (field.kind === 'datetime') {
+    return <span>{dates.dateTime(String(value))}</span>
+  }
+
+  if (field.kind === 'date') {
+    return <span>{dates.day(String(value))}</span>
   }
 
   if (field.kind === 'media') {

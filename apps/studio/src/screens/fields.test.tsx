@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import type { FieldDescriptor } from '../api/introspection.ts'
-import { FieldInput } from './fields.tsx'
+import { asDateInput, FieldInput } from './fields.tsx'
 
 const field = (
   over: Partial<FieldDescriptor> & { kind: FieldDescriptor['kind'] },
@@ -418,5 +418,108 @@ describe('a relation is chosen, not typed (SPEC.md §39, §58)', () => {
 
     expect(html).toContain('cannot be listed here')
     expect(html).toContain('<input')
+  })
+})
+
+/**
+ * An instant, shown on the reader's clock (SPEC.md §39).
+ *
+ * A `datetime-local` input holds wall-clock time with no zone attached, so what goes
+ * into it has to be the reader's wall clock. It used to be UTC's: 18:00 in Kyiv was
+ * stored correctly as 15:00Z and then displayed as 15:00, three hours earlier than the
+ * editor had typed. The write path was always right — a value with no zone is read as
+ * local — which is why the error never compounded and why nobody caught it in the data.
+ *
+ * The timezone is set here rather than assumed, because a test that passes only in the
+ * zone its author happened to be in is not a test of this.
+ */
+describe('a datetime is displayed on the reader’s clock', () => {
+  const inZone = <T,>(zone: string, work: () => T): T => {
+    const before = process.env.TZ
+    process.env.TZ = zone
+
+    try {
+      return work()
+    } finally {
+      if (before === undefined) delete process.env.TZ
+      else process.env.TZ = before
+    }
+  }
+
+  it('shows the local hour, not the UTC one', () => {
+    // Summer time in Kyiv: UTC+3.
+    expect(inZone('Europe/Kyiv', () => asDateInput('2026-09-03T15:00:00.000Z', true))).toBe(
+      '2026-09-03T18:00',
+    )
+  })
+
+  it('shows it west of UTC too, where the day can differ', () => {
+    // 01:00Z is the previous evening in New York, so both the date and the hour move.
+    expect(inZone('America/New_York', () => asDateInput('2026-09-03T01:00:00.000Z', true))).toBe(
+      '2026-09-02T21:00',
+    )
+  })
+
+  it('is right on the day a clock goes back, when one hour happens twice', () => {
+    // Kyiv leaves summer time on 2026-10-25. 00:30Z is 03:30 at UTC+3 and 01:30Z is
+    // 03:30 again at UTC+2 — the same wall clock for two different instants, which is
+    // exactly what shifting the epoch by a single `getTimezoneOffset()` gets wrong.
+    const shown = inZone('Europe/Kyiv', () => [
+      asDateInput('2026-10-25T00:30:00.000Z', true),
+      asDateInput('2026-10-25T01:30:00.000Z', true),
+    ])
+
+    expect(shown).toEqual(['2026-10-25T03:30', '2026-10-25T03:30'])
+  })
+
+  it('survives the round trip the form makes, in any zone', () => {
+    // What the input shows, read back the way `onChange` reads it, is the instant the
+    // API sent. This is the property that holds wherever the reader is.
+    for (const zone of ['Europe/Kyiv', 'America/New_York', 'Asia/Kolkata', 'UTC']) {
+      const stored = '2026-09-03T15:00:00.000Z'
+
+      const round = inZone(zone, () => new Date(asDateInput(stored, true)).toISOString())
+
+      expect(round, zone).toBe(stored)
+    }
+  })
+
+  /**
+   * A calendar day and not an instant, which is why it is formatted in the other zone.
+   *
+   * Midnight UTC read at any negative offset is the day before, so formatting a date in
+   * local time would move somebody's birthday.
+   */
+  it('leaves a date-only value on the day it was written', () => {
+    expect(inZone('America/New_York', () => asDateInput('2026-09-03T00:00:00.000Z', false))).toBe(
+      '2026-09-03',
+    )
+  })
+
+  it('has nothing to show for nothing', () => {
+    expect(asDateInput(null, true)).toBe('')
+    expect(asDateInput('', true)).toBe('')
+    expect(asDateInput('not a date', true)).toBe('')
+  })
+
+  /**
+   * The control itself, and not only the function behind it.
+   *
+   * Which zone a value is formatted in is decided twice — once by `asDateInput`, and
+   * once by what the control passes it as `withTime`. Getting the second one wrong
+   * formats a calendar day on the reader's clock and moves it, and every test above
+   * would stay green.
+   */
+  it('draws a datetime as a local wall clock and a date as the day itself', () => {
+    const shown = inZone('America/New_York', () => ({
+      instant: input(field({ kind: 'datetime' }), '2026-09-03T01:00:00.000Z'),
+      day: input(field({ kind: 'date' }), '2026-09-03T00:00:00.000Z'),
+    }))
+
+    expect(shown.instant).toContain('type="datetime-local"')
+    expect(shown.instant).toContain('value="2026-09-02T21:00"')
+
+    expect(shown.day).toContain('type="date"')
+    expect(shown.day).toContain('value="2026-09-03"')
   })
 })

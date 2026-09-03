@@ -157,9 +157,16 @@ export const useWoven = (): Woven => {
  * `toLocaleDateString()` with no argument follows the *browser*, so an interface set to
  * Ukrainian printed `12/31/2025` for anybody whose machine is American. The language on
  * the screen is the one that decides.
+ *
+ * `date` and `day` differ by what the value *is*, not by how it looks. An instant —
+ * `updatedAt`, `createdAt` — is read on the reader's clock, which is what `date` does. A
+ * calendar day is not an instant: it is stored as midnight UTC, and read on a clock
+ * behind UTC that is the evening before, so `day` reads it where it was written.
+ * Formatting a birthday locally moves it a day for every reader in the Americas.
  */
 export const useDates = (): {
   date(value: string): string
+  day(value: string): string
   dateTime(value: string): string
   time(value: string): string
 } => {
@@ -168,6 +175,7 @@ export const useDates = (): {
   return useMemo(
     () => ({
       date: (value) => new Date(value).toLocaleDateString(language),
+      day: (value) => new Date(value).toLocaleDateString(language, { timeZone: 'UTC' }),
       dateTime: (value) => new Date(value).toLocaleString(language),
       time: (value) => new Date(value).toLocaleTimeString(language),
     }),

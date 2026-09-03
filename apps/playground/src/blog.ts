@@ -24,6 +24,7 @@ import {
 import { route } from '@assemora/http'
 import { block, Page } from '@assemora/pages'
 import {
+  datetime,
   media,
   number as numberField,
   resource,
@@ -45,6 +46,15 @@ export const Article = model('articles', {
   status: enumOf('draft', 'published').default('draft'),
   views: number().default(0),
   featured: boolean().default(false),
+  /**
+   * An instant, and the reason it is here.
+   *
+   * Studio is developed against this application, and it had no `datetime` field in
+   * it — so the one control whose whole difficulty is timezones was never on screen
+   * while anybody worked on it, and it displayed UTC in an input that means local for
+   * as long as that was true.
+   */
+  publishedAt: timestamp().nullable(),
   createdAt: timestamp().created(),
   updatedAt: timestamp().updated(),
 })
@@ -60,6 +70,7 @@ export const Articles = resource(
     status: select('draft', 'published').required().filterable().sortable().label('Status'),
     views: numberField().sortable().filterable().label('Views'),
     featured: toggle().filterable().label('Featured'),
+    publishedAt: datetime().sortable().label('Published').help('Shown on the reader’s clock'),
   },
   { label: 'Articles', icon: 'newspaper', defaultSort: '-views', perPage: 10 },
 )

@@ -108,6 +108,9 @@ export const seed = async (app: Application): Promise<Seeded> => {
         status: 'published',
         views: 1240,
         featured: true,
+        // A round hour in UTC, so that whatever it displays as is unmistakably the
+        // reader's clock rather than a coincidence.
+        publishedAt: '2026-09-03T15:00:00.000Z',
       },
       {
         title: 'On sequences and loops',
@@ -118,6 +121,7 @@ export const seed = async (app: Application): Promise<Seeded> => {
         status: 'published',
         views: 310,
         featured: false,
+        publishedAt: '2026-08-14T09:30:00.000Z',
       },
       {
         title: 'Draft: a language for the engine',
@@ -127,6 +131,7 @@ export const seed = async (app: Application): Promise<Seeded> => {
         status: 'draft',
         views: 0,
         featured: false,
+        publishedAt: null,
       },
     ]
 
