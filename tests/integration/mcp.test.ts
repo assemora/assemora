@@ -23,7 +23,7 @@ import {
   User,
   UserRole,
 } from '@assemora/auth'
-import { changeSets } from '@assemora/change-sets'
+import { ChangeSet, changeSets } from '@assemora/change-sets'
 import {
   clearRestorers,
   createApplication,
@@ -306,5 +306,82 @@ describe('and the guarantee all seven exist for (SPEC.md §75)', () => {
     const written = await AuditLog.where('action', 'entries.update').firstOrFail()
 
     expect(written).toMatchObject({ actorType: 'user', source: 'studio' })
+  })
+})
+
+/**
+ * An agent naming its own proposal (SPEC.md §74).
+ *
+ * §74 spells out one scenario — "add a block, then set its title" as a single
+ * proposal — and it was unreachable. Every mutating tool was wrapped in
+ * `changesets.propose`, and that command mutates, so it wrapped itself: an agent could
+ * only ever propose one command at a time, each under a title this package wrote.
+ * The Proposals screen showed rows called `blocks.update proposed by an agent`, which
+ * told a person nothing the row did not already say.
+ */
+describe('a proposal an agent composed itself', () => {
+  it('takes several commands and the agent’s own words', async () => {
+    const first = await Article.create({ title: 'One', internal: null })
+    const second = await Article.create({ title: 'Two', internal: null })
+
+    const answered = await call('assemora.changesets.propose', {
+      title: 'Rename both articles for the launch',
+      commands: [
+        {
+          command: 'entries.update',
+          input: { resource: 'articles', id: first.id, data: { title: 'First' } },
+        },
+        {
+          command: 'entries.update',
+          input: { resource: 'articles', id: second.id, data: { title: 'Second' } },
+        },
+      ],
+    })
+
+    expect(answered.failed).toBe(false)
+    expect(answered.body).toMatchObject({ status: 'pending' })
+
+    const stored = await ChangeSet.findOrFail(answered.body.id)
+
+    expect(stored.title).toBe('Rename both articles for the launch')
+
+    // Still a proposal: two commands change nothing until a person applies them.
+    expect((await Article.findOrFail(first.id)).title).toBe('One')
+    expect((await Article.findOrFail(second.id)).title).toBe('Two')
+  })
+
+  it('is not itself wrapped in a second proposal', async () => {
+    const article = await Article.create({ title: 'Before', internal: null })
+
+    const answered = await call('assemora.changesets.propose', {
+      title: 'One change, named',
+      commands: [
+        {
+          command: 'entries.update',
+          input: { resource: 'articles', id: article.id, data: { title: 'After' } },
+        },
+      ],
+    })
+
+    // Wrapped, this would be a proposal *of* a proposal: the stored title would be
+    // the sentence about `changesets.propose`, and the agent's own would be buried one
+    // level down inside the commands, where nobody reads it.
+    expect((await ChangeSet.findOrFail(answered.body.id)).title).toBe('One change, named')
+  })
+
+  it('titles a convenience call with what the command says it does', async () => {
+    const article = await Article.create({ title: 'Before', internal: null })
+
+    const answered = await call('assemora.entries.update', {
+      resource: 'articles',
+      id: article.id,
+      data: { title: 'After' },
+    })
+
+    // A sentence somebody wrote about the command, rather than its name and a suffix.
+    const stored = await ChangeSet.findOrFail(answered.body.id)
+
+    expect(stored.title).not.toContain('proposed by an agent')
+    expect(stored.title).toBeTruthy()
   })
 })

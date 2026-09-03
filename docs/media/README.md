@@ -42,7 +42,12 @@ pictures before:
 | `studio-sign-in.png` | `/studio`, signed out |
 | `studio-theme.png` | `/studio/design` |
 
-The proposal in `studio-proposals.png` is a real one, made over MCP rather than staged.
+The proposal in `studio-proposals.png` is a real one, made over MCP rather than staged,
+and it is titled in the agent's own words because an agent composes its own proposal:
+`changesets.propose` takes a title and a list of commands, and it is the one mutating
+tool that is not itself wrapped in a proposal. A tool called directly is titled with what
+that command says it does.
+
 An agent identity is created through the Command Bus like anything else, and the token
 it answers with is what the JSON-RPC endpoint authenticates:
 
@@ -51,10 +56,12 @@ it answers with is what the JSON-RPC endpoint authenticates:
 POST /api/commands/auth.agents.create
      { "name": "Content agent", "permissions": ["pages.read", "blocks.update", "changesets.propose"] }
 
-# then, as that agent
+# then, as that agent — naming the proposal itself
 POST /api/mcp   Authorization: Bearer <token>
      { "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-       "params": { "name": "assemora.blocks.update", "arguments": { … } } }
+       "params": { "name": "assemora.changesets.propose", "arguments": {
+         "title": "Say plainly what an agent does, in the home page hero",
+         "commands": [{ "command": "blocks.update", "input": { … } }] } } }
 ```
 
 The tool answers `{ "status": "pending", "changes": [...] }` and writes nothing, which

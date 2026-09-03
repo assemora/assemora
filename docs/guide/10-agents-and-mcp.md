@@ -53,6 +53,26 @@ flatly, and a flag the caller sets would not be a gate.
 `assemora()` — is the deliberate opt-out, and it belongs in the project's own source
 where it can be seen.
 
+That proposal is titled with what the command says it does — the sentence in its own
+`description`, which is what an editor reads on the Proposals screen.
+
+An agent with more to say composes its own. `assemora.changesets.propose` takes a title
+and a list of commands, and is the one mutating tool that is not itself wrapped in a
+proposal:
+
+```text
+assemora.changesets.propose {
+  title: 'Say plainly what an agent does, in the home page hero',
+  commands: [{ command: 'blocks.update', input: { … } }],
+}
+```
+
+Several commands in one proposal are previewed together and applied together, which is
+the scenario SPEC.md §74 describes: "add a block, then set its title" is one decision for
+a person to make, not two. `changesets.reject` is exempt for the same reason — refusing
+is not a change to approve — while `changesets.apply` is *not*, so an agent still cannot
+apply anything.
+
 ## Dry run is the real pipeline, rolled back
 
 A dry run is the command pipeline with the transaction undone. There is no second code

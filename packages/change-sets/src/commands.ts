@@ -85,6 +85,20 @@ const changesOf = (previews: readonly Preview[]): ProposedChange[] =>
 
 export const ProposeChangeSet = command('changesets.propose', {
   description: 'Previews a sequence of commands and stores it for a person to approve',
+  /**
+   * A proposal of a proposal is not a thing (SPEC.md §74, §75).
+   *
+   * Every mutating tool an agent calls is wrapped in this command, and this command
+   * mutates — so it used to wrap itself, and the one scenario §74 spells out ("add a
+   * block, then set its title" as one proposal) could not be reached in a single call.
+   * An agent could only ever propose one command at a time, each under a title this
+   * package wrote for it.
+   *
+   * Exempt, an agent composes its own: several commands, previewed together, under a
+   * name it chose. Nothing is weakened by that — the proposal still changes nothing
+   * until a person applies it, which is the whole of the guarantee.
+   */
+  proposable: false,
   input: {
     title: string().min(1),
     commands: array(json<{ readonly command: string; readonly input: unknown }>()).min(1),
@@ -201,6 +215,14 @@ export const ApplyChangeSet = command('changesets.apply', {
 
 export const RejectChangeSet = command('changesets.reject', {
   description: 'Closes a change set without running any of it',
+  /**
+   * Refusing is not a change to approve.
+   *
+   * Wrapped, this would be a proposal somebody has to apply before another proposal
+   * could be refused — two decisions where the second one is "no". Rejecting runs none
+   * of what was proposed, so there is nothing for a person to preview.
+   */
+  proposable: false,
   input: { id: uuid(), reason: string().optional() },
   handle: async ({ id, reason }, context) => {
     const proposal = await openOrFail(id)

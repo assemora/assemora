@@ -29,6 +29,15 @@ export type ToolDescriptor = {
   readonly inputSchema: { readonly type: 'object' } & JsonSchema
   /** Whether calling it would change anything, which decides how it is handled. */
   readonly mutates: boolean
+  /**
+   * Whether a mutation of this tool becomes a proposal (SPEC.md §75, ADR-0019).
+   *
+   * True for every mutating tool but the two that *are* the proposal mechanism. It is
+   * read off the command's own declaration rather than decided here: a package that
+   * generates a tool for every command must not also keep a list of the special ones
+   * (ADR-0020).
+   */
+  readonly proposable: boolean
 }
 
 export const TOOL_PREFIX = 'assemora.'
@@ -50,6 +59,7 @@ type Described = {
   readonly description?: string
   readonly input?: unknown
   readonly reachableFrom?: CommandReach
+  readonly proposable?: boolean
 }
 
 /**
@@ -80,6 +90,9 @@ export const toolsOf = (registry: SchemaRegistry): ToolDescriptor[] => {
     description: entry.description ?? entry.name,
     inputSchema: objectSchema(entry.input),
     mutates,
+    // Absent means yes, the way the descriptor carries it: the field is written only
+    // when it restricts something.
+    proposable: mutates && entry.proposable !== false,
   })
 
   return [

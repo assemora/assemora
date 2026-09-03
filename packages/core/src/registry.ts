@@ -42,6 +42,18 @@ export type CommandDescriptor = RegistryEntry & {
    * registry does not carry is one no generator can honour (ADR-0002).
    */
   readonly reachableFrom?: CommandReach
+  /**
+   * Absent when a proposal may be made of this command, which is nearly all of them.
+   *
+   * `false` says the command *is* the proposal mechanism, so wrapping it in one would
+   * be circular: a proposal to propose is a row nobody can act on, and a proposal to
+   * reject a proposal is one somebody has to approve before the first can be refused.
+   *
+   * It is a declaration rather than a list of names in `@assemora/mcp`, for the reason
+   * `reachableFrom` is: a package that generates a tool for every command must not also
+   * keep an opinion about which commands are special (ADR-0020).
+   */
+  readonly proposable?: boolean
 }
 
 /**

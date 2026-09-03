@@ -95,7 +95,7 @@ Every number and every card on the first screen is read from the Schema Registry
 `resource(Dish, …)` to the application and it appears here, in the sidebar, in the
 command palette and in the API Explorer, with no edit to Studio.
 
-![The Proposals screen in Studio: a change set proposed by an agent, opened to show one line per change, with Apply and Reject](docs/media/studio-proposals.png)
+![The Proposals screen in Studio: a change set an agent proposed under its own title, opened to show one line per change, with Apply and Reject](docs/media/studio-proposals.png)
 
 An agent proposes and a person decides. That row was made over MCP, by a tool call that
 wrote nothing: the line under it is read off a diff produced by running the command for

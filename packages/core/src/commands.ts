@@ -138,6 +138,15 @@ export type CommandDefinition<S extends Shape, R> = {
    * of them. Such a command says `'its own route'`, and the generators skip it.
    */
   readonly reachableFrom: CommandReach
+  /**
+   * Whether a proposal may be made of this command (SPEC.md §75, ADR-0019).
+   *
+   * An agent's mutation is a proposal by default, which means every mutating command
+   * is wrapped in `changesets.propose`. That one and `changesets.reject` cannot be:
+   * the first would wrap itself, and the second would need a proposal approved before
+   * a proposal could be refused.
+   */
+  readonly proposable: boolean
   handle(input: InferShape<S>, context: CommandContext): Promise<R>
 }
 
@@ -149,6 +158,7 @@ export type AnyCommand = {
   readonly subject: string | undefined
   readonly previewable: boolean
   readonly reachableFrom: CommandReach
+  readonly proposable: boolean
   handle(input: never, context: CommandContext): Promise<unknown>
 }
 
@@ -205,6 +215,11 @@ export const command = <S extends Shape, R>(
      * authorized and a route written for it is what makes it safe.
      */
     readonly reachableFrom?: CommandReach
+    /**
+     * Defaults to true. Say `false` when this command is how a proposal is made or
+     * refused, so that making a proposal of it would be circular.
+     */
+    readonly proposable?: boolean
     handle(input: InferShape<S>, context: CommandContext): Promise<R>
   },
 ): CommandDefinition<S, R> => ({
@@ -214,6 +229,7 @@ export const command = <S extends Shape, R>(
   subject: definition.subject,
   previewable: definition.previewable ?? true,
   reachableFrom: definition.reachableFrom ?? 'anywhere',
+  proposable: definition.proposable ?? true,
   handle: definition.handle,
 })
 
@@ -626,6 +642,8 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         ...(definition.reachableFrom === 'anywhere'
           ? {}
           : { reachableFrom: definition.reachableFrom }),
+        // Carried only when it restricts something, like the field above it.
+        ...(definition.proposable ? {} : { proposable: false }),
       })
     },
 

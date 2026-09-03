@@ -117,11 +117,26 @@ export const createMcpServer = (options: McpServerOptions): Server => {
 
       if (mutations === 'direct') return answer(await options.commands.execute(name, input))
 
+      // The two commands that *are* the proposal mechanism run as themselves: one
+      // would wrap itself, and the other would need a proposal approved before a
+      // proposal could be refused. It is also how an agent composes a proposal of its
+      // own — several commands, under a name it chose — which is the scenario SPEC.md
+      // §74 spells out and which was unreachable while this wrapped everything.
+      //
+      // Nothing is weakened. `changesets.apply` is still wrapped, so production state
+      // changes when a person applies and not before (SPEC.md §75).
+      if (!tool.proposable) return answer(await options.commands.execute(name, input))
+
       // A mutation is a proposal. Production state does not change before somebody
       // applies it (SPEC.md §75).
       return answer(
         await options.commands.execute('changesets.propose', {
-          title: `${name} proposed by an agent`,
+          // The command's own description, which is a sentence somebody wrote about
+          // what it does, rather than its name and a suffix. This title is read on the
+          // Proposals screen, where `blocks.update proposed by an agent` told a person
+          // nothing they could not see from the row it sat on. An agent that wants to
+          // say more calls `changesets.propose` and titles it itself.
+          title: tool.description,
           commands: [{ command: name, input }],
         }),
       )
