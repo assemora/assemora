@@ -27,7 +27,8 @@
     "@assemora/media": "workspace:*",
     "assemora": "workspace:*",
     "create-assemora": "workspace:*",
-    "@assemora/queue-bullmq": "workspace:*"
+    "@assemora/queue-bullmq": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0"
   },
   "dependencies": {
     "@assemora/audit": "workspace:*",

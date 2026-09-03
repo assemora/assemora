@@ -88,6 +88,10 @@ create an agent, and use the token `auth.agents.create` answers with. And a conf
 `app()` hands back the whole application rather than `createApp().app`: the `.app` on the
 end drops the half that speaks the protocol, and the command says so if it finds one.
 
+The HTTP endpoint is the other way in, and a client that speaks Streamable HTTP reaches
+it directly — `GET` on it answers 405, which is how the specification spells "this server
+pushes nothing", and the version the session settled on comes back on every answer.
+
 ```json
 {
   "mcpServers": {

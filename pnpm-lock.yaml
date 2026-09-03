@@ -992,6 +992,9 @@ importers:
       '@assemora/sdk':
         specifier: workspace:*
         version: link:../packages/sdk
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(zod@4.4.3)
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3

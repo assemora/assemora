@@ -105,6 +105,48 @@ export const mcpRoutes = (options: McpRouteOptions): MountedMcp => {
   const withoutAnAgent = () =>
     new AssemoraError('UNAUTHORIZED', 'This endpoint needs an agent token', { status: 401 })
 
+  /**
+   * The version this session settled on, once it has settled on one.
+   *
+   * Read off the handshake rather than declared: the SDK owns the negotiation, and a
+   * constant here would be a second opinion about it that goes stale on an upgrade.
+   * Echoed on every answer so that anything between the two — a proxy, a log, somebody
+   * reading `curl -i` — can see which version is in force without replaying the
+   * handshake.
+   */
+  let negotiated: string | undefined
+
+  const remember = (answer: unknown): void => {
+    const version = (answer as { result?: { protocolVersion?: unknown } } | null)?.result
+      ?.protocolVersion
+
+    if (typeof version === 'string') negotiated = version
+  }
+
+  const protocolHeaders = (): Readonly<Record<string, string>> =>
+    negotiated === undefined ? {} : { 'mcp-protocol-version': negotiated }
+
+  /**
+   * What the two verbs this endpoint does not implement answer.
+   *
+   * 405 rather than 404, and it is the difference between working and not: a client
+   * opens `GET` to see whether the server offers a stream of its own, and the
+   * specification says a server that does not must say so with 405. The SDK's own
+   * transport treats 405 as "no stream, carry on" and *throws* on anything else — so
+   * the 404 Fastify gives an unrouted method ended every session the moment the client
+   * finished shaking hands.
+   *
+   * `DELETE` is the same bargain for session termination: this endpoint keeps no
+   * session to terminate, and saying so is not the same as not being there.
+   */
+  const notThisVerb = (verb: string, why: string) =>
+    new AssemoraError('METHOD_NOT_ALLOWED', `${verb} is not what this endpoint does: ${why}`, {
+      status: 405,
+      // The endpoint answering, not a fault. A client asks precisely because it does
+      // not know yet, and every session would otherwise file a report.
+      expected: true,
+    })
+
   return {
     async handle(message, credential) {
       // Resolved here because there is no server above this one to have done it. The
@@ -147,8 +189,59 @@ export const mcpRoutes = (options: McpRouteOptions): MountedMcp => {
           const message = (request as { body?: unknown }).body
           const answered = await (await connect()).handle(message)
 
+          remember(answered)
+
           // A notification has no reply, and JSON-RPC says to answer it with nothing.
-          return respond(answered ?? null, { status: answered === undefined ? 202 : 200 })
+          return respond(answered ?? null, {
+            status: answered === undefined ? 202 : 200,
+            headers: protocolHeaders(),
+          })
+        },
+      }),
+
+      /**
+       * The stream this endpoint does not offer, said in the one way a client
+       * understands (SPEC.md §68).
+       *
+       * A Streamable HTTP client opens `GET` after the handshake to see whether the
+       * server has anything to push. This one does not — every answer here is the
+       * reply to a request — and 405 is how the specification spells that. Declared
+       * rather than left to the router: an unrouted method is a 404, and a 404 is what
+       * the SDK's transport raises as a failure.
+       */
+      route.get(options.path, {
+        description: 'Refuses the server-to-client stream, which this endpoint does not offer',
+        tags: ['mcp'],
+        source: 'mcp',
+        response: json<unknown>(),
+        status: 405,
+        errors: [
+          {
+            code: 'METHOD_NOT_ALLOWED',
+            status: 405,
+            description: 'This endpoint answers requests and pushes nothing',
+          },
+        ],
+        handler: () => {
+          throw notThisVerb('GET', 'it answers requests and never pushes')
+        },
+      }),
+
+      route.delete(options.path, {
+        description: 'Refuses session termination, because this endpoint keeps no session',
+        tags: ['mcp'],
+        source: 'mcp',
+        response: json<unknown>(),
+        status: 405,
+        errors: [
+          {
+            code: 'METHOD_NOT_ALLOWED',
+            status: 405,
+            description: 'This endpoint keeps no session to terminate',
+          },
+        ],
+        handler: () => {
+          throw notThisVerb('DELETE', 'there is no session here to end')
         },
       }),
     ],
