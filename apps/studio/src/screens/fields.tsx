@@ -84,7 +84,23 @@ const asWords = (value: unknown): readonly string[] =>
 const asRows = (value: unknown): readonly (readonly string[])[] =>
   asList(value).map((row) => asWords(row))
 
-/** A date input wants `2026-08-26`, and a timestamp arrives as an ISO string. */
+const pad = (part: number): string => String(part).padStart(2, '0')
+
+/**
+ * A date input wants `2026-08-26`, and a timestamp arrives as an ISO string.
+ *
+ * A `datetime-local` input has no timezone: it means whatever the person
+ * reading it means by a wall clock. So the instant is rendered in *their* time,
+ * not in UTC — rendering `toISOString()` showed 18:00 saved in Kyiv back as
+ * 15:00, which is an editor being told they saved something they did not. The
+ * write path already reads the field as local (`new Date('…T18:00')` is local),
+ * so storage stays UTC and this is the half that was missing.
+ *
+ * A date-only field keeps UTC on purpose, and the asymmetry is deliberate: it
+ * carries a calendar day rather than an instant, and `2026-08-26` parses as UTC
+ * midnight. Reading that through local getters west of Greenwich would answer
+ * `2026-08-25` — the same class of bug, one field over.
+ */
 const asDateInput = (value: unknown, withTime: boolean): string => {
   if (value === null || value === undefined || value === '') return ''
 
@@ -92,7 +108,11 @@ const asDateInput = (value: unknown, withTime: boolean): string => {
 
   if (Number.isNaN(date.getTime())) return ''
 
-  return withTime ? date.toISOString().slice(0, 16) : date.toISOString().slice(0, 10)
+  if (!withTime) return date.toISOString().slice(0, 10)
+
+  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+
+  return `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 const MediaInput = ({

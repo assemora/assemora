@@ -420,3 +420,70 @@ describe('a relation is chosen, not typed (SPEC.md §39, §58)', () => {
     expect(html).toContain('<input')
   })
 })
+
+describe('a datetime, in the reader’s own time', () => {
+  const withTimezone = (zone: string, run: () => void) => {
+    const before = process.env.TZ
+
+    process.env.TZ = zone
+    try {
+      run()
+    } finally {
+      process.env.TZ = before
+    }
+  }
+
+  const valueOf = (markup: string): string =>
+    /value="([^"]*)"/.exec(markup)?.[1] ?? '(no value attribute)'
+
+  it('shows the instant as a wall clock where the editor is', () => {
+    // A `datetime-local` input carries no timezone, so it means whatever the
+    // reader means by a wall clock. 18:00 saved in Kyiv used to read back 15:00.
+    withTimezone('Europe/Kyiv', () => {
+      const markup = input(field({ kind: 'datetime' }), '2026-08-26T15:00:00.000Z')
+
+      expect(valueOf(markup)).toBe('2026-08-26T18:00')
+    })
+  })
+
+  it('follows the offset across a daylight-saving boundary', () => {
+    // Kyiv leaves EEST on 2026-10-25. The same UTC time of day is therefore a
+    // different wall clock on either side of it, which a fixed offset would miss.
+    withTimezone('Europe/Kyiv', () => {
+      expect(valueOf(input(field({ kind: 'datetime' }), '2026-10-24T15:00:00.000Z'))).toBe(
+        '2026-10-24T18:00',
+      )
+      expect(valueOf(input(field({ kind: 'datetime' }), '2026-10-26T15:00:00.000Z'))).toBe(
+        '2026-10-26T17:00',
+      )
+    })
+  })
+
+  it('shows the same instant differently west of Greenwich', () => {
+    withTimezone('America/New_York', () => {
+      expect(valueOf(input(field({ kind: 'datetime' }), '2026-08-26T15:00:00.000Z'))).toBe(
+        '2026-08-26T11:00',
+      )
+    })
+  })
+
+  it('round-trips: what is displayed, read back as local, is the stored instant', () => {
+    // The invariant behind the whole fix, and the one that would catch a future
+    // change to either half on its own.
+    withTimezone('Europe/Kyiv', () => {
+      const stored = '2026-08-26T15:00:00.000Z'
+      const displayed = valueOf(input(field({ kind: 'datetime' }), stored))
+
+      expect(new Date(displayed).toISOString()).toBe(stored)
+    })
+  })
+
+  it('keeps a date-only field on the calendar day it was stored as', () => {
+    // Deliberately not converted: a `date` is a calendar day, not an instant, and
+    // `2026-08-26` parses as UTC midnight — reading it locally west of Greenwich
+    // would answer the 25th.
+    withTimezone('America/New_York', () => {
+      expect(valueOf(input(field({ kind: 'date' }), '2026-08-26'))).toBe('2026-08-26')
+    })
+  })
+})
