@@ -880,7 +880,10 @@ describe('a single-page application lives beside the API, not inside it', () => 
 
     await writeFile(join(root, 'index.html'), '<!doctype html><title>Studio</title>')
     await mkdir(join(root, 'assets'), { recursive: true })
-    await writeFile(join(root, 'assets', 'main-8f3a1c2b.js'), 'console.log(1)')
+    // The name Rollup writes, and long enough that compressing it is worth doing.
+    await writeFile(join(root, 'assets', 'index-BRIFoUvp.js'), `console.log(1)`.repeat(200))
+    // A `public/` file: copied under the name somebody chose, not fingerprinted.
+    await writeFile(join(root, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
 
     server.mountAssets({ path: '/studio', root })
   })
@@ -897,14 +900,120 @@ describe('a single-page application lives beside the API, not inside it', () => 
     expect((await server.inject({ method: 'GET', url: '/studio/' })).statusCode).toBe(200)
   })
 
-  it('serves an asset with the caching a fingerprint earns', async () => {
-    const answered = await server.inject({
+  const asset = async (headers?: Record<string, string>) =>
+    await server.inject({
       method: 'GET',
-      url: '/studio/assets/main-8f3a1c2b.js',
+      url: '/studio/assets/index-BRIFoUvp.js',
+      ...(headers === undefined ? {} : { headers }),
     })
+
+  it('serves an asset with the caching its directory earns', async () => {
+    const answered = await asset()
 
     expect(answered.statusCode).toBe(200)
     expect(answered.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+  })
+
+  it('never keeps a file the bundler did not fingerprint', async () => {
+    const answered = await server.inject({ method: 'GET', url: '/studio/favicon.svg' })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.headers['cache-control']).toBe('no-cache')
+  })
+
+  it('gives every file a validator, so asking again costs a header and no body', async () => {
+    const first = await asset()
+    const tag = first.headers.etag
+
+    expect(tag).toMatch(/^"[0-9a-f]+-[0-9a-f]+"/)
+    expect(first.headers['last-modified']).toBeDefined()
+
+    const again = await asset({ 'if-none-match': String(tag) })
+
+    expect(again.statusCode).toBe(304)
+    expect(again.body).toBe('')
+    // The validators come back, or the next request has nothing to ask with.
+    expect(again.headers.etag).toBe(tag)
+    expect(again.headers['content-length']).toBeUndefined()
+  })
+
+  it('answers the older question too, and rounds the file’s time to the second', async () => {
+    const first = await server.inject({ method: 'GET', url: '/studio' })
+
+    const again = await server.inject({
+      method: 'GET',
+      url: '/studio',
+      headers: { 'if-modified-since': String(first.headers['last-modified']) },
+    })
+
+    expect(again.statusCode).toBe(304)
+  })
+
+  it('sends the file when the validator is somebody else’s', async () => {
+    const answered = await asset({ 'if-none-match': '"not-this-one"' })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.body).toContain('console.log')
+  })
+
+  it('compresses what is text, and says the answer depends on the asking', async () => {
+    const plain = await asset()
+    const compressed = await asset({ 'accept-encoding': 'gzip, deflate, br' })
+
+    expect(compressed.statusCode).toBe(200)
+    expect(compressed.headers['content-encoding']).toBe('br')
+    expect(compressed.headers.vary).toBe('accept-encoding')
+    // The point of the exercise: the bundle this repository ships is 202,723 bytes
+    // against 63,732 gzipped, and it was being sent whole to everybody.
+    expect(compressed.rawBody.length).toBeLessThan(plain.rawBody.length / 2)
+    // A compressed body has no length until it is compressed, so the header that
+    // would describe the file is left off rather than left wrong.
+    expect(compressed.headers['content-length']).toBeUndefined()
+  })
+
+  it('takes gzip from a client that speaks no brotli', async () => {
+    const answered = await asset({ 'accept-encoding': 'gzip' })
+
+    expect(answered.headers['content-encoding']).toBe('gzip')
+  })
+
+  it('honours a refusal, which is the one misreading that breaks a client', async () => {
+    const answered = await asset({ 'accept-encoding': 'gzip;q=0, br;q=0' })
+
+    expect(answered.headers['content-encoding']).toBeUndefined()
+    expect(answered.body).toContain('console.log')
+  })
+
+  it('leaves alone what already arrived compressed', async () => {
+    // Not text: gzipping a font spends processor time to make it slightly larger.
+    await writeFile(join(root, 'assets', 'font-BOeWTOD4.woff2'), 'x'.repeat(500))
+
+    const answered = await server.inject({
+      method: 'GET',
+      url: '/studio/assets/font-BOeWTOD4.woff2',
+      headers: { 'accept-encoding': 'br, gzip' },
+    })
+
+    expect(answered.headers['content-encoding']).toBeUndefined()
+    expect(answered.headers.vary).toBeUndefined()
+    expect(answered.headers['content-length']).toBe('500')
+  })
+
+  it('names the encoding in the validator, so a cache cannot mix the two up', async () => {
+    const plain = await asset()
+    const compressed = await asset({ 'accept-encoding': 'br' })
+
+    expect(compressed.headers.etag).not.toBe(plain.headers.etag)
+    expect(String(compressed.headers.etag)).toContain('-br')
+
+    // And each is answered against its own: the client holding the compressed one is
+    // told nothing changed, and the tag it sent is not the identity tag.
+    const again = await asset({
+      'accept-encoding': 'br',
+      'if-none-match': String(compressed.headers.etag),
+    })
+
+    expect(again.statusCode).toBe(304)
   })
 
   it('hands an unknown path to the router in the browser', async () => {

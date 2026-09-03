@@ -20,7 +20,11 @@ export {
   type AssetsOptions,
   assetCacheControl,
   assetContentType,
+  assetETag,
+  DEFAULT_IMMUTABLE,
   findAsset,
+  IMMUTABLE,
+  isCompressible,
   resolveAsset,
   type ServedAsset,
 } from './assets.js'

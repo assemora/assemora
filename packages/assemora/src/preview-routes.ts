@@ -67,5 +67,9 @@ export const mountPreview = async (
     })
   }
 
-  server.mountAssets({ path: frontend.path, root: frontend.root })
+  server.mountAssets({
+    path: frontend.path,
+    root: frontend.root,
+    immutable: frontend.immutableAssets,
+  })
 }

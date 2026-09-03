@@ -131,6 +131,37 @@ in a bucket or behind a CDN, that origin is added to `img-src` and `media-src`
 automatically, read off the storage driver you configured. Nothing else in the policy
 moves, and there is no option that widens it by hand.
 
+## Static files
+
+Studio and your own frontend are directories of files rather than endpoints, and they
+are served with the three headers that decide how much a returning visitor downloads.
+
+- **What the bundler fingerprinted is kept for a year.** Which files those are is a
+  fact about *where* they are, not what they are called: Vite hashes everything it
+  writes into `assets/` and copies `public/` to the root untouched. So `assets/` is the
+  default, and a frontend built by something else names its own —
+  `frontend: { immutableAssets: '_next/static/' }`, or `false` for a directory of
+  hand-written files.
+
+  It is deliberately not guessed from the name. A hash is written in the same alphabet
+  English is, so nothing can tell `index-BRIFoUvp.js` from `hero-photograph.jpg` by
+  looking — and guessing wrong pins a file in every visitor's cache for a year, with
+  nothing a deploy can do to reach it.
+
+- **Everything else carries an `ETag`.** `no-cache` does not mean "do not store this",
+  it means "store it and ask first", so a second visit costs a request and gets a 304
+  with no body. The entry document is always in this group: it is the one file whose
+  name never changes and it names all the others, so a cached one would point at the
+  assets of the deploy before this one.
+
+- **Text is compressed**, brotli where the browser takes it and gzip otherwise. Studio's
+  shell is 698,751 bytes and 165,420 of them over the wire. Fonts and images are sent
+  as they are, because they arrived compressed and running gzip over them spends
+  processor time to make them slightly larger.
+
+Nothing here is configurable beyond `immutableAssets`, and none of it applies to `/api`:
+these are files on a disk, and an API response is not one.
+
 ## Background work
 
 An application that declares a job and configures no queue runs its jobs inside the

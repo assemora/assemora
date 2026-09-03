@@ -20,6 +20,7 @@ import type { DatabaseAdapter } from '@assemora/database'
 import {
   type ApiVersion,
   DEFAULT_BODY_LIMIT,
+  DEFAULT_IMMUTABLE,
   SLOW_REQUEST_MS,
   type VersionDeclaration,
 } from '@assemora/http'
@@ -194,6 +195,18 @@ export type FrontendOptions = {
    * been allowed to put the logged-in admin UI inside an iframe of its own.
    */
   readonly framedBy?: readonly string[]
+  /**
+   * The directory, inside the bundle, whose file names carry a fingerprint.
+   *
+   * `assets/` by default, which is where Vite puts what it hashes and what every
+   * starter here builds. A frontend built by something else says where its own hashed
+   * output goes — `_next/static/` for Next.js — and `false` says that none of it is
+   * fingerprinted, which is the honest answer for a directory of hand-written files.
+   *
+   * Everything outside it is revalidated rather than uncached: it is served with an
+   * `ETag`, so a browser that already has it asks and is told 304.
+   */
+  readonly immutableAssets?: string | false
 }
 
 /**
@@ -446,6 +459,7 @@ export type ResolvedFrontend = {
   readonly root: string
   readonly path: string
   readonly framedBy: readonly string[]
+  readonly immutableAssets: string | false
 }
 
 export type ResolvedSession = {
@@ -549,6 +563,9 @@ export const resolve = (options: AssemoraOptions): Settings => ({
           root: options.frontend.root,
           path: options.frontend.path ?? DEFAULT_PREVIEW_PATH,
           framedBy: options.frontend.framedBy ?? [],
+          // Vite's own directory, and so the one every starter here builds into. A
+          // frontend built by something else names its own.
+          immutableAssets: options.frontend.immutableAssets ?? DEFAULT_IMMUTABLE,
         },
   session: {
     secure: options.session?.secure ?? true,

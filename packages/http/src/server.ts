@@ -7,6 +7,8 @@
  */
 
 import type { IncomingMessage } from 'node:http'
+import { pipeline } from 'node:stream/promises'
+import { createBrotliCompress, createGzip } from 'node:zlib'
 import {
   type Actor,
   type AssemoraContext,
@@ -33,7 +35,7 @@ import rateLimit from '@fastify/rate-limit'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import Fastify from 'fastify'
 
-import { type AssetsOptions, findAsset } from './assets.js'
+import { type AssetsOptions, findAsset, type ServedAsset } from './assets.js'
 import { isBytesResponse } from './bytes.js'
 import { type CommandRouteOptions, commandEndpoints, commandRoutes } from './commands.js'
 import {
@@ -262,6 +264,87 @@ export type HttpServer = {
     headers?: Record<string, string>
   }): Promise<InjectedResponse>
   ready(): Promise<void>
+}
+
+/**
+ * Which encoding to answer a static file in, or none.
+ *
+ * Brotli first where both are offered: it is smaller on text by a useful margin and
+ * every browser that speaks it also speaks gzip, so the preference costs nothing.
+ * A file that is already compressed — a font, a photograph — is sent as it is,
+ * because compressing it spends processor time to make it slightly larger.
+ *
+ * The quality values a client may attach are read only far enough to honour a
+ * refusal: `gzip;q=0` means "not gzip", and answering with it anyway is the one
+ * reading of this header that breaks a client rather than merely disappointing it.
+ */
+const chosenEncoding = (
+  accepted: string | undefined,
+  asset: ServedAsset,
+): 'br' | 'gzip' | undefined => {
+  if (!asset.compressible || accepted === undefined) return undefined
+
+  const offered = new Map<string, number>()
+
+  for (const part of accepted.split(',')) {
+    const [name, ...parameters] = part.trim().split(';')
+
+    if (name === undefined || name === '') continue
+
+    const quality = parameters
+      .map((parameter) => /^\s*q=([0-9.]+)\s*$/.exec(parameter))
+      .find((match) => match !== null)
+
+    offered.set(
+      name.toLowerCase(),
+      quality === null || quality === undefined ? 1 : Number(quality[1]),
+    )
+  }
+
+  const wanted = (name: string): boolean => (offered.get(name) ?? offered.get('*') ?? 0) > 0
+
+  if (wanted('br')) return 'br'
+  if (wanted('gzip')) return 'gzip'
+
+  return undefined
+}
+
+/**
+ * The validator for the representation actually being sent.
+ *
+ * The encoding is part of it, in the spelling Apache has used for twenty years. Two
+ * responses carrying one `ETag` are supposed to be byte-identical, and the gzipped
+ * file and the file are not — a proxy holding both under one tag will eventually
+ * hand the wrong one to somebody.
+ */
+const taggedFor = (asset: ServedAsset, encoding: string | undefined): string =>
+  encoding === undefined ? asset.etag : `${asset.etag.slice(0, -1)}-${encoding}"`
+
+/** Whether the client already holds this exact representation. */
+const isUnchanged = (request: FastifyRequest, etag: string, modifiedAt: Date): boolean => {
+  const noneMatch = headerOf(request, 'if-none-match')
+
+  // Checked first and alone: a validator is stronger than a date, so a client that
+  // sent both is answered on the tag and the date is not consulted at all.
+  if (noneMatch !== undefined) {
+    return noneMatch
+      .split(',')
+      .map((candidate) => candidate.trim())
+      .some((candidate) => candidate === '*' || candidate === etag || candidate === `W/${etag}`)
+  }
+
+  const since = headerOf(request, 'if-modified-since')
+
+  if (since === undefined) return false
+
+  const asked = Date.parse(since)
+
+  if (Number.isNaN(asked)) return false
+
+  // An HTTP date has one-second resolution and a filesystem has more, so the file's
+  // time is rounded down to compare. Without that, a file written at 12:00:00.500 is
+  // newer than the 12:00:00 the client was told, forever.
+  return Math.floor(modifiedAt.getTime() / 1000) * 1000 <= asked
 }
 
 const cookieValue = (header: string, name: string): string | undefined => {
@@ -1247,12 +1330,47 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
           })
         }
 
-        return await reply
-          .status(200)
+        // Chosen before the validator is built, because the two are one answer: a
+        // cache keyed on an `ETag` that did not name the encoding would hand gzipped
+        // bytes to a client that asked for none.
+        const encoding = chosenEncoding(headerOf(request, 'accept-encoding'), found)
+        const etag = taggedFor(found, encoding)
+
+        reply
           .header('content-type', found.contentType)
           .header('cache-control', found.cacheControl)
-          .header('content-length', found.size)
-          .send(found.stream())
+          .header('etag', etag)
+          .header('last-modified', found.modifiedAt.toUTCString())
+
+        // Said whenever the answer *could* have been encoded, not only when it was.
+        // A shared cache that stored the identity response without this would serve
+        // it to everybody, including the clients that could have had the small one.
+        if (found.compressible) reply.header('vary', 'accept-encoding')
+
+        if (isUnchanged(request, etag, found.modifiedAt)) {
+          // No body, and no `content-length`: the header describes the body that is
+          // not being sent, and a client that reads it as the file's length is what
+          // a truncated asset looks like.
+          return await reply.status(304).send()
+        }
+
+        if (encoding === undefined) {
+          return await reply.status(200).header('content-length', found.size).send(found.stream())
+        }
+
+        // Length is unknown until the bytes are compressed, and buffering the whole
+        // file to learn it is the opposite of what this saves. Fastify sends it
+        // chunked, which is what every static server does with a compressed body.
+        const compressor = encoding === 'br' ? createBrotliCompress() : createGzip()
+
+        void pipeline(found.stream(), compressor).catch(() => {
+          // The response is already streaming, so there is no status left to change.
+          // Destroying it is what tells the client the body is incomplete rather than
+          // letting it read a truncated file as the whole one.
+          compressor.destroy()
+        })
+
+        return await reply.status(200).header('content-encoding', encoding).send(compressor)
       }
 
       // `/studio` and `/studio/` are the same document, and a browser sends both.

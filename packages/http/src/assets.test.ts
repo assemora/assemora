@@ -11,7 +11,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { assetCacheControl, assetContentType, findAsset, resolveAsset } from './assets.js'
+import {
+  assetCacheControl,
+  assetContentType,
+  assetETag,
+  findAsset,
+  IMMUTABLE,
+  isCompressible,
+  resolveAsset,
+} from './assets.js'
 
 let root: string
 /** What lives beside the bundle. A deploy directory, a checkout, a home directory. */
@@ -24,8 +32,14 @@ beforeAll(async () => {
   await mkdir(root, { recursive: true })
   await writeFile(join(root, 'index.html'), '<!doctype html><title>Studio</title>')
   await mkdir(join(root, 'assets'), { recursive: true })
-  await writeFile(join(root, 'assets', 'main-8f3a1c2b.js'), 'console.log(1)')
+  // The names Rollup actually writes: base64url, not hexadecimal. The pattern this
+  // used to be tested against wanted `main-8f3a1c2b.js`, which no bundler in this
+  // repository has ever produced.
+  await writeFile(join(root, 'assets', 'index-BRIFoUvp.js'), 'console.log(1)')
   await writeFile(join(root, 'assets', 'style.css'), 'body{}')
+  // Copied from `public/` and so not fingerprinted, which is the whole reason the
+  // rule is about the directory rather than the name.
+  await writeFile(join(root, 'favicon.svg'), '<svg/>')
   await writeFile(join(root, 'notes.rtf'), 'nothing a browser should render')
 
   // The two shapes a real directory grows: a dotfile that ended up beside the bundle,
@@ -41,7 +55,7 @@ beforeAll(async () => {
 
 describe('finding the file a request means', () => {
   it('serves a file that is there', async () => {
-    const found = await findAsset({ path: '/studio', root }, 'assets/main-8f3a1c2b.js')
+    const found = await findAsset({ path: '/studio', root }, 'assets/index-BRIFoUvp.js')
 
     expect(found?.contentType).toBe('text/javascript; charset=utf-8')
   })
@@ -135,12 +149,53 @@ describe('what a browser is told', () => {
     expect(assetContentType('/x/notes.rtf')).toBe('application/octet-stream')
   })
 
-  it('keeps a fingerprinted asset forever', () => {
-    expect(assetCacheControl('/x/main-8f3a1c2b.js')).toBe('public, max-age=31536000, immutable')
+  it('keeps what the bundler fingerprinted, whatever the hash is spelled in', () => {
+    // Base64url, which is what Rollup writes. The rule never reads the hash — that is
+    // the point — but these are the names it has to hold for.
+    expect(assetCacheControl('assets/index-BRIFoUvp.js', 'assets/')).toBe(IMMUTABLE)
+    expect(assetCacheControl('assets/inter-latin-wght-normal-Dx4kXJAl.woff2', 'assets/')).toBe(
+      IMMUTABLE,
+    )
+    // And the older hexadecimal spelling, which the rule is equally uninterested in.
+    expect(assetCacheControl('assets/main-8f3a1c2b.js', 'assets/')).toBe(IMMUTABLE)
   })
 
   it('never keeps the entry document, or a deploy leaves browsers on the old one', () => {
-    expect(assetCacheControl('/x/index.html')).toBe('no-cache')
-    expect(assetCacheControl('/x/style.css')).toBe('no-cache')
+    expect(assetCacheControl('index.html', 'assets/')).toBe('no-cache')
+  })
+
+  /**
+   * The reason this is a directory and not a pattern.
+   *
+   * `public/` is copied to the root under the name somebody chose, and those names
+   * are written in the same alphabet a hash is. No rule reading `photo-20260903.jpg`
+   * can tell it from a fingerprint — and guessing wrong pins it in every browser's
+   * cache for a year, with nothing the deployment can do to reach it.
+   */
+  it('keeps nothing outside that directory, however hashed the name looks', () => {
+    expect(assetCacheControl('photo-20260903.jpg', 'assets/')).toBe('no-cache')
+    expect(assetCacheControl('build-BRIFoUvp.js', 'assets/')).toBe('no-cache')
+  })
+
+  it('takes the directory the deployment names, and none if it names none', () => {
+    expect(assetCacheControl('_next/static/chunk.js', '_next/static')).toBe(IMMUTABLE)
+    expect(assetCacheControl('assets/index-BRIFoUvp.js', false)).toBe('no-cache')
+  })
+
+  it('changes its validator when the file changes, and not otherwise', () => {
+    expect(assetETag(1024, 1_700_000_000_000)).toBe(assetETag(1024, 1_700_000_000_000))
+    expect(assetETag(1024, 1_700_000_000_000)).not.toBe(assetETag(1025, 1_700_000_000_000))
+    expect(assetETag(1024, 1_700_000_000_000)).not.toBe(assetETag(1024, 1_700_000_000_001))
+    // Quoted, because an unquoted one is not an `ETag` and a strict cache ignores it.
+    expect(assetETag(1024, 1_700_000_000_000)).toMatch(/^"[0-9a-f]+-[0-9a-f]+"$/)
+  })
+
+  it('compresses what is text and leaves alone what already arrived compressed', () => {
+    expect(isCompressible('text/javascript; charset=utf-8')).toBe(true)
+    expect(isCompressible('application/json; charset=utf-8')).toBe(true)
+    expect(isCompressible('image/svg+xml')).toBe(true)
+    expect(isCompressible('font/woff2')).toBe(false)
+    expect(isCompressible('image/png')).toBe(false)
+    expect(isCompressible('application/octet-stream')).toBe(false)
   })
 })
