@@ -320,6 +320,17 @@ export const dynamicResource = (
         }
       }
 
+      // Ordering is always emitted, and is always total.
+      //
+      // Without an ORDER BY the row order is undefined, so LIMIT/OFFSET paging
+      // walks a heap the database is free to reorder between queries: page two
+      // can repeat a row from page one, or skip one entirely, and nothing about
+      // the response says so.
+      //
+      // `createdAt` alone is not enough either. It is not unique -- two entries
+      // written in the same millisecond tie, and the tie is broken arbitrarily,
+      // which is the same bug at smaller scale. `id` is the primary key, so
+      // appending it makes every ordering here total.
       if (query.sort !== undefined) {
         const descending = query.sort.startsWith('-')
         const field = descending ? query.sort.slice(1) : query.sort
@@ -331,8 +342,16 @@ export const dynamicResource = (
             message: `Dynamic entries sort by ${[...ENTRY_SORT_FIELDS].join(', ')} only`,
           })
         } else {
-          built = built.orderBy(field as 'createdAt', descending ? 'desc' : 'asc')
+          built = built
+            .orderBy(field as 'createdAt', descending ? 'desc' : 'asc')
+            // The caller's field decides the order the reader sees; `id` only
+            // decides the order of rows the caller's field cannot separate. It
+            // is not in ENTRY_SORT_FIELDS because a caller cannot ask for it --
+            // it is the tiebreaker, not a choice.
+            .orderBy('id' as 'createdAt', descending ? 'desc' : 'asc')
         }
+      } else {
+        built = built.orderBy('createdAt', 'asc').orderBy('id' as 'createdAt', 'asc')
       }
 
       if (issues.length > 0) throw new ValidationError(issues)

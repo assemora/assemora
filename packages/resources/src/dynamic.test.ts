@@ -314,6 +314,65 @@ describe('a dynamic resource behaves like any other', () => {
     expect(page).toMatchObject({ total: 3, perPage: 2, lastPage: 2 })
   })
 
+  it('pages through a collection returning every row exactly once', async () => {
+    // Without a total ORDER BY, LIMIT/OFFSET walks a heap the adapter is free to
+    // reorder between queries, so page two could repeat a row from page one or
+    // skip one entirely -- and nothing in the response would say so.
+    const { app, resource } = build()
+
+    const authors = ['Ada', 'Alan', 'Grace', 'Edsger', 'Barbara', 'Ken', 'Dennis']
+    for (const author of authors) await create(app, { author, quote: 'x' })
+
+    const seen: string[] = []
+    const first = await resource.list({ page: 1 })
+    for (let page = 1; page <= first.lastPage; page += 1) {
+      const result = await resource.list({ page })
+      for (const row of result.data) seen.push((row as { author: string }).author)
+    }
+
+    expect(seen).toHaveLength(authors.length)
+    expect(new Set(seen).size).toBe(authors.length)
+    expect([...seen].sort()).toEqual([...authors].sort())
+  })
+
+  it('answers in the same order every time when the caller sent no sort', async () => {
+    // Stability is the property paging needs, and it is weaker than insertion
+    // order on purpose: these three rows are written inside one millisecond, so
+    // `createdAt` ties and `id` breaks it -- and an id is a UUID, not a
+    // sequence. The order is therefore deterministic without being the order
+    // they were created in, which is exactly what "createdAt then id" buys.
+    const { app, resource } = build()
+
+    await create(app, { author: 'Ada', quote: 'x' })
+    await create(app, { author: 'Alan', quote: 'x' })
+    await create(app, { author: 'Grace', quote: 'x' })
+
+    const first = await resource.list({ perPage: 10 })
+    const second = await resource.list({ perPage: 10 })
+    const authors = (result: typeof first) =>
+      result.data.map((row) => (row as { author: string }).author)
+
+    expect(authors(first)).toHaveLength(3)
+    expect(authors(second)).toEqual(authors(first))
+  })
+
+  it('keeps the requested sort as the primary ordering', async () => {
+    // `id` is a tiebreaker, not a second sort key: it must not reorder rows the
+    // caller's field already separates.
+    const { app, resource } = build()
+
+    await create(app, { author: 'Ada', quote: 'x' })
+    await create(app, { author: 'Alan', quote: 'x' })
+    await create(app, { author: 'Grace', quote: 'x' })
+
+    const ascending = await resource.list({ sort: 'createdAt', perPage: 10 })
+    const descending = await resource.list({ sort: '-createdAt', perPage: 10 })
+
+    expect(descending.data.map((row) => (row as { author: string }).author)).toEqual(
+      [...ascending.data.map((row) => (row as { author: string }).author)].reverse(),
+    )
+  })
+
   it('refuses a filter the definition did not mark filterable', async () => {
     const { app, resource } = build()
     await create(app, { author: 'Ada', quote: 'x' })
