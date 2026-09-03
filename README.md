@@ -7,20 +7,55 @@ A TypeScript framework and CMS where one application layer serves the developer
 
 > Build visually. Extend with TypeScript. Control with AI.
 
-The full specification is [`SPEC.md`](SPEC.md) — the source of truth for product and
-architecture. Decisions already taken live in [`docs/adr/`](docs/adr/).
+![The Assemora Studio page builder: the block outline of a page on the left, the site rendered by its own frontend in the centre canvas, and the selected block's fields on the right](docs/media/studio-page-builder.png)
+
+## Try it
+
+Four commands, one process. It runs on an in-memory database, so there is nothing to
+install and nothing to clean up.
+
+```bash
+git clone https://github.com/assemora/assemora.git
+cd assemora
+pnpm install
+pnpm demo
+```
+
+That serves `examples/company` — a small site with three pages, seven block types, two
+resources and a theme — and prints where everything is:
+
+```text
+listening on http://127.0.0.1:3000
+  studio   http://127.0.0.1:3000/studio
+  site     http://127.0.0.1:3000/preview
+  public   http://127.0.0.1:3000/api/site/pages/home
+```
+
+Sign in as `admin@example.com`. The password is generated on the first boot and written
+to `examples/company/.env`:
+
+```bash
+grep ASSEMORA_SEED_PASSWORD examples/company/.env
+```
+
+`pnpm dev` is the other one: the playground on `:4000` and Studio's own dev server on
+`:5173`, which is how Studio itself is worked on.
 
 ## Status
 
-Early, and honest about it: nothing is published to npm yet and the public API is
-still free to change.
+Early, and honest about it: nothing is published to npm, so `pnpm create assemora` and
+`pnpm add assemora` have nothing to fetch, and the public API is still free to change.
+The way in is a checkout. Releasing is prepared and deliberately not done —
+[`docs/releasing.md`](docs/releasing.md) is the procedure.
 
-All ten phases are complete. `pnpm create assemora demo` writes a project that
-already has a database schema, REST CRUD, Studio, OpenAPI, the API Explorer, a typed
-SDK and an MCP server — and `tests/integration/v1.test.ts` asserts every one of those
-rather than taking them on trust (SPEC.md §124).
+All ten phases are complete. The scaffolder itself runs, and
+`tests/integration/v1.test.ts` asserts the database schema, the REST CRUD, Studio,
+OpenAPI, the API Explorer, the typed SDK and the MCP server rather than taking any of
+them on trust (SPEC.md §124). What it cannot yet do is install what it wrote.
 
-The guide is [`docs/guide/`](docs/guide/), and `apps/docs` renders it.
+The guide is [`docs/guide/`](docs/guide/), and `apps/docs` renders it. The full
+specification is [`SPEC.md`](SPEC.md), and decisions already taken live in
+[`docs/adr/`](docs/adr/).
 
 | Package | What it is |
 | --- | --- |
@@ -41,15 +76,31 @@ The guide is [`docs/guide/`](docs/guide/), and `apps/docs` renders it.
 | `@assemora/audit` | What happened, who did it, and how it ended |
 | `@assemora/change-sets` | What an agent proposed, previewed and not yet applied |
 | `@assemora/mcp` | Every command and query, as a tool, generated from the registry |
+| `@assemora/theme` | The theme as tokens, and the stylesheet they render to |
+| `@assemora/notifications` | What an application announces, to whom, over which channel |
+| `@assemora/queue-bullmq` | Jobs on Redis: the queue port of SPEC.md §82, implemented |
 | `@assemora/plugin` | A module an npm package ships, and what the registry says it added |
 | `@assemora/cli` | The `assemora` executable: generators, migrations, introspection |
 | `assemora` | The umbrella: one call assembles all of the above (SPEC.md §9) |
-| `create-assemora` | `pnpm create assemora my-project` |
+| `create-assemora` | The scaffolder behind `pnpm create assemora my-project` |
 
 Studio (`apps/studio`) is a client of that layer and holds no list of collections,
 no hand-written form and no list of block types: it asks the Schema Registry what
 exists and renders that. `apps/playground` is the reference application it is
 developed against.
+
+![The Studio dashboard: counts of resources, models, commands, endpoints and blocks read from the Schema Registry, above a card for each declared resource](docs/media/studio-dashboard.png)
+
+Every number and every card on the first screen is read from the Schema Registry. Add
+`resource(Dish, …)` to the application and it appears here, in the sidebar, in the
+command palette and in the API Explorer, with no edit to Studio.
+
+![The Proposals screen in Studio: a change set proposed by an agent, opened to show one line per change, with Apply and Reject](docs/media/studio-proposals.png)
+
+An agent proposes and a person decides. That row was made over MCP, by a tool call that
+wrote nothing: the line under it is read off a diff produced by running the command for
+real and rolling the transaction back, so a preview cannot disagree with the write it
+predicts. `docs/media/README.md` has the two requests that produce it.
 
 ```ts
 export const User = model('users', {
@@ -138,7 +189,7 @@ rather than a silent skip.
 ## Layout
 
 ```text
-packages/     21 framework packages with fixed boundaries
+packages/     24 framework packages with fixed boundaries
 apps/         studio/, playground/, docs/
 starters/     bare — what `create-assemora` writes; nextjs — Assemora behind Next
 examples/     blog — relations, scopes, policies; company — the block tree and a theme
