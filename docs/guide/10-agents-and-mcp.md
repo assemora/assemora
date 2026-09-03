@@ -63,7 +63,7 @@ Calling `assemora.blocks.update` previews the command and stores a change set. T
 gets the diff back:
 
 ```text
-assemora.blocks.update  →  { status: 'pending', changes: ['hero — title changed'] }
+assemora.blocks.update  →  { status: 'pending', changes: [{ summary: 'hero — subtitle changed', … }] }
 ```
 
 Production state changes when a **person** runs `changesets.apply`. SPEC.md §75 says so

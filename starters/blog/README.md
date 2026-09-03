@@ -146,6 +146,20 @@ every resource, page operation and command this project declares — and nothing
 A mutation is a **proposal**, not a write. An agent previews, a person reads the diff
 and applies it, and both halves are recorded in the revision history and the audit log
 (SPEC.md §75). `mcp: { mutations: 'direct' }` in `src/app.ts` is the deliberate opt-out.
+
+Connecting one takes a command. An MCP session is somebody, and an anonymous one
+reaches every tool with no permissions at all:
+
+```bash
+pnpm assemora agents:create "Content agent" \
+  --permissions pages.read,blocks.update,changesets.propose \
+  --actor <your user id> --write-mcp-json
+```
+
+That creates the identity, writes the token into `.env`, and writes the `.mcp.json` a
+client reads — which holds no credential of its own, so it is safe to commit. `pnpm
+assemora mcp` is what the client then starts: the same tools over stdin and stdout.
+
 <!-- assemora:end -->
 
 <!-- assemora:if !pages -->

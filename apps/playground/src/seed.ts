@@ -31,8 +31,12 @@ export const ADMIN_PASSWORD = 'correct horse battery staple'
 const AGENT_PERMISSIONS = [
   'assemora.describe',
   'pages.read',
-  'pages.list',
-  'blocks.update',
+  // `pages.update`, not `blocks.update`: a command name is a permission name, and
+  // `blocks.update` declares `pages` as its subject because it edits one — so editing
+  // a block takes the same one permission editing the page does, rather than two with
+  // different names for one act (ADR-0015). Granting `blocks.update` grants nothing,
+  // and the agent that had it was refused by the only tool it existed to call.
+  'pages.update',
   'changesets.propose',
 ]
 

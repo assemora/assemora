@@ -13,7 +13,7 @@
  * from anywhere else (ADR-0021). What this adds is the part a terminal is good at —
  * showing the token once, and writing the file a client reads.
  */
-import { writeFile } from 'node:fs/promises'
+import { chmod, readFile, writeFile } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 
 import type { Actor, ContextInit } from '@assemora/core'
@@ -23,11 +23,15 @@ import { loadConfig } from '../config.js'
 import { detail, fail, line, ok, warn } from '../output.js'
 import { loadApplication } from '../project.js'
 import { type CommandHandler, defineCommand, register } from '../registry.js'
+import { TOKEN_VARIABLE } from './mcp.js'
 
 const CREATE = 'auth.agents.create'
 
 /** Where `--write-mcp-json` writes when it is given no path. */
 export const MCP_CONFIG_FILE = '.mcp.json'
+
+/** Where a project keeps its secrets, and where the token goes. */
+export const ENV_FILE = '.env'
 
 /**
  * The permissions, from a comma-separated list.
@@ -46,23 +50,53 @@ export const permissionsOf = (args: ParsedArgs): readonly string[] =>
     .filter((entry) => entry !== '')
 
 /**
- * The client configuration, as a client reads it.
+ * The client configuration, as a client reads it — and with no credential in it.
  *
- * `pnpm assemora mcp` rather than a path: the executable is a dependency of the
- * project rather than a global one, and the package manager that put it there is the
- * one thing this file cannot know from the outside. `cwd` is written absolute, because
- * a client starts the process from wherever it happens to be.
+ * `pnpm assemora mcp` rather than a path: the executable is a dependency of the project
+ * rather than a global one, and the package manager that put it there is the one thing
+ * this file cannot know from the outside. `cwd` is written absolute, because a client
+ * starts the process from wherever it happens to be.
+ *
+ * No `env`, deliberately. The token would make this a secret file, and it is the file
+ * most likely to be committed: it is the project's client configuration, it is the same
+ * for everybody working on it, and it is the sort of thing somebody adds to a
+ * repository without thinking. So the token goes where this project already keeps its
+ * secrets — `.env`, which is gitignored and which the project reads as it is imported —
+ * and the process the client starts inherits it.
  */
-export const mcpConfig = (project: string, name: string, token: string) => ({
+export const mcpConfig = (project: string, name: string) => ({
   mcpServers: {
     [name]: {
       command: 'pnpm',
       args: ['assemora', 'mcp'],
       cwd: project,
-      env: { ASSEMORA_AGENT_TOKEN: token },
     },
   },
 })
+
+/**
+ * Writes `name=value` into a project's `.env`, replacing whatever that name said.
+ *
+ * Replacing rather than appending: a second agent for the same project is the ordinary
+ * case, and a file that grew a line each time would end up a column of dead
+ * credentials with no way to tell which one is live. Every other line is carried
+ * through untouched, so a `.env` written by hand keeps its comments and its order.
+ */
+export const remember = async (file: string, name: string, value: string): Promise<void> => {
+  const existing = await readFile(file, 'utf8').catch(() => '')
+
+  const kept = existing
+    .split('\n')
+    .filter((line) => !line.startsWith(`${name}=`))
+    .join('\n')
+    .trimEnd()
+
+  await writeFile(file, `${kept === '' ? '' : `${kept}\n`}${name}=${value}\n`, { mode: 0o600 })
+
+  // `writeFile`'s mode applies only to a file it creates, so an existing `.env` keeps
+  // whatever permissions it had. Narrow it either way: it holds a credential now.
+  await chmod(file, 0o600)
+}
 
 /** `Content agent` becomes `content-agent`, which is what a client shows in a list. */
 const slug = (name: string): string =>
@@ -151,26 +185,22 @@ const agentsCreate: CommandHandler = async ({ args, cwd }) => {
   warn('That token is shown once. It is stored hashed, so nothing can print it again.')
 
   if (!bool(args, 'write-mcp-json')) {
-    detail('assemora agents:create --write-mcp-json writes the client configuration for it.')
+    detail(`Put it in .env as ${TOKEN_VARIABLE}, or pass --write-mcp-json next time.`)
 
     return 0
   }
 
   const target = resolve(cwd, flag(args, 'write-mcp-json') ?? MCP_CONFIG_FILE)
 
-  await writeFile(
-    target,
-    `${JSON.stringify(mcpConfig(cwd, slug(name), created.token), null, 2)}\n`,
-    {
-      // The token is in it, so it is a secret file from the moment it exists rather than
-      // from whenever somebody remembers.
-      mode: 0o600,
-    },
-  )
+  // Two files, and the split is the point: the credential goes where this project
+  // already keeps its secrets, and the client configuration — which is the same for
+  // everybody working here and is the sort of file that gets committed — holds none.
+  await remember(resolve(cwd, ENV_FILE), TOKEN_VARIABLE, created.token)
+  await writeFile(target, `${JSON.stringify(mcpConfig(cwd, slug(name)), null, 2)}\n`)
 
   line()
-  ok(`Wrote ${relative(cwd, target) || target}`)
-  detail('It holds the token. Keep it out of git.')
+  ok(`Wrote ${ENV_FILE} and ${relative(cwd, target) || target}`)
+  detail(`${ENV_FILE} holds the token and is the one to keep out of git.`)
 
   return 0
 }

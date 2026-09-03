@@ -82,10 +82,9 @@ the one `assemora({ mcp: true })` already built, so a stdio session is the same 
 tools past the same seven checks as a call to `POST /api/mcp`; nothing about the protocol
 lives in the CLI.
 
-It needs two things. `ASSEMORA_AGENT_TOKEN` in the environment, because a pipe carries no
-headers and an anonymous session would reach every tool with no permissions at all —
-`assemora agents:create` below is where that token comes from, and `--write-mcp-json`
-writes the block underneath for you. And a config whose
+It needs two things. `ASSEMORA_AGENT_TOKEN`, because a pipe carries no headers and an
+anonymous session would reach every tool with no permissions at all — in `.env` is the
+ordinary place, and `assemora agents:create --write-mcp-json` below puts it there. And a config whose
 `app()` hands back the whole application rather than `createApp().app`: the `.app` on the
 end drops the half that speaks the protocol, and the command says so if it finds one.
 
@@ -99,8 +98,7 @@ pushes nothing", and the version the session settled on comes back on every answ
     "my-project": {
       "command": "pnpm",
       "args": ["assemora", "mcp"],
-      "cwd": "/path/to/my-project",
-      "env": { "ASSEMORA_AGENT_TOKEN": "agt_…" }
+      "cwd": "/path/to/my-project"
     }
   }
 }
@@ -116,8 +114,11 @@ Bus, so it is authorized and audited like anything else — pass `--actor <user 
 an actor cannot hand an agent a permission it does not hold itself.
 
 The token is printed once and stored as a digest, so nothing can print it again.
-`--write-mcp-json` writes the client configuration beside it, at mode 0600, with the
-token in it:
+`--write-mcp-json` writes two files, and the split is the point: the token goes into
+`.env`, at mode 0600, where this project already keeps its secrets and where it is read
+as the project is imported; and `.mcp.json` — the client configuration, which is the
+same for everybody working here and is the sort of file that gets committed — holds no
+credential at all.
 
 ```bash
 assemora agents:create "Content agent" \

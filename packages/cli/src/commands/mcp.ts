@@ -106,18 +106,24 @@ export const serveMcp = async (
 }
 
 const mcpCommand: CommandHandler = async ({ cwd }) => {
+  // Loaded before the token is looked for, and the order is the whole point: a project
+  // reads its own `.env` as it is imported — that is what makes one file serve `dev`,
+  // `db:migrate` and everything else — so a token kept there is not in the environment
+  // until this line has run. Asked for first, this command told a developer that
+  // `ASSEMORA_AGENT_TOKEN` was unset while they were looking at it in `.env`.
+  const loaded = await loadConfig(cwd)
+  const project = await loadProject(loaded)
+
   const token = process.env[TOKEN_VARIABLE]
 
   if (token === undefined || token.trim() === '') {
     throw new ConfigurationError(
-      `${TOKEN_VARIABLE} is not set, and an MCP session is somebody. Create an agent and ` +
-        'use the token it answers with — an anonymous caller reaches every tool with no ' +
-        'permissions at all, which is a confusing way to be refused.',
+      `${TOKEN_VARIABLE} is not set, and an MCP session is somebody. Put it in .env, or ` +
+        'run `assemora agents:create <name> --permissions … --write-mcp-json`, which ' +
+        'creates the identity and writes both — an anonymous caller reaches every tool ' +
+        'with no permissions at all, which is a confusing way to be refused.',
     )
   }
-
-  const loaded = await loadConfig(cwd)
-  const project = await loadProject(loaded)
 
   if (project.mcp === undefined) {
     throw new ConfigurationError(

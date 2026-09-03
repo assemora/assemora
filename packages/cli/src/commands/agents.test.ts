@@ -48,7 +48,7 @@ describe('the permissions an invocation asks for', () => {
 })
 
 describe('the file a client reads', () => {
-  const written = mcpConfig('/work/my-project', 'content-agent', 'agt_secret')
+  const written = mcpConfig('/work/my-project', 'content-agent')
 
   it('names the server after the agent, so a client can tell two apart', () => {
     expect(Object.keys(written.mcpServers)).toEqual(['content-agent'])
@@ -65,10 +65,18 @@ describe('the file a client reads', () => {
     })
   })
 
-  it('carries the token in the environment, where the command reads it', () => {
-    expect(written.mcpServers['content-agent']?.env).toEqual({
-      ASSEMORA_AGENT_TOKEN: 'agt_secret',
-    })
+  /**
+   * The whole reason the token is not here.
+   *
+   * This file is the project's client configuration: the same for everybody working on
+   * it, and the sort of thing somebody adds to a repository without thinking. So it
+   * holds no credential, and the token goes to `.env` — gitignored, and read by the
+   * project as it is imported, which is what puts it in the environment of the process
+   * a client starts.
+   */
+  it('carries no credential at all', () => {
+    expect(JSON.stringify(written)).not.toContain('TOKEN')
+    expect(written.mcpServers['content-agent']).not.toHaveProperty('env')
   })
 
   it('is JSON a client can parse, holding nothing else', () => {

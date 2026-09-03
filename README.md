@@ -155,12 +155,60 @@ it previews the command, stores a change set, and hands back the diff. Productio
 state changes when a person applies it.
 
 ```text
-assemora.blocks.update  →  { status: 'pending', changes: ['hero — title changed'] }
+assemora.blocks.update  →  { status: 'pending', changes: [{ summary: 'hero — subtitle changed', … }] }
 ```
 
 The seven checks of SPEC.md §76 are not reimplemented for agents. A tool call is the
 same bus call Studio makes, so it passes the same validation, permissions, policies,
 field permissions and audit.
+
+## Talk to it from Claude
+
+Two commands. The first creates the identity an agent connects as — a session is
+somebody, and an anonymous one reaches every tool with no permissions at all:
+
+```bash
+pnpm assemora agents:create "Content agent" \
+  --permissions pages.read,blocks.update,changesets.propose \
+  --actor <your user id> --write-mcp-json
+```
+
+It prints the token once, writes it into `.env`, and writes the `.mcp.json` a client
+reads — which holds no credential of its own:
+
+```json
+{
+  "mcpServers": {
+    "content-agent": {
+      "command": "pnpm",
+      "args": ["assemora", "mcp"],
+      "cwd": "/path/to/my-project"
+    }
+  }
+}
+```
+
+`assemora mcp` is the server the client starts: the same generated tools over stdin and
+stdout, which is the transport Claude Code, Claude Desktop and Cursor speak. The HTTP
+endpoint is the other way in, for a client that prefers it — `POST /api/mcp`, with
+`GET` answering 405 because this server pushes nothing.
+
+Then the loop, as an agent sees it:
+
+```text
+assemora.describe        →  { models: […], resources: […], commands: […], policies: […] }
+assemora.pages.get       →  { slug: 'home', tree: { blocks: [{ type: 'hero', … }] } }
+assemora.blocks.update   →  { status: 'pending',
+                              changes: [{ summary: 'hero — subtitle changed', … }] }
+                            nothing has changed yet
+assemora.changesets.propose  ← several commands, under a name the agent chose
+                            a person opens Proposals, reads the diff, and applies it
+```
+
+Every line of that runs in CI. [`tests/integration/agent-e2e.test.ts`](tests/integration/agent-e2e.test.ts)
+is the scenario of SPEC.md §97 over real JSON-RPC, and
+[`tests/integration/mcp-transport.test.ts`](tests/integration/mcp-transport.test.ts)
+connects with the MCP SDK's own client rather than with curl.
 
 ## Requirements
 
