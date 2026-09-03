@@ -10,6 +10,7 @@ import type { Catalogue } from '../catalogue.ts'
 
 export const COMMON = {
   // --- controls ---------------------------------------------------------------
+  'common.save': { en: 'Save', uk: 'Зберегти', ru: 'Сохранить' },
   'common.saving': { en: 'Saving…', uk: 'Зберігаємо…', ru: 'Сохраняем…' },
   'common.cancel': { en: 'Cancel', uk: 'Скасувати', ru: 'Отмена' },
   'common.create': { en: 'Create', uk: 'Створити', ru: 'Создать' },

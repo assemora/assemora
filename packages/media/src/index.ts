@@ -10,7 +10,7 @@ import { mediaCommands } from './commands.js'
 import { mediaModels } from './models.js'
 import { mediaQueries } from './queries.js'
 
-export { DeleteMedia, mediaCommands, UploadMedia } from './commands.js'
+export { DeleteMedia, mediaCommands, UpdateMedia, UploadMedia } from './commands.js'
 export { safeContentType } from './content-type.js'
 export { Media, mediaModels } from './models.js'
 export { GetMedia, ListMedia, mediaQueries } from './queries.js'

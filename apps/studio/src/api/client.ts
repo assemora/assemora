@@ -252,9 +252,50 @@ const toBase64 = (bytes: Uint8Array): string => {
 }
 
 /** Uploads bytes, which JSON has no way to carry but base64. */
-export const upload = async (file: File): Promise<{ id: string; url: string }> =>
-  await api.command('media.upload', {
+/**
+ * How wide and how tall, read from the file rather than asked of anybody.
+ *
+ * The columns exist and were null for every file ever uploaded, because nothing on
+ * either side measured. The browser can, and it is the only participant that holds
+ * the decoded image — so it answers here rather than offering a person two boxes to
+ * type numbers into, which is a person entering numbers that are wrong.
+ *
+ * It answers with nothing rather than throwing: a file the browser cannot decode is
+ * an ordinary thing to store, and a PDF has no dimensions to record.
+ */
+const measure = async (file: File): Promise<{ width: number; height: number } | undefined> => {
+  if (!file.type.startsWith('image/')) return undefined
+
+  const source = URL.createObjectURL(file)
+
+  try {
+    const image = new Image()
+
+    await new Promise((resolve, reject) => {
+      image.addEventListener('load', resolve, { once: true })
+      image.addEventListener('error', reject, { once: true })
+      image.src = source
+    })
+
+    return image.naturalWidth > 0
+      ? { width: image.naturalWidth, height: image.naturalHeight }
+      : undefined
+  } catch {
+    // An SVG with no intrinsic size, a format this browser does not decode, a file
+    // that is not the image its type claims. None of those stop it being stored.
+    return undefined
+  } finally {
+    URL.revokeObjectURL(source)
+  }
+}
+
+export const upload = async (file: File): Promise<{ id: string; url: string }> => {
+  const measured = await measure(file)
+
+  return await api.command('media.upload', {
     filename: file.name,
     mimeType: file.type === '' ? 'application/octet-stream' : file.type,
     data: toBase64(new Uint8Array(await file.arrayBuffer())),
+    ...(measured ?? {}),
   })
+}

@@ -36,7 +36,11 @@ export const ListMedia = query('media.list', {
     perPage: number().integer().optional(),
   },
   handle: async ({ search, type, page, perPage }) => {
-    let found = Media.orderBy('createdAt', 'desc')
+    // `id` underneath, so the ordering is total: two files uploaded in the same
+    // millisecond tie on `createdAt`, and two rows that tie are two rows the database
+    // may return in either order — differently on each of the two queries a page is
+    // made of. Page two would then repeat one and skip another.
+    let found = Media.orderBy('createdAt', 'desc').orderBy('id', 'asc')
 
     if (search !== undefined && search !== '') found = found.whereLike('filename', `%${search}%`)
     if (type !== undefined && type !== '') found = found.whereLike('mimeType', `${type}%`)

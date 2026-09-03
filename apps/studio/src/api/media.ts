@@ -39,6 +39,23 @@ export const useUpload = () => {
   })
 }
 
+/** What the library records about a file, as against the bytes themselves. */
+export type MediaEdit = {
+  readonly alt?: string | null
+  readonly width?: number | null
+  readonly height?: number | null
+}
+
+export const useUpdateMedia = () => {
+  const client = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, ...changes }: MediaEdit & { id: string }) =>
+      api.command('media.update', { id, ...changes }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['media'] }),
+  })
+}
+
 export const useDeleteMedia = () => {
   const client = useQueryClient()
 

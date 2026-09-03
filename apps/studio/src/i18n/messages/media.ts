@@ -18,6 +18,18 @@ export const MEDIA = {
   'media.sizeLabel': { en: 'Size', uk: 'Розмір', ru: 'Размер' },
   'media.url': { en: 'URL', uk: 'Адреса', ru: 'Адрес' },
   'media.file': { en: 'file', uk: 'файл', ru: 'файл' },
+  'media.alt': { en: 'Alt text', uk: 'Опис зображення', ru: 'Описание изображения' },
+  'media.altHelp': {
+    en: 'What the image says to somebody who cannot see it. Leave it empty only when the image is decorative.',
+    uk: 'Що зображення повідомляє тому, хто його не бачить. Порожнім лишайте, лише якщо воно декоративне.',
+    ru: 'Что изображение сообщает тому, кто его не видит. Пустым оставляйте, только если оно декоративное.',
+  },
+  'media.altMissing': { en: 'Not described', uk: 'Без опису', ru: 'Без описания' },
+  'media.altPlaceholder': {
+    en: 'Ada Lovelace at a writing desk',
+    uk: 'Ада Лавлейс за письмовим столом',
+    ru: 'Ада Лавлейс за письменным столом',
+  },
   'media.confirmDelete': {
     en: 'Delete {name}?',
     uk: 'Видалити «{name}»?',

@@ -2,7 +2,7 @@
  * The media library (SPEC.md §63, §115).
  */
 import { Image as ImageIcon } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   isImage,
@@ -10,15 +10,28 @@ import {
   readableSize,
   useDeleteMedia,
   useMedia,
+  useUpdateMedia,
   useUpload,
 } from '../api/media.ts'
 import { Page } from '../app/shell.tsx'
 import { useT } from '../i18n/translate.tsx'
-import { Button, Card, Empty, Failure, Spinner } from '../ui/index.tsx'
+import { Button, Card, Empty, Failure, Field, Spinner, Textarea } from '../ui/index.tsx'
 
 const Details = ({ item, onClose }: { item: MediaItem; onClose(): void }) => {
   const remove = useDeleteMedia()
+  const save = useUpdateMedia()
   const t = useT()
+  const [alt, setAlt] = useState(item.alt ?? '')
+
+  // Selecting another file replaces what this panel is about, and the box has to
+  // follow — otherwise one image's description sits in the field over the next one
+  // and is saved onto it by the button underneath.
+  useEffect(() => {
+    setAlt(item.alt ?? '')
+  }, [item.alt])
+
+  const stored = item.alt ?? ''
+  const changed = alt !== stored
 
   return (
     <aside className="w-72 shrink-0 space-y-4 border-l border-line bg-surface p-5">
@@ -52,6 +65,38 @@ const Details = ({ item, onClose }: { item: MediaItem; onClose(): void }) => {
         </div>
       </dl>
 
+      {/*
+       * Only for an image, because that is what alt text is for. A PDF or a video
+       * offered one would be asking for a description nothing renders.
+       */}
+      {isImage(item) && (
+        <div className="space-y-2">
+          <Field label={t('media.alt')} help={t('media.altHelp')}>
+            <Textarea
+              rows={3}
+              value={alt}
+              placeholder={t('media.altPlaceholder')}
+              onChange={(event) => setAlt(event.target.value)}
+            />
+          </Field>
+
+          {save.isError && <Failure error={save.error} />}
+
+          <Button
+            size="sm"
+            disabled={!changed || save.isPending}
+            onClick={() =>
+              // An empty box means "this image is decorative", which is a claim a
+              // screen reader acts on — so it is stored as the empty string it was
+              // typed as, and never as the `null` that means nobody has said yet.
+              save.mutate({ id: item.id, alt })
+            }
+          >
+            {save.isPending ? t('common.saving') : t('common.save')}
+          </Button>
+        </div>
+      )}
+
       <div className="flex gap-2">
         <Button variant="secondary" size="sm" onClick={onClose}>
           {t('common.close')}
@@ -77,8 +122,13 @@ const Details = ({ item, onClose }: { item: MediaItem; onClose(): void }) => {
 export const MediaLibrary = () => {
   const t = useT()
   const [page, setPage] = useState(1)
-  const [selected, setSelected] = useState<MediaItem>()
+  // The id rather than the item. Holding the object means holding a snapshot: saving
+  // alt text invalidates the listing and the grid redraws, while the panel goes on
+  // showing what was true when it was opened — and its Save button stays lit, because
+  // it is comparing the box against a value that has already been written.
+  const [selectedId, setSelectedId] = useState<string>()
   const media = useMedia(page)
+  const selected = media.data?.data.find((item) => item.id === selectedId)
   const uploading = useUpload()
   const input = useRef<HTMLInputElement>(null)
 
@@ -124,11 +174,11 @@ export const MediaLibrary = () => {
                   type="button"
                   className={[
                     'space-y-1.5 rounded-lg border p-2 text-left transition',
-                    selected?.id === item.id
+                    selectedId === item.id
                       ? 'border-accent ring-1 ring-accent'
                       : 'border-line hover:border-ink-faint',
                   ].join(' ')}
-                  onClick={() => setSelected(item)}
+                  onClick={() => setSelectedId(item.id)}
                 >
                   {isImage(item) ? (
                     <img
@@ -143,6 +193,14 @@ export const MediaLibrary = () => {
                   )}
                   <span className="block truncate text-sm font-medium">{item.filename}</span>
                   <span className="block text-sm text-ink-faint">{readableSize(item.size, t)}</span>
+                  {/*
+                   * Said on the card, because finding the images nobody has described
+                   * is the reason somebody opens this screen after the fact — and an
+                   * absence is invisible unless something draws it.
+                   */}
+                  {isImage(item) && (item.alt === null || item.alt === '') && (
+                    <span className="block text-sm text-warning">{t('media.altMissing')}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -174,7 +232,9 @@ export const MediaLibrary = () => {
         </Page>
       </div>
 
-      {selected !== undefined && <Details item={selected} onClose={() => setSelected(undefined)} />}
+      {selected !== undefined && (
+        <Details item={selected} onClose={() => setSelectedId(undefined)} />
+      )}
     </div>
   )
 }
