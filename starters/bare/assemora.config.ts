@@ -14,7 +14,7 @@ import { defineConfig } from '@assemora/cli'
 export default defineConfig({
   // Not booted: the CLI boots it, once per process, so two commands share one
   // application and one database pool.
-  app: () => import('./src/app.ts').then((module) => module.createApp().app),
+  app: () => import('./src/app.ts').then((module) => module.createApp()),
   server: 'src/server.ts',
   // Where `assemora sdk:generate` writes the typed client (SPEC.md §46).
   sdk: { out: 'src/generated/sdk.ts' },

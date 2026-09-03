@@ -47,7 +47,7 @@ have already been made — do not reverse one without writing a new ADR.
   SPEC.md §97 runs as `tests/integration/agent-e2e.test.ts`, over the protocol.
 
 - **Phase 10 (`@assemora/cli` + `create-assemora` + `assemora` + starters) — done.**
-  The twenty-two commands of SPEC.md §77, schema diffing behind `db:generate`, the
+  The commands of SPEC.md §77, schema diffing behind `db:generate`, the
   plugin API, the S3 storage driver, the umbrella of SPEC.md §9, the scaffolder, both
   starters, both examples and the guide. Every package now exports its real API.
 

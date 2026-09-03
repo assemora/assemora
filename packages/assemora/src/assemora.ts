@@ -86,6 +86,16 @@ export type AssemoraApplication = {
   /** `undefined` when `api: false`. */
   readonly server: HttpServer | undefined
   /**
+   * The MCP endpoint, when this application was assembled with one.
+   *
+   * Exposed because the route is not the only way in: `assemora mcp` serves the same
+   * endpoint over stdin and stdout, which is the transport every client that speaks
+   * this protocol actually uses. It is reached through here rather than built again,
+   * so a stdio session and an HTTP one are the same generated tools past the same
+   * checks (ADR-0021).
+   */
+  readonly mcp: MountedMcp | undefined
+  /**
    * Boots the application and mounts what needs a filesystem.
    *
    * The same boot, however often it is asked for and through whichever half of this
@@ -470,6 +480,7 @@ const serve = (
     settings.mcp === undefined
       ? undefined
       : mcpRoutes({
+          application: app,
           registry: app.registry,
           commands: app.commands,
           queries: app.queries,
@@ -863,6 +874,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   return {
     app: facade,
     server: served?.server,
+    mcp: served?.mcp,
     boot,
     work,
     shutdown,

@@ -10,7 +10,14 @@
  * and everything downstream — permissions, policies, field permissions, audit — reads
  * it from the context. That is why none of those checks appear in this file.
  */
-import { AssemoraError, type CommandBus, type QueryBus, type SchemaRegistry } from '@assemora/core'
+import { resolveActor } from '@assemora/auth'
+import {
+  type Application,
+  AssemoraError,
+  type CommandBus,
+  type QueryBus,
+  type SchemaRegistry,
+} from '@assemora/core'
 import { type Route, respond, route } from '@assemora/http'
 import {
   connectDirectly,
@@ -24,6 +31,15 @@ import { json } from '@assemora/schema'
 import type { RateWindow } from './options.js'
 
 export type McpRouteOptions = {
+  /**
+   * The application, for the one transport that has to establish its own context.
+   *
+   * A route arrives with one already: `@assemora/http` resolves the actor and opens
+   * the context before a handler sees anything. A message off a pipe arrives with
+   * neither, so `handle` opens its own — which is also why it is here and not in
+   * `@assemora/mcp`, a package that may not know what an actor is resolved from.
+   */
+  readonly application: Application
   readonly registry: SchemaRegistry
   readonly commands: CommandBus
   readonly queries: QueryBus
@@ -36,8 +52,26 @@ export type McpRouteOptions = {
 
 export type MountedMcp = {
   readonly routes: readonly Route[]
+  /**
+   * Answers one JSON-RPC message with no HTTP under it (SPEC.md §68).
+   *
+   * The route is one transport and stdio is another: `assemora mcp` is what a client
+   * that speaks over a pipe — Claude Code, Claude Desktop, Cursor — connects to, and
+   * it has no request to carry a header. So the credential arrives as an argument and
+   * everything after it is identical, because the actor is the only thing a transport
+   * owes the protocol.
+   *
+   * `undefined` for a notification, which JSON-RPC answers by not answering.
+   */
+  handle(message: unknown, credential: McpCredential): Promise<unknown>
   /** Closes the endpoint, so a stopped application leaves no server connected. */
   close(): Promise<void>
+}
+
+/** What a caller with no request presents instead of an `Authorization` header. */
+export type McpCredential = {
+  /** An agent token, as `auth.agents.create` issued it. */
+  readonly token: string
 }
 
 export const mcpRoutes = (options: McpRouteOptions): MountedMcp => {
@@ -61,7 +95,33 @@ export const mcpRoutes = (options: McpRouteOptions): MountedMcp => {
     return endpoint
   }
 
+  /**
+   * The refusal both transports give, worded once.
+   *
+   * An anonymous caller would reach the tools with no permissions at all, which is a
+   * confusing way to be refused: every tool would answer that it is not allowed, and
+   * none of them would say why.
+   */
+  const withoutAnAgent = () =>
+    new AssemoraError('UNAUTHORIZED', 'This endpoint needs an agent token', { status: 401 })
+
   return {
+    async handle(message, credential) {
+      // Resolved here because there is no server above this one to have done it. The
+      // header is synthesised rather than the resolver bypassed: one function decides
+      // what a credential means, and a second reading of the same string is how the
+      // two transports would come to disagree about who somebody is.
+      const actor = await resolveActor({ authorization: `Bearer ${credential.token}` })
+
+      if (actor === undefined) throw withoutAnAgent()
+
+      // `source: 'mcp'` for the reason the route sets it: the audit log tells an
+      // agent's door from everybody else's, and a pipe is the same door.
+      return options.application.run({ source: 'mcp', actor }, async () =>
+        (await connect()).handle(message),
+      )
+    },
+
     routes: [
       route.post(options.path, {
         description: 'The MCP endpoint. One JSON-RPC message per request',
@@ -82,11 +142,7 @@ export const mcpRoutes = (options: McpRouteOptions): MountedMcp => {
           //
           // An agent identity is the point: an anonymous caller would reach the tools
           // with no permissions at all, which is a confusing way to be refused.
-          if (actor === undefined) {
-            throw new AssemoraError('UNAUTHORIZED', 'This endpoint needs an agent token', {
-              status: 401,
-            })
-          }
+          if (actor === undefined) throw withoutAnAgent()
 
           const message = (request as { body?: unknown }).body
           const answered = await (await connect()).handle(message)

@@ -15,5 +15,6 @@ import './db.js'
 import './inspect.js'
 import './artifacts.js'
 import './console.js'
+import './mcp.js'
 
 import './make.js'

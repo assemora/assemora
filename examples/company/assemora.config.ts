@@ -8,6 +8,6 @@
 import { defineConfig } from '@assemora/cli'
 
 export default defineConfig({
-  app: () => import('./src/app.ts').then((module) => module.createApp().app),
+  app: () => import('./src/app.ts').then((module) => module.createApp()),
   server: 'src/server.ts',
 })

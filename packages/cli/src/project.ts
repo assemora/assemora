@@ -20,7 +20,7 @@ import type { LoadedConfig } from './config.js'
  * It is observable to a test that drives two projects in a row, and the alternative
  * there is the first project's application answering the second project's question.
  */
-const booted = new Map<string, Promise<Application>>()
+const booted = new Map<string, Promise<LoadedProject>>()
 
 const looksLikeApplication = (value: unknown): value is Application => {
   if (typeof value !== 'object' || value === null) return false
@@ -38,24 +38,74 @@ const looksLikeApplication = (value: unknown): value is Application => {
   )
 }
 
-const bootOnce = async (loaded: LoadedConfig): Promise<Application> => {
-  const created: unknown = await loaded.config.app()
+/**
+ * An endpoint a client can speak to over something that is not HTTP.
+ *
+ * Declared structurally and nowhere else. `assemora mcp` drives it and the CLI still
+ * imports no feature package — it is handed the thing by the project's own config, the
+ * way it is handed the application (ADR-0021).
+ */
+export type McpEndpoint = {
+  handle(message: unknown, credential: { readonly token: string }): Promise<unknown>
+}
 
-  if (!looksLikeApplication(created)) {
+/** What a config's `app()` turns out to have handed back. */
+export type LoadedProject = {
+  readonly application: Application
+  /** Present when the project assembled itself with `assemora()` and asked for MCP. */
+  readonly mcp: McpEndpoint | undefined
+}
+
+const looksLikeMcp = (value: unknown): value is McpEndpoint =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { handle?: unknown }).handle === 'function'
+
+/**
+ * What `app()` returned, whichever of the two shapes it is.
+ *
+ * A config may hand back the application itself, or the thing `assemora()` built around
+ * one. The second is worth accepting: `app: () => createApp().app` is the line every
+ * starter carries, and the `.app` on the end is a wart — it throws away the half that
+ * knows about MCP, the server and the frontend, and it is easy to write and impossible
+ * to notice missing.
+ */
+const carrierOf = (created: unknown): LoadedProject | undefined => {
+  if (looksLikeApplication(created)) return { application: created, mcp: undefined }
+
+  if (typeof created !== 'object' || created === null) return undefined
+
+  const carrier = created as { app?: unknown; mcp?: unknown }
+
+  if (!looksLikeApplication(carrier.app)) return undefined
+
+  return {
+    application: carrier.app,
+    mcp: looksLikeMcp(carrier.mcp) ? carrier.mcp : undefined,
+  }
+}
+
+const bootOnce = async (loaded: LoadedConfig): Promise<LoadedProject> => {
+  const project = carrierOf(await loaded.config.app())
+
+  if (project === undefined) {
     throw new ConfigurationError(
       `${loaded.file}: "app" did not return an Assemora application. It must return what ` +
-        'createApplication() produced, un-booted — not a server and not a promise of nothing.',
+        'createApplication() or assemora() produced, un-booted — not a server and not a ' +
+        'promise of nothing.',
     )
   }
 
   // `boot()` refuses an application that is already running, and its message says so:
   // an `app()` that boots on the developer's behalf is a mistake worth hearing about
   // rather than one to paper over here.
-  return created.boot()
+  await project.application.boot()
+
+  return project
 }
 
-/** The application this config describes. The same one, however often it is asked for. */
-export const loadApplication = (loaded: LoadedConfig): Promise<Application> => {
+/** Everything this config describes. The same one, however often it is asked for. */
+export const loadProject = (loaded: LoadedConfig): Promise<LoadedProject> => {
   const existing = booted.get(loaded.file)
   if (existing !== undefined) return existing
 
@@ -71,6 +121,10 @@ export const loadApplication = (loaded: LoadedConfig): Promise<Application> => {
   return pending
 }
 
+/** The application this config describes. */
+export const loadApplication = async (loaded: LoadedConfig): Promise<Application> =>
+  (await loadProject(loaded)).application
+
 /**
  * Closes everything this process booted, newest first.
  *
@@ -85,7 +139,7 @@ export const shutdown = async (): Promise<void> => {
   for (const entry of pending) {
     // An application that never finished booting has nothing to close, and its
     // failure was already delivered to whoever asked for it.
-    const application = await entry.catch(() => undefined)
-    await application?.shutdown()
+    const project = await entry.catch(() => undefined)
+    await project?.application.shutdown()
   }
 }

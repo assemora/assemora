@@ -68,12 +68,42 @@ Everything is optional except `app`.
 **Project** — `assemora new <name>` scaffolds one. It calls the same `scaffold()`
 `pnpm create assemora` does; it is the convenience, not a second implementation.
 
-**Run** — `assemora dev`, `assemora build`, `assemora start`. `dev` and `start` spawn
+**Run** — `assemora dev`, `assemora build`, `assemora start`, `assemora mcp`. `dev` and `start` spawn
 `node [--watch] <config.server>` under the same Node the CLI is running under,
 forwarding signals and exiting with its code; everything after `--` is node's, so
 `assemora dev -- --inspect` works. `build` is "everything that must be current before
 this is deployed": your own `build` script if you declare one, otherwise a typecheck
 with your TypeScript and your `tsconfig.json`, then `api:openapi` and `sdk:generate`.
+
+`assemora mcp` is the one that is not a process manager. It serves this project to an
+agent over stdin and stdout, which is the transport Claude Code, Claude Desktop and
+Cursor speak — a client starts the process and talks to it down a pipe. The endpoint is
+the one `assemora({ mcp: true })` already built, so a stdio session is the same generated
+tools past the same seven checks as a call to `POST /api/mcp`; nothing about the protocol
+lives in the CLI.
+
+It needs two things. `ASSEMORA_AGENT_TOKEN` in the environment, because a pipe carries no
+headers and an anonymous session would reach every tool with no permissions at all —
+create an agent, and use the token `auth.agents.create` answers with. And a config whose
+`app()` hands back the whole application rather than `createApp().app`: the `.app` on the
+end drops the half that speaks the protocol, and the command says so if it finds one.
+
+```json
+{
+  "mcpServers": {
+    "my-project": {
+      "command": "pnpm",
+      "args": ["assemora", "mcp"],
+      "cwd": "/path/to/my-project",
+      "env": { "ASSEMORA_AGENT_TOKEN": "agt_…" }
+    }
+  }
+}
+```
+
+An in-memory database is worth a word here: `assemora mcp` boots the project's own
+application, so with no `DATABASE_URL` it gets a fresh empty world of its own — and no
+agent token can exist in it. Point it at the database the rest of the project uses.
 
 **Generate** — `make:model`, `make:resource`, `make:block`, `make:module`,
 `make:command`, `make:policy`. One file into `paths.source`, refusing to overwrite

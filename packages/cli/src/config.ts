@@ -27,6 +27,20 @@ export type AssemoraPaths = {
   readonly generated?: string
 }
 
+/**
+ * What a config's `app()` may hand back.
+ *
+ * The application itself, or the thing `assemora()` built around one. Both are accepted
+ * because the second is the better answer and used to be impossible to give: `app: () =>
+ * createApp().app` was the line every starter carried, and that `.app` threw away the
+ * half of the application that knows about MCP, the server and the frontend — which is
+ * how `assemora mcp` came to have nothing to serve.
+ *
+ * Structural rather than imported: `@assemora/cli` may not depend on the umbrella, and
+ * naming the one member it reads is the whole of what it needs (ADR-0021).
+ */
+export type ConfiguredApplication = Application | { readonly app: Application }
+
 export type AssemoraConfig = {
   /**
    * How the CLI gets the application.
@@ -35,7 +49,7 @@ export type AssemoraConfig = {
    * one process — and `console`, which is many — share a single application and a
    * single database pool.
    */
-  readonly app: () => Application | Promise<Application>
+  readonly app: () => ConfiguredApplication | Promise<ConfiguredApplication>
   /** What `dev` and `start` run, relative to the config. */
   readonly server?: string
   readonly paths?: AssemoraPaths
