@@ -11,7 +11,7 @@ the detail behind the page that mentions it.
 | | |
 | --- | --- |
 | [1. What Assemora is](01-what-assemora-is.md) | One application layer for developers, editors and agents, and who it is for |
-| [2. Getting started](02-getting-started.md) | `pnpm create assemora`, and the first five minutes |
+| [2. Getting started](02-getting-started.md) | `pnpm demo`, the scaffolder, and the first five minutes |
 | [3. Models](03-models.md) | `model()`, the column DSL, relations, scopes |
 | [4. Querying](04-querying.md) | The query builder, the Query AST, transactions |
 | [5. Resources](05-resources.md) | `resource()`, fields, and what Studio does with them |

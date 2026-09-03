@@ -9,6 +9,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
+import { policy } from '@assemora/auth'
 import { command, dispatch, job, module } from '@assemora/core'
 import {
   boolean,
@@ -209,10 +210,34 @@ export const PublishArticle = command('articles.publish', {
   },
 })
 
+/**
+ * What a reader with no session may do (SPEC.md §50, §51).
+ *
+ * Authorization denies by default, so `curl localhost:4000/api/articles` answered 403
+ * until this existed — and a framework whose first request to a stranger is a refusal
+ * teaches nobody anything. One rule, on one subject: writing stays shut, because a
+ * policy grants only the actions it names and `entries.create` finds nothing here.
+ * `entries.update`, `entries.delete` and `articles.publish` all ask the second stage
+ * with the row in hand, which finds nothing here either (ADR-0015).
+ *
+ * It is blunt, and it is only defensible in this application. A policy rule never sees
+ * the filter a caller asked for, so "published ones only" cannot be said here: this
+ * opens the draft article the seed writes as well as the two published ones. That is
+ * the right trade for a fixture database that lives inside one process and dies with
+ * it, and the wrong one for a site. A site keeps this rule closed and serves its
+ * public half through routes that write the filter themselves —
+ * `examples/blog/src/policies.ts` and `starters/bare/src/routes.ts` are both that
+ * shape. Copy those, not this.
+ */
+export const PublicArticles = policy('articles', { read: () => true })
+
 export const blog = () =>
   module('blog')
     .models(Article)
     .resources(Articles)
+    // A policy belongs to the module that owns the subject, not to the application
+    // that assembles the modules — `auth({ policies: [...] })` is for somebody else's.
+    .policies(PublicArticles)
     .routes(readBySlug)
     .commands(PublishArticle)
     .jobs(GenerateSitemap)

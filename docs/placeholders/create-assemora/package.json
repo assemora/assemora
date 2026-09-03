@@ -1,0 +1,30 @@
+{
+  "name": "create-assemora",
+  "version": "0.0.1",
+  "description": "Holds the name for the Assemora scaffolder, which is not released yet",
+  "keywords": [
+    "assemora",
+    "cms",
+    "typescript"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assemora/assemora.git",
+    "directory": "packages/create-assemora"
+  },
+  "homepage": "https://github.com/assemora/assemora#readme",
+  "bugs": {
+    "url": "https://github.com/assemora/assemora/issues"
+  },
+  "type": "module",
+  "bin": {
+    "create-assemora": "./bin.mjs"
+  },
+  "files": [
+    "bin.mjs"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

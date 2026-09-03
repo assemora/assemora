@@ -241,6 +241,17 @@ export type HttpServer = {
    * this and every other mount here.
    */
   mountAssets(options: AssetsOptions): HttpServer
+  /**
+   * Answers one path with a redirect to another.
+   *
+   * Not an endpoint, and deliberately not described in the Schema Registry — the same
+   * bargain `mountAssets` makes. `GET /` is a signpost for a person who typed the
+   * origin into a browser, not an address a client calls, and describing it would put
+   * a redirect into OpenAPI, into the API Explorer and into the generated SDK where a
+   * method should be. `settled()` checks that everything *described* is served, never
+   * the other way round, so a route with no description cannot break that invariant.
+   */
+  mountRedirect(from: string, to: string): HttpServer
   listen(port: number, host?: string): Promise<string>
   close(): Promise<void>
   /** Sends a request without a socket. What the tests use. */
@@ -514,6 +525,9 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
 
   /** Addresses that answer with files rather than endpoints, so the line can tell. */
   const assetPaths = new Set<string>()
+
+  /** Addresses that answer with a redirect, so a second claim on one is refused here. */
+  const redirectPaths = new Set<string>()
 
   const securityHeaders: Readonly<Record<string, string>> = {
     'content-security-policy': policyFor(options.security),
@@ -1252,6 +1266,35 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
       ready = ready.then(() => {
         app.route({ method: 'GET', url: entry, handler: serve })
         app.route({ method: 'GET', url: below, handler: serve })
+      })
+
+      return server
+    },
+
+    mountRedirect(from, to) {
+      // Refused here, where both claims can be named. Fastify would refuse the
+      // duplicate too, at `ready()`, with a message naming the path and neither of
+      // the two mounts that wanted it — which is the failure this method exists to
+      // avoid rather than to reproduce.
+      if (redirectPaths.has(from) || assetPaths.has(from)) {
+        throw new ConfigurationError(
+          `Something already answers "${from}", so it cannot also redirect to "${to}".`,
+        )
+      }
+
+      redirectPaths.add(from)
+
+      // Queued behind the plugins like every other route: Fastify refuses one added
+      // after the instance is ready, and this is mounted while the application boots.
+      ready = ready.then(() => {
+        app.route({
+          method: 'GET',
+          url: from,
+          // 302 rather than 301. This is true while this deployment serves that path,
+          // and a permanent redirect a browser has cached outlives the deployment.
+          handler: async (_request: FastifyRequest, reply: FastifyReply) =>
+            await reply.redirect(to, 302),
+        })
       })
 
       return server

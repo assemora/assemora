@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Assemora</title>
+  <rect width="32" height="32" rx="7" fill="#1a1a1a" />
+  <g transform="translate(16 16) scale(0.78) translate(-16 -16)">
+    <rect x="4.48" y="3.84" width="5.12" height="25.6" rx="2" fill="#ffffff" transform="rotate(14 7.04 29.44)" />
+    <rect x="22.4" y="3.84" width="5.12" height="25.6" rx="2" fill="#ffffff" transform="rotate(-14 24.96 29.44)" />
+    <rect x="8.32" y="19.2" width="15.36" height="4.8" rx="2" fill="#29845a" />
+  </g>
+</svg>

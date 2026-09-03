@@ -18,10 +18,11 @@
   },
   "main": "./dist/index.js",
   "bin": {
-    "create-assemora": "./dist/bin.js"
+    "create-assemora": "./bin.mjs"
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "bin.mjs",
     "dist",
     "templates"
   ],

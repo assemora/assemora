@@ -127,6 +127,26 @@ const defaultPort = (): number => {
 }
 
 /**
+ * The interface to bind, from `HOST`, and loopback when nothing says otherwise.
+ *
+ * `PORT` and `HOST` are the pair a process learns from the environment it was started
+ * in rather than from the application it runs: a container is handed both, and neither
+ * belongs in a project's source. They are read here and only here — the umbrella is the
+ * composition root, `@assemora/core` must never learn what an environment variable is
+ * (docs/rules/architecture.md), and `@assemora/http` keeps a loopback default of its own
+ * for a caller that passes nothing.
+ *
+ * Loopback stays the default deliberately. A server that binds every interface because
+ * nobody said not to is a development machine answering the office network; a container
+ * that needs 0.0.0.0 is a deployment that can say so.
+ */
+const defaultHost = (): string | undefined => {
+  const declared = process.env.HOST
+
+  return declared === undefined || declared === '' ? undefined : declared
+}
+
+/**
  * An adapter's own `close()`, when it has one.
  *
  * Neither `DatabaseAdapter` nor `QueuePort` declares one — an in-memory adapter and a
@@ -683,6 +703,26 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
           await mountStudio(served.server, settings.studio, logger)
         }
 
+        // The origin root, which is where a person handed a URL starts.
+        //
+        // Everything this application serves lives under a path — `/api`, `/studio`,
+        // the frontend — so without this the first thing a new deployment answers is a
+        // 404, and the only addresses that work are ones nobody typed. It is a signpost
+        // and not an endpoint: nothing is described, so OpenAPI, the API Explorer and
+        // the generated SDK are unchanged, and `settled()` checks that everything
+        // described is served rather than the reverse.
+        //
+        // The site first, and Studio only when there is no site. A deployment that
+        // serves a frontend is a *public* address, and answering it with the editor's
+        // login is a worse homepage than the 404 this replaces — the visitor who typed
+        // the origin wanted the thing the deployment exists for. An application that
+        // serves no frontend has only one place worth sending them.
+        const root = settings.frontend?.path ?? settings.studio?.path
+
+        // Nothing when something already serves `/`: Fastify refuses the duplicate at
+        // `ready()`, naming neither of the two mounts.
+        if (root !== undefined && root !== '/') served.server.mountRedirect('/', root)
+
         if (settings.frontend !== undefined) {
           await mountPreview(served.server, settings.frontend, logger, app.registry)
         }
@@ -827,7 +867,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     work,
     shutdown,
 
-    async listen(port = defaultPort(), host) {
+    async listen(port = defaultPort(), host = defaultHost()) {
       if (served === undefined) {
         throw new ConfigurationError(
           'This application was built with "api: false", so there is no server to listen with.',

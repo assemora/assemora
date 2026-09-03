@@ -124,7 +124,7 @@ describe('an empty block palette', () => {
    * purpose is to unblock them.
    */
   it('names it in a form that runs where the project is checked out', () => {
-    expect(words(<NoBlocks />)).toContain('npx assemora make:block hero')
+    expect(words(<NoBlocks />)).toContain('npx --no assemora make:block hero')
   })
 
   it('says the step the generator does not take, which is the one people miss', () => {
@@ -154,7 +154,7 @@ describe('the dashboard of an application with nothing in it', () => {
 
   it('carries the same runnable line the palette does', () => {
     // Two snippets of one command is two chances to ship one that does not run.
-    expect(started(true)).toContain('npx assemora make:block hero')
+    expect(started(true)).toContain('npx --no assemora make:block hero')
   })
 
   it('leaves out the collection step when this application has no collections at all', () => {

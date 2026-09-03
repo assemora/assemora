@@ -18,10 +18,11 @@
   },
   "main": "./dist/index.js",
   "bin": {
-    "assemora": "./dist/bin.js"
+    "assemora": "./bin.mjs"
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "bin.mjs",
     "dist"
   ],
   "scripts": {

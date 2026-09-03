@@ -1130,3 +1130,48 @@ describe('a language is a path segment (SPEC.md §131)', () => {
     })
   })
 })
+
+/**
+ * The signpost at the origin root (SPEC.md §85 is about what a server *says*; this is
+ * about what it says to somebody who typed the address and nothing else).
+ *
+ * Deliberately not an endpoint: everything else this server answers is described in the
+ * Schema Registry, and a redirect described there would appear in OpenAPI, in the API
+ * Explorer and in the generated SDK as a method. `settled()` only checks the other
+ * direction — that everything described is served — so an undescribed route is allowed
+ * by construction rather than by exception.
+ */
+describe('a path may answer with a signpost rather than an endpoint', () => {
+  it('redirects, and says nothing about it in the registry', async () => {
+    server.mountRedirect('/', '/studio')
+
+    const answered = await server.inject({ method: 'GET', url: '/' })
+
+    expect(answered.statusCode).toBe(302)
+    expect(answered.headers.location).toBe('/studio')
+    expect(app.registry.section('routes').map((entry) => entry.path)).not.toContain('/')
+  })
+
+  it('is temporary, because a permanent one outlives the deployment that meant it', async () => {
+    server.mountRedirect('/', '/preview')
+
+    // A browser caches a 301 and keeps sending itself to an address this deployment
+    // may not serve tomorrow, with nothing able to tell it otherwise.
+    expect((await server.inject({ method: 'GET', url: '/' })).statusCode).toBe(302)
+  })
+
+  it('refuses a second claim on the same path, naming it', () => {
+    server.mountRedirect('/', '/studio')
+
+    expect(() => server.mountRedirect('/', '/preview')).toThrow(/"\/"/)
+  })
+
+  it('refuses a path that already answers with files', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'assemora-site-'))
+
+    await writeFile(join(root, 'index.html'), '<!doctype html><title>Site</title>')
+    server.mountAssets({ path: '/preview', root })
+
+    expect(() => server.mountRedirect('/preview', '/studio')).toThrow(/"\/preview"/)
+  })
+})

@@ -204,19 +204,36 @@ const count = (amount: number, noun: string): string =>
   `${amount} ${noun}${amount === 1 ? '' : 's'}`
 
 /**
- * The three commands the developer runs next, in order.
+ * What the developer does next — and there are two answers, because there are two
+ * worlds.
  *
- * `pnpm dev` rather than `assemora dev`: the executable arrives with the install on
- * the line above it, and telling somebody to run a binary that is not there yet is
- * how a first run fails before it starts.
+ * Once there is a release it is three commands, and `pnpm dev` rather than
+ * `assemora dev`: the executable arrives with the install on the line above it, and
+ * telling somebody to run a binary that is not there yet is how a first run fails
+ * before it starts.
+ *
+ * Until then there is no install to run at all. Printing `pnpm install` and then a
+ * paragraph saying that `pnpm install` has nothing to fetch is one instruction and one
+ * retraction of it, in that order, and whoever reads the first and stops runs a command
+ * that cannot resolve a single dependency. So the block itself changes rather than
+ * gaining a footnote, and what it names is the one route that works.
  */
-const nextSteps = (cwd: string, directory: string): readonly string[] => [
-  '',
-  'Next',
-  `  cd ${shortestPath(cwd, directory)}`,
-  '  pnpm install',
-  '  pnpm dev',
-]
+export const nextSteps = (cwd: string, directory: string, released: boolean): readonly string[] => {
+  const where = shortestPath(cwd, directory)
+
+  if (released) return ['', 'Next', `  cd ${where}`, '  pnpm install', '  pnpm dev']
+
+  return [
+    '',
+    'Next',
+    '  the @assemora packages are not published yet, so there is nothing to install.',
+    '  Run this project from a checkout of the framework:',
+    '',
+    '    git clone https://github.com/assemora/assemora.git',
+    '    cd assemora && pnpm install && pnpm build',
+    `    pnpm --dir ${where} dev`,
+  ]
+}
 
 /**
  * The starters this one is not, printed only to somebody who never chose.
@@ -306,21 +323,10 @@ export const run = async (argv: readonly string[], session: CliSession): Promise
     })
 
     say(`Created ${answers.name.trim()} — ${count(created.files.length, 'file')}.`)
-    for (const step of nextSteps(session.cwd, created.directory)) say(step)
+    for (const step of nextSteps(session.cwd, created.directory, !isUnreleased(version))) say(step)
 
     if (template === undefined) {
       for (const line of otherTemplates(await listTemplates())) say(line)
-    }
-
-    if (isUnreleased(version)) {
-      // One line, and it goes the day there is a release to install. Saying nothing
-      // would leave somebody reading a resolver error for a package that has never
-      // existed and assuming they mistyped something.
-      say('')
-      say(
-        'The @assemora packages are not published yet, so `pnpm install` has nothing to fetch ' +
-          'for them. Until the first release, run the project from a checkout of the framework.',
-      )
     }
 
     return 0
