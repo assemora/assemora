@@ -2,6 +2,10 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    // Nothing is emitted here, so a sibling is imported by the name it actually has —
+    // the same reason `apps/studio` sets it. `./budget.js` would name a file that this
+    // project never produces.
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
   "include": ["**/*.ts"]

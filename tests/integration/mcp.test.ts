@@ -38,6 +38,10 @@ import { clearResourceRegistry, resource, text } from '@assemora/resources'
 import { revisions, revisionsModule } from '@assemora/revisions'
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { realInfrastructure } from './budget.ts'
+
+realInfrastructure()
+
 const Article = model('articles', {
   id: uuid().primary().defaultRandom(),
   title: column(),

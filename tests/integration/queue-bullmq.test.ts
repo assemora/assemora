@@ -22,6 +22,10 @@ import { bullQueue } from '@assemora/queue-bullmq'
 import { integer, json, string, timestamp, uuid } from '@assemora/schema'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
+import { realInfrastructure } from './budget.ts'
+
+realInfrastructure()
+
 const url = process.env.ASSEMORA_TEST_REDIS_URL ?? 'redis://127.0.0.1:6379'
 
 /**

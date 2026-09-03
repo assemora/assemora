@@ -70,6 +70,10 @@ import { type AssemoraApplication, assemora } from 'assemora'
 import { scaffold } from 'create-assemora'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { realInfrastructure } from './budget.ts'
+
+realInfrastructure()
+
 /*
  * "The developer adds:" — SPEC.md §124, as it writes it.
  *

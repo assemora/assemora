@@ -46,6 +46,10 @@ import {
 import { string, uuid } from '@assemora/schema'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { realInfrastructure } from './budget.ts'
+
+realInfrastructure()
+
 const url =
   process.env.ASSEMORA_TEST_DATABASE_URL ??
   `postgres://${userInfo().username}@localhost:5432/assemora_test`

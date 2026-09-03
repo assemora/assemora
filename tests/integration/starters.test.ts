@@ -24,6 +24,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { realInfrastructure } from './budget.ts'
+
+realInfrastructure()
+
 /** Every project in this repository that a person is invited to copy or to run. */
 const PROJECTS = ['starters/bare', 'starters/nextjs', 'examples/blog', 'examples/company'] as const
 
