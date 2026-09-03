@@ -84,7 +84,8 @@ lives in the CLI.
 
 It needs two things. `ASSEMORA_AGENT_TOKEN` in the environment, because a pipe carries no
 headers and an anonymous session would reach every tool with no permissions at all —
-create an agent, and use the token `auth.agents.create` answers with. And a config whose
+`assemora agents:create` below is where that token comes from, and `--write-mcp-json`
+writes the block underneath for you. And a config whose
 `app()` hands back the whole application rather than `createApp().app`: the `.app` on the
 end drops the half that speaks the protocol, and the command says so if it finds one.
 
@@ -108,6 +109,23 @@ pushes nothing", and the version the session settled on comes back on every answ
 An in-memory database is worth a word here: `assemora mcp` boots the project's own
 application, so with no `DATABASE_URL` it gets a fresh empty world of its own — and no
 agent token can exist in it. Point it at the database the rest of the project uses.
+
+**Identity** — `assemora agents:create <name> --permissions <a,b>`. An agent identity
+and the token that *is* it (SPEC.md §72). It runs `auth.agents.create` on the Command
+Bus, so it is authorized and audited like anything else — pass `--actor <user id>`, and
+an actor cannot hand an agent a permission it does not hold itself.
+
+The token is printed once and stored as a digest, so nothing can print it again.
+`--write-mcp-json` writes the client configuration beside it, at mode 0600, with the
+token in it:
+
+```bash
+assemora agents:create "Content agent" \
+  --permissions pages.read,blocks.update,changesets.propose \
+  --actor 7edda944-… --write-mcp-json
+```
+
+Studio does the same thing on Users → Agents, for somebody who is not in a terminal.
 
 **Generate** — `make:model`, `make:resource`, `make:block`, `make:module`,
 `make:command`, `make:policy`. One file into `paths.source`, refusing to overwrite

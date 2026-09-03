@@ -26,6 +26,7 @@ export type CommandHandler = (input: {
 export type CommandGroup =
   | 'project'
   | 'run'
+  | 'identity'
   | 'make'
   | 'database'
   | 'inspect'
@@ -49,6 +50,7 @@ export const defineCommand = (command: CliCommand): CliCommand => command
 const GROUPS: readonly { readonly group: CommandGroup; readonly title: string }[] = [
   { group: 'project', title: 'Project' },
   { group: 'run', title: 'Run' },
+  { group: 'identity', title: 'Identity' },
   { group: 'make', title: 'Generate' },
   { group: 'database', title: 'Database' },
   { group: 'inspect', title: 'Inspect' },

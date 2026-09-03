@@ -14,6 +14,7 @@ import './run.js'
 import './db.js'
 import './inspect.js'
 import './artifacts.js'
+import './agents.js'
 import './console.js'
 import './mcp.js'
 

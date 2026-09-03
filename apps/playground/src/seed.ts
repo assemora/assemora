@@ -5,13 +5,36 @@
  * a rehearsal of the paths the interface takes.
  */
 
-import { hashPassword, Permission, Role, RolePermission, User, UserRole } from '@assemora/auth'
+import {
+  createAgent,
+  hashPassword,
+  Permission,
+  Role,
+  RolePermission,
+  User,
+  UserRole,
+} from '@assemora/auth'
 import type { Application } from '@assemora/core'
 import { Page } from '@assemora/pages'
 import { Article } from './blog.ts'
 
 export const ADMIN_EMAIL = 'ada@assemora.dev'
 export const ADMIN_PASSWORD = 'correct horse battery staple'
+
+/**
+ * What the seeded agent may do.
+ *
+ * Enough to be worth connecting to and not enough to be worth borrowing: it reads
+ * pages and proposes changes to them, which is the loop SPEC.md §75 is about, and it
+ * cannot apply anything — that is a person's, and the whole point.
+ */
+const AGENT_PERMISSIONS = [
+  'assemora.describe',
+  'pages.read',
+  'pages.list',
+  'blocks.update',
+  'changesets.propose',
+]
 
 /**
  * Two roles, so the Users section has something real to show and so the wildcard
@@ -26,8 +49,14 @@ const ROLES = [
   },
 ]
 
-export const seed = async (app: Application): Promise<void> => {
-  if ((await User.count()) > 0) return
+/** What the seed leaves behind that the boot output has to say out loud. */
+export type Seeded = {
+  /** The agent's token, which exists in readable form exactly once. */
+  readonly agentToken?: string
+}
+
+export const seed = async (app: Application): Promise<Seeded> => {
+  if ((await User.count()) > 0) return {}
 
   const admin = await User.create({
     email: ADMIN_EMAIL,
@@ -146,7 +175,26 @@ export const seed = async (app: Application): Promise<void> => {
     })
   })
 
+  /**
+   * An agent, and its token printed.
+   *
+   * Every other way to get one needs a session first, and until `assemora agents:create`
+   * existed there was none written down at all — so anybody who found `/api/mcp` met a
+   * 401 with no route past it. Here the token is printed for the reason the password is:
+   * this is a fixture in an in-memory database that dies with the process, not a
+   * credential. A starter does the opposite and must.
+   */
+  const agent = await app.run({ source: 'cli' }, () =>
+    createAgent({
+      name: 'Content agent',
+      description: 'Reads pages and proposes changes to them',
+      permissions: AGENT_PERMISSIONS,
+    }),
+  )
+
   console.log(
     `[playground] seeded ${await Article.count()} articles and ${await Page.count()} page`,
   )
+
+  return { agentToken: agent.token }
 }

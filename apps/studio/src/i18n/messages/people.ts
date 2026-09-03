@@ -130,6 +130,40 @@ export const PEOPLE = {
   'people.revoke': { en: 'Revoke', uk: 'Відкликати', ru: 'Отозвать' },
 
   // --- agents ---------------------------------------------------------------------------
+  'people.createAgent': { en: 'Create an agent', uk: 'Створити агента', ru: 'Создать агента' },
+  'people.newAgent': { en: 'New agent', uk: 'Новий агент', ru: 'Новый агент' },
+  'people.agentScope': {
+    en: 'An agent reaches the tools this application generates, and only what you tick here.',
+    uk: 'Агент дістає інструменти, які створює цей застосунок, і лише те, що ви позначите тут.',
+    ru: 'Агент получает инструменты, которые создаёт это приложение, и только то, что вы отметите здесь.',
+  },
+  'people.agentName': {
+    en: 'What is it called?',
+    uk: 'Як він називається?',
+    ru: 'Как он называется?',
+  },
+  'people.agentExample': {
+    en: 'Content agent',
+    uk: 'Агент вмісту',
+    ru: 'Агент содержимого',
+  },
+  'people.agentPurpose': { en: 'What does it do?', uk: 'Що він робить?', ru: 'Что он делает?' },
+  'people.agentPurposeHelp': {
+    en: 'Read in the audit log beside everything it did.',
+    uk: 'Читається в журналі поруч з усім, що він зробив.',
+    ru: 'Читается в журнале рядом со всем, что он сделал.',
+  },
+  'people.agentFailed': {
+    en: 'The agent was not created.',
+    uk: 'Агента не створено.',
+    ru: 'Агент не создан.',
+  },
+  'people.create': { en: 'Create', uk: 'Створити', ru: 'Создать' },
+  'people.agentTokenIs': {
+    en: 'This is the agent. Copy it now — it is never shown again.',
+    uk: 'Це і є агент. Скопіюйте зараз — більше він не показується.',
+    ru: 'Это и есть агент. Скопируйте сейчас — больше он не показывается.',
+  },
   'people.noAgents': { en: 'No agents yet', uk: 'Агентів ще немає', ru: 'Агентов пока нет' },
   'people.noAgentsBody': {
     en: 'An agent is an identity with its own permissions, audited like anyone else.',

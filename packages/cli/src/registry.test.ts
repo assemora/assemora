@@ -37,10 +37,21 @@ const table: readonly CliCommand[] = [
 ]
 
 describe('the groups', () => {
+  /**
+   * The blocks SPEC.md §77 separates its listing into, in its order — plus `identity`.
+   *
+   * §77 says of itself that it "is not a closed list — a capability that needs a
+   * command gets one, and does not get bent into an existing one to avoid a
+   * twenty-third". Creating an agent identity is that case: it mints a credential, so
+   * it does not belong under Inspect beside the listing of them, and it is not a
+   * generator, a migration or an artifact. It sits after Run because that is where
+   * somebody goes looking for it — the reason to want one is `assemora mcp`.
+   */
   it('are the ones SPEC.md §77 separates, in its order', () => {
     expect(COMMAND_GROUPS).toEqual([
       'project',
       'run',
+      'identity',
       'make',
       'database',
       'inspect',

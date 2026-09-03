@@ -66,7 +66,7 @@ const app = assemora({
 // Two calls rather than one, so the seed runs against a booted application before the
 // first request can arrive at a half-filled one.
 await app.boot()
-await seed(app.app)
+const seeded = await seed(app.app)
 
 const address = await app.listen(PORT)
 
@@ -89,3 +89,17 @@ console.log(`[playground] api       ${address}/api`)
 console.log(`[playground] articles  ${address}/api/articles   (open — no session needed)`)
 console.log(`[playground] studio    ${STUDIO_ORIGIN}   (pnpm --filter @assemora/studio dev)`)
 console.log(`[playground] sign in   ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`)
+
+/**
+ * The agent, printed for the same reason and with the same caveat as the password.
+ *
+ * An MCP session is somebody, and until this line existed there was no way to be
+ * anybody without first reading the source: the token is minted by a command that
+ * needs a session, and nothing said so. `assemora agents:create` is the answer in a
+ * real project; here the seed does it, because this application is started, looked at
+ * and thrown away.
+ */
+if (seeded.agentToken !== undefined) {
+  console.log(`[playground] agent     ASSEMORA_AGENT_TOKEN=${seeded.agentToken}`)
+  console.log(`[playground] mcp       POST ${address}/api/mcp   ·   pnpm assemora mcp`)
+}

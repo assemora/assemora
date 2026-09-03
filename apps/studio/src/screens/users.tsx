@@ -610,10 +610,121 @@ const Tokens = () => {
   )
 }
 
+/**
+ * A new agent, and the one moment its token exists in a readable form.
+ *
+ * The same shape as `NewToken` above, and deliberately so: an agent identity and an
+ * API token are both credentials with their own permissions, and the two screens that
+ * mint them should not be two different screens. What differs is the sentence about
+ * what it is for — an agent is read in the audit log beside everything it did — and
+ * that there is no expiry: an agent is turned off rather than left to lapse.
+ *
+ * Nothing here decides who may create one. The command refuses an actor that does not
+ * hold `auth.agents.create`, and refuses to grant a permission the actor does not hold
+ * itself (SPEC.md §72), so this form can only ever ask.
+ */
+const NewAgent = ({ onCreated, onClose }: { onCreated(token: string): void; onClose(): void }) => {
+  const client = useQueryClient()
+  const t = useT()
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [chosen, setChosen] = useState<string[]>([])
+
+  const permissions = useQuery({
+    queryKey: ['permissions'],
+    queryFn: ({ signal }) =>
+      api.query<{ data: { id: string; name: string }[] }>('auth.permissions.list', {}, signal),
+  })
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.command<{ token: string }>('auth.agents.create', {
+        name,
+        permissions: chosen,
+        ...(description.trim() === '' ? {} : { description: description.trim() }),
+      }),
+    onSuccess: async (result) => {
+      onCreated(result.token)
+      await client.invalidateQueries({ queryKey: ['agents'] })
+      onClose()
+    },
+  })
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    create.mutate()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
+      <Card className="w-full max-w-md p-6">
+        <h2 className="mb-1 text-base font-semibold">{t('people.newAgent')}</h2>
+        <p className="mb-4 text-base text-ink-soft">{t('people.agentScope')}</p>
+
+        <form className="space-y-4" onSubmit={submit}>
+          <Field label={t('people.agentName')} required>
+            <Input
+              required
+              placeholder={t('people.agentExample')}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+
+          <Field label={t('people.agentPurpose')} help={t('people.agentPurposeHelp')}>
+            <Input value={description} onChange={(event) => setDescription(event.target.value)} />
+          </Field>
+
+          <Field
+            label={t('people.permissions')}
+            required
+            {...(chosen.length === 0 ? { errors: [t('people.chooseOne')] } : {})}
+          >
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+              {permissions.data?.data.map((permission) => (
+                <Checkbox
+                  key={permission.id}
+                  checked={chosen.includes(permission.name)}
+                  onChange={(ticked) =>
+                    setChosen((current) =>
+                      ticked
+                        ? [...current, permission.name]
+                        : current.filter((entry) => entry !== permission.name),
+                    )
+                  }
+                >
+                  <code className="font-mono text-sm">{permission.name}</code>
+                </Checkbox>
+              ))}
+            </div>
+          </Field>
+
+          {create.isError && (
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-base text-danger">
+              {create.error instanceof ApiError ? create.error.message : t('people.agentFailed')}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <Button type="submit" disabled={create.isPending || chosen.length === 0}>
+              {create.isPending ? t('people.creating') : t('people.create')}
+            </Button>
+            <Button variant="secondary" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  )
+}
+
 const Agents = () => {
   const client = useQueryClient()
   const t = useT()
   const [page, setPage] = useState(1)
+  const [creating, setCreating] = useState(false)
+  const [issued, setIssued] = useState<string>()
 
   const agents = useQuery({
     queryKey: ['agents', page],
@@ -628,6 +739,17 @@ const Agents = () => {
 
   return (
     <>
+      <div className="flex justify-end">
+        <Button onClick={() => setCreating(true)}>{t('people.createAgent')}</Button>
+      </div>
+
+      {issued !== undefined && (
+        <Card className="border-accent/30 bg-accent-wash p-4">
+          <p className="mb-1 text-base font-medium text-accent-ink">{t('people.agentTokenIs')}</p>
+          <code className="block break-all font-mono text-sm">{issued}</code>
+        </Card>
+      )}
+
       {agents.isError && <Failure error={agents.error} />}
 
       <Card className="overflow-hidden">
@@ -674,6 +796,8 @@ const Agents = () => {
       <div className="mt-4">
         <Pages page={page} of={agents.data?.lastPage} onChange={setPage} />
       </div>
+
+      {creating && <NewAgent onCreated={setIssued} onClose={() => setCreating(false)} />}
     </>
   )
 }

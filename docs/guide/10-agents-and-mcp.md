@@ -31,6 +31,25 @@ A tool carries the name the bus knows beside the name the agent calls, because
 stripping the prefix is not invertible — the three introspection queries are registered
 as `assemora.describe`, `assemora.resources.list` and `assemora.blocks.types` already.
 
+## Being somebody
+
+An MCP session is an actor, and an anonymous one reaches every generated tool with no
+permissions at all — which is the most confusing way to be refused. So an agent needs an
+identity, and one command mints it:
+
+```bash
+assemora agents:create "Content agent" \
+  --permissions pages.read,blocks.update,changesets.propose \
+  --actor <a user who holds auth.agents.create> --write-mcp-json
+```
+
+The token is shown once, because the row keeps a digest of it and nothing else.
+`--write-mcp-json` writes the client configuration beside it. Studio does the same on
+Users → Agents.
+
+An actor cannot grant an agent a permission it does not hold itself (SPEC.md §72), so
+the identity above is not a way around anybody's own limits.
+
 ## `assemora.describe` is the entry point
 
 It answers with the project, its capabilities, models, resources, pages, blocks,
