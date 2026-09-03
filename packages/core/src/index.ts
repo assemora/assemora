@@ -105,6 +105,7 @@ export {
 export {
   type AuditEntry,
   type AuditPort,
+  type AuthorizationDeferral,
   type AuthorizationPort,
   type AuthorizationRequest,
   CAPTURE_CEILING_MS,

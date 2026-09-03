@@ -16,7 +16,12 @@ import {
 } from '@assemora/schema'
 
 import { type AssemoraContext, contextOrInternal } from './context.js'
-import { AssemoraError, UnknownCommandError, ValidationError } from './errors.js'
+import {
+  AssemoraError,
+  ConfigurationError,
+  UnknownCommandError,
+  ValidationError,
+} from './errors.js'
 import type { EventBus, PayloadOf } from './events.js'
 import { collectDispatches, type JobRequest, queuedFrom } from './jobs.js'
 import type { Logger } from './logger.js'
@@ -391,12 +396,33 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
 
     try {
       // 2. Authorization — before anything is opened or written.
-      await options.authorization.authorize({
+      const deferral = await options.authorization.authorize({
         command: definition.name,
         ...(definition.subject === undefined ? {} : { subject: definition.subject }),
         input: parsed.value,
         context,
       })
+
+      /**
+       * Whether the handler asked the second stage, when the first one deferred.
+       *
+       * A rule about the row itself cannot be answered before the row is read, so the
+       * first stage lets the command as far as reading it and the second asks again
+       * with the record in hand (ADR-0015). That is a guarantee only while the second
+       * question is actually put: a handler that forgets is a command anybody may
+       * run, and the first stage has already said yes.
+       *
+       * The framework's own commands all remember. The point of this flag is the ones
+       * an application writes, where forgetting costs whoever wrote it rather than
+       * whoever wrote the bus.
+       *
+       * It records *that* the question was put, not what it was about. `revisions.
+       * restore` defers on `revisions` and then asks about the entity it is restoring
+       * — a page, an article — which is a stronger question than the one deferred,
+       * and demanding the subjects match would refuse the most careful command there
+       * is.
+       */
+      let askedRecord = false
 
       const queued: { readonly name: string; readonly payload: unknown }[] = []
 
@@ -441,6 +467,8 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
           committed.push(work)
         },
         authorize: async (subject, action, record) => {
+          askedRecord = true
+
           await options.authorization.authorizeRecord?.({ subject, action, record, context })
         },
         execute: (name, input) => bus.execute(name, input),
@@ -465,6 +493,17 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
           const handled = await (
             definition.handle as (input: unknown, context: CommandContext) => Promise<unknown>
           )(parsed.value, commandContext)
+
+          // Inside the transaction, so the refusal takes the handler's writes with it.
+          // A command that skipped the question has already done whatever it does; the
+          // only thing left that can be true is that none of it lasts.
+          if (deferral !== undefined && deferral !== null && !askedRecord) {
+            const { subject, action } = deferral.deferredTo
+
+            throw new ConfigurationError(
+              `"${definition.name}" was allowed only as far as reading the record: the actor holds no permission for it, and the policy for "${subject}" answers "${action}" per record. The handler has to load the record and call context.authorize("${subject}", "${action}", record) before it writes.`,
+            )
+          }
 
           if (revisions.length > 0) await options.revisions.record(revisions)
 

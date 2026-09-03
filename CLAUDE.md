@@ -665,9 +665,6 @@ urgent:
 - A collection has no `titleField`: a dynamic definition does not carry one, so a
   collection made in Studio still falls to the guess. The picker itself works there,
   because a relation's target is in the descriptor either way.
-- A record-scoped action (`update`, `delete`, `restore`, `publish`) passes stage one the
-  moment a policy object exists, and nothing checks the handler ever asked stage two.
-  The framework's own commands all remember; an application's need not.
 - A command and a query may share a name, and that produces two MCP tools with one name.
   `packages/mcp/src/server.ts:97` is a `find`, so the read wins and the mutation is
   unreachable.

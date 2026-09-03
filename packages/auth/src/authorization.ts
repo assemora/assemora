@@ -79,7 +79,8 @@ export const policies = (): AuthorizationPort => ({
     const { subject, action } = subjectOf(request)
     const permissions = await permissionsOf(request.context.actor)
 
-    if (holds(permissions, `${subject}.${action}`)) return
+    // Held outright. Nothing is deferred, so nothing is owed at the second stage.
+    if (holds(permissions, `${subject}.${action}`)) return undefined
 
     const rules = policyFor(subject)?.rules
 
@@ -87,8 +88,10 @@ export const policies = (): AuthorizationPort => ({
       throw new ForbiddenError(`No permission and no policy allow ${action} on ${subject}`)
     }
 
-    // The row decides, and it has not been read yet. The second stage will ask.
-    if (RECORD_SCOPED.has(action)) return
+    // The row decides, and it has not been read yet. The second stage will ask — and
+    // saying so is what makes that a guarantee rather than a convention: the bus
+    // refuses to commit a command that was let through here and never asked again.
+    if (RECORD_SCOPED.has(action)) return { deferredTo: { subject, action } }
 
     const rule = rules[action]
 
@@ -104,6 +107,8 @@ export const policies = (): AuthorizationPort => ({
     })
 
     if (!allowed) throw new ForbiddenError(`${action} on ${subject} is not allowed`)
+
+    return undefined
   },
 
   async authorizeRecord(request: RecordAuthorizationRequest) {

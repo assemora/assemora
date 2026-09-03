@@ -30,7 +30,7 @@ Nothing else may be built first: every facet below rests on these.
 | 0.0 | A policy is bound to the module that owns the subject, and policies reach the Schema Registry | `auth` + `core` |
 | 0.1 | `ResourceDescriptor.module` | `resources` |
 | 0.2 | One namespace refusal at `createApplication()`, naming **both** modules | `core` + `resources` |
-| 0.3 | A record-scoped action must prove stage two ran | `auth` + `core` |
+| 0.3 | ~~A record-scoped action must prove stage two ran~~ — done | `auth` + `core` |
 | 0.4 | Close the four silent last-wins registries | four call sites |
 | 0.5 | `sandbox` on the builder canvas iframe | `apps/studio` |
 
@@ -62,12 +62,18 @@ Note the ordering trap: a duplicate resource name throws inside `registerResourc
 *during* module registration (`packages/core/src/application.ts:101`), so an end-of-boot
 check never sees it. The identical-name case needs its own message, naming both modules.
 
-**0.3** `if (RECORD_SCOPED.has(action)) return` (`packages/auth/src/authorization.ts:82`)
-returns *allowed* the moment a policy object exists, and nothing checks the handler ever
-called stage two. The framework's own commands all remember; a package's `orders.update`
-need not, and `mountCommands()` has already published it. Make `authorize` resolve
-`'allowed' | 'deferred'` and have the Command Bus refuse to commit a deferred command
-whose handler never asked.
+**0.3 — done.** `authorize` now resolves an `AuthorizationDeferral` rather than nothing
+when it lets a record-scoped action past on the strength of a policy alone, and the
+Command Bus refuses to commit a deferred command whose handler never called stage two.
+The refusal names the command and the question that was owed, inside the transaction, so
+the writes the handler already made go with it.
+
+It carries the subject and action rather than the bare `'deferred'` this plan proposed:
+the whole value of the refusal is that it can say *which* question, and a literal cannot.
+It records that the question was put and not what it was about — `revisions.restore`
+defers on `revisions` and then asks about the page or article it is restoring, which is a
+stronger question than the one deferred, and demanding a match would refuse the most
+careful command there is.
 
 **0.4** `registerFieldKind`, `registerRestorer`, `model()`'s table registry and the shared
 command ∪ query name are all silent last-wins. Measured: `orders.sync` declared as both a

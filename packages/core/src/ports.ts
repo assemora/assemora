@@ -46,9 +46,34 @@ export type RecordAuthorizationRequest = {
   readonly context: AssemoraContext
 }
 
+/**
+ * A first-stage decision that is not the whole decision (SPEC.md §50, §51, ADR-0015).
+ *
+ * Some rules cannot be answered before the row is read — "an author may edit their
+ * own article" is about a row nobody has loaded yet — so the first stage lets the
+ * command through and the second stage asks again with the record in hand. That is
+ * only safe while the second stage actually happens, and the handler is what has to
+ * make it happen.
+ *
+ * So a provider that defers says so, and the bus holds the command to it: a handler
+ * that never asked is refused rather than committed. Without that, the guarantee was
+ * a convention every application had to know about, and the cost of not knowing was
+ * an open command.
+ */
+export type AuthorizationDeferral = {
+  /** What the second stage will be about, for the refusal to be able to name it. */
+  readonly deferredTo: { readonly subject: string; readonly action: string }
+}
+
 export type AuthorizationPort = {
-  /** Resolves when the actor may run the command; throws `ForbiddenError` otherwise. */
-  authorize(request: AuthorizationRequest): Promise<void>
+  /**
+   * Resolves when the actor may run the command; throws `ForbiddenError` otherwise.
+   *
+   * Resolving with an `AuthorizationDeferral` means "not yet": the actor may proceed
+   * only as far as reading the record, and the command must ask `context.authorize`
+   * before it writes. Resolving with nothing is a decision that is final.
+   */
+  authorize(request: AuthorizationRequest): Promise<AuthorizationDeferral | void>
   /**
    * Resolves when the actor may act on this particular record. Optional: a provider
    * with no record-level rules simply does not implement it.

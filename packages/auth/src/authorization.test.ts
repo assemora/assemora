@@ -210,9 +210,26 @@ describe('the record decides for what already exists', () => {
     update: ({ actor, record }) => actor?.id === record.authorId,
   })
 
-  it('defers an update past the first stage, where the row is unknown', async () => {
+  it('defers an update past the first stage, and says that it did', async () => {
     registerPolicy(ownership as never)
 
+    // Saying so is what makes the second stage a guarantee rather than a convention:
+    // the bus holds the command to it and refuses to commit one that never asked.
+    await expect(
+      policies().authorize({
+        command: 'entries.update',
+        input: { resource: 'articles' },
+        context: context({ type: 'user', id: USER }),
+      }),
+    ).resolves.toEqual({ deferredTo: { subject: 'articles', action: 'update' } })
+  })
+
+  it('defers nothing when the actor holds the permission outright', async () => {
+    registerPolicy(ownership as never)
+    await grant(USER, 'articles.update')
+
+    // Nothing was deferred, so nothing is owed — a command that asks anyway is free
+    // to, and one that does not is not withholding a check that was promised.
     await expect(
       policies().authorize({
         command: 'entries.update',
