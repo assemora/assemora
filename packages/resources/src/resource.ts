@@ -19,6 +19,7 @@ import type { Issue } from '@assemora/schema'
 import { readableByActor } from './agent-fields.js'
 import { type ApiExposure, describeField, humanize, type ResourceDescriptor } from './descriptor.js'
 import type { AnyField } from './fields.js'
+import { listingOrder, parseSort } from './ordering.js'
 import { validateAgainstFields } from './validation.js'
 
 /** Only the CRUD commands may reach the persistence side of a resource. */
@@ -178,13 +179,6 @@ export type ResourceRecord<
 
 const DEFAULT_API: ApiExposure = { create: true, read: true, update: true, delete: true }
 
-type SortStep = { readonly field: string; readonly direction: 'asc' | 'desc' }
-
-const parseSort = (sort: string): SortStep => ({
-  field: sort.startsWith('-') ? sort.slice(1) : sort,
-  direction: sort.startsWith('-') ? 'desc' : 'asc',
-})
-
 export const resource = <
   F extends DataFields,
   SN extends string,
@@ -317,22 +311,28 @@ export const resource = <
     }
 
     const sort = query.sort ?? descriptor.defaultSort
+    const asked = sort === undefined ? undefined : parseSort(sort)
 
-    if (sort !== undefined) {
-      const step = parseSort(sort)
-
-      if (!sortable.has(step.field)) {
-        issues.push({
-          path: ['sort'],
-          code: 'not_sortable',
-          message: `"${step.field}" cannot be sorted on`,
-        })
-      } else {
-        built = built.orderBy(step.field, step.direction)
-      }
+    if (asked !== undefined && !sortable.has(asked.field)) {
+      issues.push({
+        path: ['sort'],
+        code: 'not_sortable',
+        message: `"${asked.field}" cannot be sorted on`,
+      })
     }
 
     if (issues.length > 0) throw new ValidationError(issues)
+
+    // After the refusal, so an ordering is never built from a field the resource does
+    // not allow — and always, so a page is a window onto an ordering rather than onto
+    // whatever the heap gave (see `ordering.ts`).
+    for (const term of listingOrder({
+      sort,
+      primaryKey: model.primaryKey,
+      hasCreatedAt: Object.hasOwn(model.fields as object, 'createdAt'),
+    })) {
+      built = built.orderBy(term.field, term.direction)
+    }
 
     return built
   }

@@ -314,6 +314,77 @@ describe('a dynamic resource behaves like any other', () => {
     expect(page).toMatchObject({ total: 3, perPage: 2, lastPage: 2 })
   })
 
+  /**
+   * The ordering, read off what the adapter was actually asked for.
+   *
+   * Asserted against the Query AST rather than against the rows that come back,
+   * because the rows are the adapter's answer and the defect is a *missing
+   * instruction*. An in-memory store returns insertion order whether it was told to
+   * or not, so a test that reads the rows agrees with the bug — which is how a
+   * listing shipped with no `ORDER BY` at all.
+   */
+  it('always tells the database how to order, and how to break a tie', async () => {
+    const { app, resource } = build()
+
+    await create(app, { author: 'Ada', quote: 'It compiles' })
+
+    const asked: { limit?: unknown; order?: unknown }[] = []
+    const underneath = adapter.execute.bind(adapter)
+
+    adapter.execute = async (query, context) => {
+      asked.push(query as { limit?: unknown; order?: unknown })
+
+      return await underneath(query, context)
+    }
+
+    // `paginate` asks twice — how many there are, and which ones are on this page.
+    // The one that takes a page is the one an ordering decides.
+    const paged = () => asked.find((query) => query.limit !== undefined)?.order
+
+    await resource.list()
+
+    expect(paged()).toEqual([
+      { field: 'createdAt', direction: 'desc' },
+      { field: 'id', direction: 'asc' },
+    ])
+
+    asked.length = 0
+    await resource.list({ sort: 'status' })
+
+    // `status` ties for every draft in the collection, so the key underneath it is
+    // what stops page two from repeating page one.
+    expect(paged()).toEqual([
+      { field: 'status', direction: 'asc' },
+      { field: 'id', direction: 'asc' },
+    ])
+  })
+
+  it('pages through a collection without repeating or losing a row', async () => {
+    const { app, resource } = build()
+
+    // All alike on everything but their identity: same author, same status, written
+    // as fast as the machine allows. Whatever the ordering leads with, these tie.
+    for (let index = 0; index < 25; index++) {
+      await create(app, { author: 'Ada', quote: `Note ${index}` })
+    }
+
+    const seen: string[] = []
+    let page = 1
+
+    while (true) {
+      const answered = await resource.list({ page, perPage: 4, sort: 'status' })
+
+      seen.push(...answered.data.map((entry) => String((entry as { id: unknown }).id)))
+
+      if (page >= answered.lastPage) break
+
+      page++
+    }
+
+    expect(seen).toHaveLength(25)
+    expect(new Set(seen).size).toBe(25)
+  })
+
   it('refuses a filter the definition did not mark filterable', async () => {
     const { app, resource } = build()
     await create(app, { author: 'Ada', quote: 'x' })

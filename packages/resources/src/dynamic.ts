@@ -21,6 +21,7 @@ import {
 import { describeField, humanize, type ResourceDescriptor } from './descriptor.js'
 import { countFields, type FieldSpec, fieldFromSpec, MAX_FIELDS } from './field-registry.js'
 import type { AnyField } from './fields.js'
+import { listingOrder, parseSort } from './ordering.js'
 import { type AnyResource, type ListQuery, PERSISTENCE } from './resource.js'
 import { ResourceEntryModel } from './system-models.js'
 import { validateAgainstFields } from './validation.js'
@@ -320,22 +321,28 @@ export const dynamicResource = (
         }
       }
 
-      if (query.sort !== undefined) {
-        const descending = query.sort.startsWith('-')
-        const field = descending ? query.sort.slice(1) : query.sort
-
-        if (!ENTRY_SORT_FIELDS.has(field)) {
-          issues.push({
-            path: ['sort'],
-            code: 'not_sortable',
-            message: `Dynamic entries sort by ${[...ENTRY_SORT_FIELDS].join(', ')} only`,
-          })
-        } else {
-          built = built.orderBy(field as 'createdAt', descending ? 'desc' : 'asc')
-        }
+      if (query.sort !== undefined && !ENTRY_SORT_FIELDS.has(parseSort(query.sort).field)) {
+        issues.push({
+          path: ['sort'],
+          code: 'not_sortable',
+          message: `Dynamic entries sort by ${[...ENTRY_SORT_FIELDS].join(', ')} only`,
+        })
       }
 
       if (issues.length > 0) throw new ValidationError(issues)
+
+      // After the refusal, and always: an entry's `status` ties for every draft in the
+      // collection, and two rows that tie are two rows the database may return in
+      // either order — differently on each of the two queries a page is made of
+      // (see `ordering.ts`).
+      for (const term of listingOrder({
+        sort: query.sort,
+        primaryKey: 'id',
+        // Every entry is a row of `assemora_resource_entries`, which has one.
+        hasCreatedAt: true,
+      })) {
+        built = built.orderBy(term.field as 'createdAt', term.direction)
+      }
 
       const page = await built.paginate(
         Math.max(1, query.page ?? 1),

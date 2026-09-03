@@ -255,6 +255,49 @@ describe('listing', () => {
     expect(page.data.map((entry) => entry.views)).toEqual([50, 200, 500])
   })
 
+  /**
+   * The ordering, read off what the adapter was actually asked for.
+   *
+   * A page is a window onto an ordering, and without one the database returns rows in
+   * whatever order the plan gives — which is not the same plan for `offset 20 limit 10`
+   * as for `limit 10`. So page two could repeat a row from page one.
+   *
+   * Asserted against the Query AST rather than the rows, because the rows are the
+   * adapter's answer and what was missing is an *instruction*. An in-memory store hands
+   * back insertion order whether it was told to or not, so a test reading the rows
+   * agrees with the bug.
+   */
+  it('always tells the database how to order, and how to break a tie', async () => {
+    const asked: { limit?: unknown; order?: unknown }[] = []
+    const underneath = adapter.execute.bind(adapter)
+
+    adapter.execute = async (query, context) => {
+      asked.push(query as { limit?: unknown; order?: unknown })
+
+      return await underneath(query, context)
+    }
+
+    // `paginate` asks twice — how many there are, and which are on this page.
+    const paged = () => asked.find((query) => query.limit !== undefined)?.order
+
+    await Articles.list()
+
+    // `defaultSort: '-views'`, and two articles with the same view count are two rows
+    // the database may return in either order unless something settles it.
+    expect(paged()).toEqual([
+      { field: 'views', direction: 'desc' },
+      { field: 'id', direction: 'asc' },
+    ])
+
+    asked.length = 0
+    await Articles.list({ sort: 'title' })
+
+    expect(paged()).toEqual([
+      { field: 'title', direction: 'asc' },
+      { field: 'id', direction: 'asc' },
+    ])
+  })
+
   it('caps the page size, however large the request', async () => {
     const page = await Articles.list({ perPage: 5000 })
 
