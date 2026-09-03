@@ -73,7 +73,7 @@ export type AuthorizationPort = {
    * only as far as reading the record, and the command must ask `context.authorize`
    * before it writes. Resolving with nothing is a decision that is final.
    */
-  authorize(request: AuthorizationRequest): Promise<AuthorizationDeferral | void>
+  authorize(request: AuthorizationRequest): Promise<AuthorizationDeferral | undefined>
   /**
    * Resolves when the actor may act on this particular record. Optional: a provider
    * with no record-level rules simply does not implement it.
@@ -105,7 +105,9 @@ export const denyAll = (): AuthorizationPort => ({
  * blunt so that shipping it is a visible choice rather than an oversight.
  */
 export const permitAll = (): AuthorizationPort => ({
-  authorize: () => Promise.resolve(),
+  // Nothing is ever deferred: permitting everything is a whole answer, so no command
+  // owes a second question and none is refused for not having asked one.
+  authorize: () => Promise.resolve(undefined),
   authorizeRecord: () => Promise.resolve(),
 })
 

@@ -132,7 +132,7 @@ describe('command pipeline', () => {
   })
 
   it('reports validation failures by field', async () => {
-    const { bus, registry } = harness()
+    const { bus } = harness()
 
     await expect(bus.execute(PublishPage, { id: 'nope' })).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
@@ -143,7 +143,7 @@ describe('command pipeline', () => {
   it('hands the handler validated input with unknown keys stripped', async () => {
     const handle = vi.fn(async () => 'done')
     const Probe = command('probe.run', { input: { id: uuid() }, handle })
-    const { bus, registry } = harness()
+    const { bus } = harness()
 
     await bus.execute(Probe, { id: PAGE_ID, isAdmin: true })
 
@@ -241,7 +241,7 @@ describe('command pipeline', () => {
   })
 
   it('returns whatever the handler returns', async () => {
-    const { bus, registry } = harness()
+    const { bus } = harness()
 
     await expect(bus.execute(PublishPage, { id: PAGE_ID })).resolves.toEqual({
       id: PAGE_ID,
@@ -284,13 +284,13 @@ describe('registration and dispatch by name', () => {
   })
 
   it('refuses an unknown name', () => {
-    const { bus, registry } = harness()
+    const { bus } = harness()
 
     expect(() => bus.execute('pages.vanish', {})).toThrowError(UnknownCommandError)
   })
 
   it('validates a named call exactly like a typed one', async () => {
-    const { bus, registry } = harness()
+    const { bus } = harness()
     bus.register(PublishPage)
 
     await expect(bus.execute('pages.publish', { id: 'nope' })).rejects.toThrowError(ValidationError)
