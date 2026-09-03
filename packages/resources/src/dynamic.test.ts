@@ -314,6 +314,30 @@ describe('a dynamic resource behaves like any other', () => {
     expect(page).toMatchObject({ total: 3, perPage: 2, lastPage: 2 })
   })
 
+  it('paginates deterministically without omitting or duplicating entries across pages', async () => {
+    const { app, resource } = build()
+
+    const createdIds: string[] = []
+    for (let i = 1; i <= 5; i++) {
+      const entry = await create(app, { author: `Author ${i}`, quote: `Quote ${i}` })
+      createdIds.push(entry.id)
+    }
+
+    const page1 = await resource.list({ page: 1, perPage: 2 })
+    const page2 = await resource.list({ page: 2, perPage: 2 })
+    const page3 = await resource.list({ page: 3, perPage: 2 })
+
+    const pagedIds = [
+      ...page1.data.map((r: { id: string }) => r.id),
+      ...page2.data.map((r: { id: string }) => r.id),
+      ...page3.data.map((r: { id: string }) => r.id),
+    ]
+
+    expect(pagedIds).toHaveLength(5)
+    expect(new Set(pagedIds).size).toBe(5)
+    expect(pagedIds.sort()).toEqual(createdIds.sort())
+  })
+
   it('refuses a filter the definition did not mark filterable', async () => {
     const { app, resource } = build()
     await create(app, { author: 'Ada', quote: 'x' })

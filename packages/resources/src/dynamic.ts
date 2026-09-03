@@ -332,7 +332,12 @@ export const dynamicResource = (
           })
         } else {
           built = built.orderBy(field as 'createdAt', descending ? 'desc' : 'asc')
+          if (field !== 'id') {
+            built = built.orderBy('id', 'asc')
+          }
         }
+      } else {
+        built = built.orderBy('createdAt', 'asc').orderBy('id', 'asc')
       }
 
       if (issues.length > 0) throw new ValidationError(issues)
