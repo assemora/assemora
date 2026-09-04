@@ -275,7 +275,17 @@ export const Settings = () => {
   /** What the reader changed and has not saved, by setting key. */
   const [staged, setStaged] = useState<Readonly<Record<string, string>>>({})
 
-  const group = groups.find((one) => one.name === asked) ?? groups[0]
+  /**
+   * The groups as the sidebar orders them: by section, then as the registry answered.
+   * The fallback is the first of *these*, so an address naming no group opens what the
+   * reader sees at the top — the registry's own order puts whichever module booted
+   * last wherever it fell, and that is not a first anybody chose.
+   */
+  const ordered = useMemo(
+    () => SECTIONS.flatMap((section) => groups.filter((one) => one.section === section)),
+    [groups],
+  )
+  const group = ordered.find((one) => one.name === asked) ?? ordered[0]
 
   const spoken = useMemo(
     () =>
