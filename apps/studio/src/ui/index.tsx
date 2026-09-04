@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react'
 import {
+  type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
   type ComponentPropsWithRef,
   createContext,
@@ -79,6 +80,22 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   busy?: boolean
 }
 
+/** The one look, whether the element is a `button` or an `a`. */
+const buttonClasses = (
+  variant: keyof typeof VARIANTS,
+  size: keyof typeof SIZES,
+  className: string | undefined,
+): string =>
+  join(
+    'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-[650]',
+    'disabled:cursor-not-allowed disabled:border disabled:border-hairline',
+    'disabled:bg-surface-raised disabled:text-ink-disabled disabled:shadow-none',
+    variant === 'ghost' && 'font-semibold',
+    SIZES[size],
+    VARIANTS[variant],
+    className,
+  )
+
 export const Button = ({
   variant = 'primary',
   size = 'md',
@@ -91,20 +108,34 @@ export const Button = ({
   <button
     type="button"
     disabled={disabled === true || busy}
-    className={join(
-      'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap font-[650]',
-      'disabled:cursor-not-allowed disabled:border disabled:border-hairline',
-      'disabled:bg-surface-raised disabled:text-ink-disabled disabled:shadow-none',
-      variant === 'ghost' && 'font-semibold',
-      SIZES[size],
-      VARIANTS[variant],
-      className,
-    )}
+    className={buttonClasses(variant, size, className)}
     {...rest}
   >
     {busy && <Loader aria-hidden className="size-4 animate-spin" />}
     {children}
   </button>
+)
+
+/**
+ * A button that is an address.
+ *
+ * An anchor rather than a `button` calling `window.open`, because a place a person goes
+ * is a link whatever it looks like: it can be opened in a tab of their choosing, copied,
+ * and read as a link by a screen reader. Same look as `Button`, one class list.
+ */
+export const LinkButton = ({
+  variant = 'primary',
+  size = 'md',
+  className,
+  children,
+  ...rest
+}: AnchorHTMLAttributes<HTMLAnchorElement> & {
+  variant?: keyof typeof VARIANTS
+  size?: keyof typeof SIZES
+}) => (
+  <a className={buttonClasses(variant, size, className)} {...rest}>
+    {children}
+  </a>
 )
 
 /**

@@ -38,7 +38,7 @@ import { isLanguage, LANGUAGE_NAMES } from '../i18n/languages.ts'
 import { useLanguage, useT } from '../i18n/translate.tsx'
 import { hitsOf, matches } from '../settings/search.ts'
 import { ResourceIcon } from '../ui/icons.tsx'
-import { Button, join, SearchField, Segmented, Spinner } from '../ui/index.tsx'
+import { Button, Failure, join, LinkButton, SearchField, Segmented, Spinner } from '../ui/index.tsx'
 import { SaveBar } from '../ui/layout.tsx'
 import { Logo } from '../ui/logo.tsx'
 
@@ -119,9 +119,9 @@ const RowView = ({
           </span>
         )}
         {row.kind === 'link' && (
-          <Button variant="secondary" onClick={() => window.open(row.href, '_blank', 'noopener')}>
+          <LinkButton variant="secondary" href={row.href} target="_blank" rel="noopener">
             {row.action}
-          </Button>
+          </LinkButton>
         )}
         {row.kind === 'segmented' && (
           <Segmented
@@ -228,7 +228,7 @@ const GroupButton = ({
  * The registry's arrive as they are. Studio's is built here because its words are
  * Studio's and its one value is read from this browser rather than from any server.
  */
-const useGroups = (): { groups: readonly Group[]; ready: boolean } => {
+const useGroups = (): { groups: readonly Group[]; ready: boolean; failure: unknown } => {
   const introspection = useIntrospection()
   const { language, languages } = useLanguage()
   const t = useT()
@@ -261,7 +261,9 @@ const useGroups = (): { groups: readonly Group[]; ready: boolean } => {
     return [...(introspection.data?.settings ?? []), studio]
   }, [introspection.data, language, languages, t])
 
-  return { groups, ready: !introspection.isPending }
+  // A registry that could not be read is said, not shown as one lonely group: the
+  // reader would otherwise take Studio's own row for the whole of the settings.
+  return { groups, ready: !introspection.isPending, failure: introspection.error ?? undefined }
 }
 
 export const Settings = () => {
@@ -269,7 +271,7 @@ export const Settings = () => {
   const { group: asked } = useSearch({ from: '/settings' })
   const { viewer } = useSession()
   const { choose } = useLanguage()
-  const { groups, ready } = useGroups()
+  const { groups, ready, failure } = useGroups()
   const t = useT()
   const [query, setQuery] = useState('')
   /** What the reader changed and has not saved, by setting key. */
@@ -415,9 +417,13 @@ export const Settings = () => {
       </header>
 
       <main className="m-2 min-h-0 flex-1 overflow-hidden rounded-2xl bg-surface">
-        {!ready || group === undefined ? (
+        {failure !== undefined ? (
+          <div className="p-8">
+            <Failure error={failure} />
+          </div>
+        ) : !ready || group === undefined ? (
           <div className="grid h-full place-items-center">
-            {ready ? <p className="text-base text-ink-soft">{t('settings.empty')}</p> : <Spinner />}
+            <Spinner />
           </div>
         ) : (
           <div className="grid h-full min-h-0 grid-cols-[244px_minmax(0,1fr)]">

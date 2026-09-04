@@ -56,6 +56,19 @@ describe('settingsGroup', () => {
     )
   })
 
+  it('refuses two blocks with one title, because a reader could not tell the decisions apart', () => {
+    const block = GROUP.blocks[0]
+
+    if (block === undefined) throw new Error('the fixture lost its block')
+
+    expect(() =>
+      settingsGroup({
+        ...GROUP,
+        blocks: [block, { ...block, rows: [{ ...block.rows[0], key: 'search.other' } as never] }],
+      }),
+    ).toThrow(/used twice/)
+  })
+
   it('refuses a row key used twice, because a search would count two rows as one', () => {
     const row = GROUP.blocks[0]?.rows[0]
 

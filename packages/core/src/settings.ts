@@ -108,9 +108,14 @@ export const settingsGroup = (definition: SettingsGroupDescriptor): SettingsGrou
   if (definition.blocks.length === 0) refuse(name, 'it has no blocks, so it has nothing to show')
 
   const keys = new Set<string>()
+  const titles = new Set<string>()
 
   for (const block of definition.blocks) {
     if (block.title.trim() === '') refuse(name, 'every block needs a title')
+    // Two blocks with one title are one decision written twice as far as a reader can
+    // tell, and one card twice as far as a screen keyed on the title can.
+    if (titles.has(block.title)) refuse(name, `block title "${block.title}" is used twice`)
+    titles.add(block.title)
     if (block.rows.length === 0) refuse(name, `block "${block.title}" has no rows`)
 
     for (const row of block.rows) {

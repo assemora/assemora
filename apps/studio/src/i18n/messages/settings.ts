@@ -19,11 +19,6 @@ export const SETTINGS = {
     uk: 'Жодне налаштування не відповідає «{query}».',
     ru: 'Ни одна настройка не соответствует «{query}».',
   },
-  'settings.empty': {
-    en: 'This application describes no settings.',
-    uk: 'Цей застосунок не описує жодних налаштувань.',
-    ru: 'Это приложение не описывает никаких настроек.',
-  },
   'settings.back': { en: 'Back to Studio', uk: 'Назад до Studio', ru: 'Назад в Studio' },
   'settings.close': {
     en: 'Close settings (Esc)',
