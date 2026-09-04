@@ -35,12 +35,16 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { realInfrastructure } from './budget.ts'
+import { isolate, schemaNamed } from './isolation.ts'
 
 realInfrastructure()
 
 const url =
   process.env.ASSEMORA_TEST_DATABASE_URL ??
   `postgres://${userInfo().username}@localhost:5432/assemora_test`
+
+/** Where this file's tables live, and nobody else's (#28). */
+const isolated = schemaNamed(import.meta.url)
 
 /**
  * A suite that skips itself is a suite that can be green while proving nothing.
@@ -336,7 +340,8 @@ const memory = createMemoryAdapter({
 beforeAll(async () => {
   if (!reachable) return
 
-  pg = postgres({ url })
+  pg = postgres({ url, schema: isolated })
+  await isolate(pg, isolated)
   await dropSchema(pg, [table, ...schema])
   await applySchema(pg, [table, ...schema])
 

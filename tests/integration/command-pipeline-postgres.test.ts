@@ -64,12 +64,16 @@ import { Revision, revisions, revisionsModule } from '@assemora/revisions'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { realInfrastructure } from './budget.ts'
+import { isolate, schemaNamed } from './isolation.ts'
 
 realInfrastructure()
 
 const url =
   process.env.ASSEMORA_TEST_DATABASE_URL ??
   `postgres://${userInfo().username}@localhost:5432/assemora_test`
+
+/** Where this file's tables live, and nobody else's (#28). */
+const schema = schemaNamed(import.meta.url)
 
 /**
  * A suite that skips itself is a suite that can be green while proving nothing.
@@ -136,7 +140,8 @@ let ada: string
 beforeAll(async () => {
   if (!reachable) return
 
-  adapter = postgres({ url })
+  adapter = postgres({ url, schema })
+  await isolate(adapter, schema)
   useAdapter(adapter)
 
   await dropSchema(adapter, tables())
