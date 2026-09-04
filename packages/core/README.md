@@ -79,6 +79,34 @@ package registers an implementation (ADR-0008). Authorization defaults to
 `denyAll()`: an application with no policy provider refuses every command instead of
 running unauthorized.
 
+## Settings
+
+What a module wants the settings screen to say about it (ADR-0031). A group is
+declarative data — a section, a label, blocks of rows that are a `value` or a `link` —
+registered under the module's name in the `settings` section of the Schema Registry,
+where Studio draws it and `assemora.describe` answers with it.
+
+```ts
+module('search').settings({
+  name: 'search',
+  section: 'platform',
+  label: { en: 'Search', uk: 'Пошук' },
+  icon: 'gauge',
+  blocks: [
+    {
+      title: 'Index',
+      locked: true,
+      rows: [{ key: 'search.engine', kind: 'value', label: 'Engine', value: 'Meilisearch' }],
+    },
+  ],
+})
+```
+
+A group written out is checked by `settingsGroup()` where it is written; a group given
+as a function is called at boot, for a module whose values are handed to it after it
+was written. A word may be a string or a map keyed by language tag — Studio picks and
+never translates. There is no `input` row: a setting somebody changes is a command.
+
 ## Workspace dependencies
 
 - `@assemora/schema`

@@ -24,8 +24,9 @@ the detail behind the page that mentions it.
 | [12. Deploying](12-deploying.md) | The database, storage, the security defaults |
 | [13. Jobs](13-jobs.md) | `job()`, `dispatch()`, the queue adapter, the worker process |
 | [14. The theme](14-theme.md) | Tokens, the five groups, the generated stylesheet, the Design section |
+| [15. Settings](15-settings.md) | `.settings()`, the `settings` section, what Studio draws and an agent reads |
 
-## Reading it in less than fourteen pages
+## Reading it in less than fifteen pages
 
 - **"Is this for me?"** — [1](01-what-assemora-is.md), then
   [2](02-getting-started.md).
@@ -41,6 +42,8 @@ the detail behind the page that mentions it.
   [6](06-commands-and-queries.md) for the pipeline it goes through.
 - **"I want work to happen after the response."** — [13](13-jobs.md), with
   [6](06-commands-and-queries.md) for the commit it waits for.
+- **"I want my package to say what it is configured as."** — [15](15-settings.md),
+  and [10](10-agents-and-mcp.md) for the agent that reads the same answer.
 - **"I want to put this somewhere."** — [11](11-the-cli.md), [12](12-deploying.md).
 
 ## The code this guide is written against

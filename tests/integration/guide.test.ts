@@ -25,6 +25,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { createApplication, module } from '@assemora/core'
 import * as resources from '@assemora/resources'
 import {
   array,
@@ -103,6 +104,83 @@ describe('docs/guide/05-resources.md', () => {
         })
 
         const sections = array(object({ heading: text().required(), body: richText() }))
+      `),
+    )
+  })
+})
+
+/**
+ * The settings chapter, held the same way (ADR-0031). The group below is the one the
+ * page opens with, compiled here and booted into a real registry — so a field the
+ * descriptor loses, or a check `settingsGroup()` gains, breaks the build before it
+ * breaks the page.
+ */
+const SETTINGS_PAGE = fileURLToPath(new URL('../../docs/guide/15-settings.md', import.meta.url))
+
+describe('docs/guide/15-settings.md', () => {
+  it("compiles the guide's group, registers it under its module, and prints what it compiled", async () => {
+    const search = module('search').settings({
+      name: 'search',
+      section: 'platform',
+      label: { en: 'Search', uk: 'Пошук', ru: 'Поиск' },
+      icon: 'gauge',
+      blurb: 'What the index holds, and where it is rebuilt.',
+      blocks: [
+        {
+          title: 'Index',
+          locked: true,
+          note: 'Declared in assemora.config.ts. Changing it is a deploy, not a setting.',
+          rows: [
+            { key: 'search.engine', kind: 'value', label: 'Engine', value: 'Meilisearch' },
+            {
+              key: 'search.rebuild',
+              kind: 'link',
+              label: 'Rebuild',
+              help: 'Every document, from scratch. Takes a minute.',
+              href: '/api/queries/search.status',
+              action: 'Open',
+            },
+          ],
+        },
+      ],
+    })
+
+    const app = createApplication({ modules: [search] })
+
+    await app.boot()
+
+    expect(app.registry.section('settings').map((group) => group.name)).toEqual(['search'])
+    expect(app.registry.registeredBy('settings', 'search')).toBe('search')
+
+    const page = await readFile(SETTINGS_PAGE, 'utf8')
+
+    expect(flattened(page)).toContain(
+      flattened(`
+        export const search = module('search').settings({
+          name: 'search',
+          section: 'platform',
+          label: { en: 'Search', uk: 'Пошук', ru: 'Поиск' },
+          icon: 'gauge',
+          blurb: 'What the index holds, and where it is rebuilt.',
+          blocks: [
+            {
+              title: 'Index',
+              locked: true,
+              note: 'Declared in assemora.config.ts. Changing it is a deploy, not a setting.',
+              rows: [
+                { key: 'search.engine', kind: 'value', label: 'Engine', value: 'Meilisearch' },
+                {
+                  key: 'search.rebuild',
+                  kind: 'link',
+                  label: 'Rebuild',
+                  help: 'Every document, from scratch. Takes a minute.',
+                  href: '/api/queries/search.status',
+                  action: 'Open',
+                },
+              ],
+            },
+          ],
+        })
       `),
     )
   })
