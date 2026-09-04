@@ -86,8 +86,15 @@ export interface ModuleBuilder {
   queries(...definitions: AnyQuery[]): ModuleBuilder
   /** Durable work the module can schedule (SPEC.md §82). */
   jobs(...definitions: AnyJob[]): ModuleBuilder
-  /** What this module wants the settings screen to say about it (ADR-0031). */
-  settings(...groups: SettingsGroupDescriptor[]): ModuleBuilder
+  /**
+   * What this module wants the settings screen to say about it (ADR-0031).
+   *
+   * A group written out is checked where it is written and registered with the
+   * module. A group given as a function is called at boot, for the module whose
+   * values are not known until then — which storage driver it was handed, what
+   * ceiling — and is checked the moment it is.
+   */
+  settings(...groups: (SettingsGroupDescriptor | (() => SettingsGroupDescriptor))[]): ModuleBuilder
   provide<T>(key: Token<T>, factory: Factory<T>): ModuleBuilder
   on<K extends string>(
     event: K,
@@ -171,12 +178,21 @@ export const module = (name: string): ModuleBuilder => {
     // Checked when the module is *built* rather than when it registers: a group that
     // cannot be drawn is a mistake in the file the author has open, and the stack that
     // says so should end there rather than in `boot()`.
-    settings(...groups: SettingsGroupDescriptor[]) {
-      const checked = groups.map(settingsGroup)
+    settings(...groups: (SettingsGroupDescriptor | (() => SettingsGroupDescriptor))[]) {
+      for (const group of groups) {
+        if (typeof group === 'function') {
+          hooks.boot.push((context) => {
+            context.registry.register('settings', settingsGroup(group()))
+          })
+          continue
+        }
 
-      registrations.push((context) => {
-        for (const group of checked) context.registry.register('settings', group)
-      })
+        const checked = settingsGroup(group)
+
+        registrations.push((context) => {
+          context.registry.register('settings', checked)
+        })
+      }
       return builder
     },
 

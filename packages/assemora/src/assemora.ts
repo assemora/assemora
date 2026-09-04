@@ -40,7 +40,14 @@ import {
 import { clearSlowQueryLog, dataTransactions, useAdapter, useSlowQueryLog } from '@assemora/data'
 import { commandEndpoints, commandRoutes, createHttpServer, type HttpServer } from '@assemora/http'
 import { mcp } from '@assemora/mcp'
-import { currentStorage, localStorage, type StorageDriver, useStorage } from '@assemora/media'
+import {
+  currentStorage,
+  hasStorage,
+  localStorage,
+  type StorageDriver,
+  useStorage,
+  useUploadLimit,
+} from '@assemora/media'
 import { introspectionRoute, openApiRoute } from '@assemora/openapi'
 import { revisions, revisionsModule } from '@assemora/revisions'
 import { theme } from '@assemora/theme'
@@ -262,17 +269,6 @@ const frameAncestorsFor = (settings: Settings): readonly string[] =>
  * (SPEC.md §85).
  */
 const ORIGIN = /^https?:\/\/([a-z0-9-]+(\.[a-z0-9-]+)*|\[[0-9a-f:]+\])(:\d{1,5})?$/i
-
-/** A storage driver the application registered before calling this function. */
-const hasStorage = (): boolean => {
-  try {
-    currentStorage()
-
-    return true
-  } catch {
-    return false
-  }
-}
 
 /** A configuration that cannot work, refused where it was written. */
 const refuseImpossible = (
@@ -619,6 +615,10 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
     useStorage(storageFor(options.media, settings.api?.prefix ?? ''))
   }
 
+  // The same number sizes the upload route below and is what the media module says on
+  // the settings screen (ADR-0031): told to the module once, so the two cannot differ.
+  useUploadLimit(settings.uploadBytes)
+
   if (needsDefaultStorage) {
     // Not a refusal, and not silence either. A container replaces this directory on
     // the next deploy, so the application that meant S3 has to be able to see that it
@@ -678,7 +678,7 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   // that knows every value: the project's name, the languages, the upload ceiling, the
   // MCP address. Studio draws the section; nothing about a deployment is described
   // twice (ADR-0031).
-  for (const group of settingsGroups(settings, registered, app.registry.section('locales'))) {
+  for (const group of settingsGroups(settings, app.registry.section('locales'))) {
     app.registry.register('settings', group)
   }
   const served =

@@ -2,8 +2,8 @@
  * What the umbrella tells the settings screen (ADR-0031).
  *
  * Every row here is a fact only this file knows: the project's name is an option of
- * `assemora()`, the upload ceiling is what this file sized the upload route to, the MCP
- * address is where this file mounted it. Studio reads the registry and draws what it
+ * `assemora()`, the API prefix is where this file mounted everything, the MCP address
+ * is where it mounted that. Studio reads the registry and draws what it
  * finds; `assemora.describe` answers an agent from the same section. Nothing about a
  * deployment is described twice.
  *
@@ -13,15 +13,11 @@
  * a command (SPEC.md §14), and the day one exists it is declared as one.
  */
 import type { LocaleDescriptor, SettingBlock, SettingsGroupDescriptor } from '@assemora/core'
-import { settingsGroup } from '@assemora/core'
+import { megabytes, settingsGroup } from '@assemora/core'
 
 import type { RateWindow, Settings } from './options.js'
 
 const DECLARED = 'Declared in assemora.config.ts. Changing it is a deploy, not a setting.'
-
-/** Whole megabytes without a decimal, a fraction with one: `16 MB`, `1.4 MB`. */
-export const megabytes = (bytes: number): string =>
-  `${Math.round((bytes / 1_048_576) * 10) / 10} MB`
 
 /** `600 per minute`, `120 per 30 seconds`. */
 export const perWindow = (window: RateWindow): string => {
@@ -126,31 +122,6 @@ const languages = (locales: readonly LocaleDescriptor[]): SettingsGroupDescripto
     ],
   })
 }
-
-const media = (
-  settings: Settings,
-  modules: ReadonlySet<string>,
-): SettingsGroupDescriptor | undefined =>
-  modules.has('media')
-    ? settingsGroup({
-        name: 'media',
-        section: 'content',
-        label: 'Media',
-        icon: 'image',
-        blurb: 'What may be uploaded, and how large.',
-        blocks: [
-          locked('Uploads', [
-            {
-              key: 'media.max-upload',
-              kind: 'value',
-              label: 'Largest file',
-              help: 'Per file, as it arrives: base64 puts four bytes on the wire for every three stored.',
-              value: megabytes(settings.uploadBytes),
-            },
-          ]),
-        ],
-      })
-    : undefined
 
 const api = (settings: Settings): SettingsGroupDescriptor | undefined => {
   if (settings.api === undefined) return undefined
@@ -290,20 +261,19 @@ const security = (settings: Settings): SettingsGroupDescriptor =>
  * The groups this deployment has, in the order the sidebar draws them.
  *
  * A group nothing backs is not declared: a deployment in one language has no
- * Languages group, one without `media()` has no Media group, one with `mcp: false` has
- * no Agents group. The registry decides what Studio draws, the way it does for the
- * sidebar.
+ * Languages group, one with `mcp: false` has no Agents group. The registry decides what
+ * Studio draws, the way it does for the sidebar. The Media group is not here at all:
+ * the module that holds the bytes declares it (`@assemora/media`), and this file only
+ * tells that module the ceiling it sized the upload route to.
  */
 export const settingsGroups = (
   settings: Settings,
-  modules: ReadonlySet<string>,
   locales: readonly LocaleDescriptor[],
 ): readonly SettingsGroupDescriptor[] =>
   [
     general(settings),
     security(settings),
     languages(locales),
-    media(settings, modules),
     api(settings),
     agents(settings),
   ].filter((group): group is SettingsGroupDescriptor => group !== undefined)

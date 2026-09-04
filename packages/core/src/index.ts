@@ -164,6 +164,7 @@ export {
   type SectionName,
 } from './registry.js'
 export {
+  megabytes,
   SETTING_SECTIONS,
   type SettingBlock,
   type SettingRow,

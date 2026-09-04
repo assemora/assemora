@@ -239,6 +239,11 @@ export const s3Storage = (options: S3StorageOptions): StorageDriver => {
 
   return {
     name: 's3',
+    // The bucket and where it is, never the key pair that opens it.
+    where:
+      options.endpoint === undefined
+        ? `${options.bucket} (${options.region})`
+        : `${options.bucket} at ${options.endpoint}`,
 
     async put(path, data, contentType): Promise<StoredObject> {
       const key = objectKey(path)

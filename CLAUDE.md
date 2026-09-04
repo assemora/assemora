@@ -289,8 +289,11 @@ back — are the prototype's. What the groups *hold* is a `settings` section of 
 Registry: `SettingsGroupDescriptor` in core, declarative data with two row kinds (`value`
 and `link`) and a `locked` flag per block, checked by `settingsGroup()` where it is
 declared. The umbrella registers what only it knows — project, session cookie, languages,
-upload ceiling, API prefix and rate limit, MCP address and mutation mode — and a module
-declares its own with `module(…).settings(…)`. Studio draws whatever arrives, the way the
+API prefix and rate limit, MCP address and mutation mode — and a module declares its own
+with `module(…).settings(…)`, or `.settings(() => …)` called at boot for values it is
+handed later. A group has one declarer: `@assemora/media` declares the Media group (its
+driver, where the bytes live, the upload ceiling), and the umbrella *tells* it the ceiling
+with `useUploadLimit()` the way it hands over the driver with `useStorage()`. Studio draws whatever arrives, the way the
 sidebar draws whatever resources arrive, and holds one group of its own: which language it
 speaks (ADR-0030), the one row a reader decides on the screen. The prototype's ten groups
 carry a billing plan, single sign-on, a review workflow and a deploy hook, and none is a

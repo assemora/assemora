@@ -16,6 +16,11 @@ export type StoredObject = {
 
 export type StorageDriver = {
   readonly name: string
+  /**
+   * Where the bytes live, for a person: a directory, a bucket. Shown on the settings
+   * screen beside the driver's name, so it must never carry a credential.
+   */
+  readonly where?: string
   put(path: string, data: Uint8Array, contentType: string): Promise<StoredObject>
   get(path: string): Promise<Uint8Array>
   remove(path: string): Promise<void>
@@ -51,6 +56,7 @@ export const localStorage = (options: LocalStorageOptions): StorageDriver => {
 
   return {
     name: 'local',
+    where: resolve(options.root),
 
     async put(path, data) {
       const target = safeJoin(options.root, path)
@@ -81,6 +87,9 @@ export const useStorage = (driver: StorageDriver): void => {
   current = driver
 }
 
+/** Whether a driver was registered at all — an application may boot before deciding. */
+export const hasStorage = (): boolean => current !== undefined
+
 export const currentStorage = (): StorageDriver => {
   if (current === undefined) {
     throw new AssemoraError('CONFIGURATION_ERROR', 'No media storage is registered', {
@@ -91,6 +100,27 @@ export const currentStorage = (): StorageDriver => {
   return current
 }
 
+/**
+ * The largest file `media.upload` accepts, in bytes (SPEC.md §85).
+ *
+ * 16 MiB by default: a file reaches the command as base64 inside its input, four bytes
+ * on the wire for every three stored, so this admits a file of about 12 MB — and a
+ * phone photograph is 2–5 MB. Sized here because this module is what the number is
+ * about; the process that serves reads it to size the one route that carries a file,
+ * and the settings screen reads it to say so.
+ */
+export const DEFAULT_UPLOAD_BYTES = 16 * 1024 * 1024
+
+let uploadLimit = DEFAULT_UPLOAD_BYTES
+
+export const useUploadLimit = (bytes: number): void => {
+  uploadLimit = bytes
+}
+
+export const currentUploadLimit = (): number => uploadLimit
+
+/** Forgets the driver and the ceiling, for a test that builds more than one application. */
 export const clearStorage = (): void => {
   current = undefined
+  uploadLimit = DEFAULT_UPLOAD_BYTES
 }

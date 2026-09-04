@@ -90,6 +90,31 @@ describe('module().settings()', () => {
     expect(app.registry.registeredBy('settings', 'search')).toBe('search')
   })
 
+  it('calls a group given as a function at boot, for values that are not known before', async () => {
+    let known = 'nothing yet'
+    const app = createApplication({
+      modules: [
+        module('search').settings(() => ({
+          ...GROUP,
+          blocks: [
+            {
+              title: 'Index',
+              rows: [{ key: 'search.index', kind: 'value', label: 'Documents', value: known }],
+            },
+          ],
+        })),
+      ],
+    })
+
+    known = '1 204'
+    await app.boot()
+
+    const row = app.registry.section('settings')[0]?.blocks[0]?.rows[0]
+
+    expect(row?.kind === 'value' && row.value).toBe('1 204')
+    expect(app.registry.registeredBy('settings', 'search')).toBe('search')
+  })
+
   it('refuses a wrong group where it was written, not when the application boots', () => {
     expect(() => module('search').settings({ ...GROUP, blocks: [] })).toThrow(/no blocks/)
   })

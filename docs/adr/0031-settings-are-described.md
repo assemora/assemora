@@ -33,13 +33,13 @@ function survives neither (ADR-0027). The words in it are the application's — 
 Studio as they arrive, the way a resource's label is, and never translated there.
 
 **Whoever knows, declares.** The umbrella registers the groups only it can fill: the
-project's name and version, the languages, the upload ceiling it sized the upload route
-to, the API prefix and its rate limit, where it mounted the MCP endpoint and in which
-mutation mode, how the session cookie travels. A module declares its own with
-`module('search').settings({ … })`, checked where it is written and registered under the
-module's name. Studio draws the section and holds one group of its own — which language
-it speaks — because that is a fact about the person reading, stored in the browser
-(ADR-0030).
+project's name and version, the languages, the API prefix and its rate limit, where it
+mounted the MCP endpoint and in which mutation mode, how the session cookie travels. A
+module declares its own with `module('search').settings({ … })`, checked where it is
+written and registered under the module's name — or as `.settings(() => …)`, called at
+boot, for a module whose values are handed to it after it was written. Studio draws the
+section and holds one group of its own — which language it speaks — because that is a
+fact about the person reading, stored in the browser (ADR-0030).
 
 **There is no `input` row.** A setting somebody changes at run time is a command's
 input, and a command is already described in its own section (SPEC.md §14). When a
@@ -72,3 +72,20 @@ for one screen.
 - **Translate the groups in Studio by key.** Rejected: the words are the
   application's, and a fourth package would have to ship its strings inside Studio's
   bundle to be read in Ukrainian, which is the coupling ADR-0030 refuses.
+
+## Amendment — a group has one declarer, and Media's is the media module
+
+The first cut had the umbrella declare the Media group, because the umbrella sizes the
+upload route. But the module that holds the bytes is the one that knows which driver it
+was handed and where that driver keeps things, and a group in the registry has one name
+and therefore one registrant: two parties cannot each add a block to `media`. Merging
+blocks across registrants was considered and rejected — it would make `settings` the one
+section where a name is not an entry, and the order of a merged group would be the order
+of boot.
+
+So the rule is: **a group is declared by one module, and whatever else that group needs
+is told to that module.** The umbrella now tells `@assemora/media` the ceiling with
+`useUploadLimit()`, beside the driver it already hands over with `useStorage()`, and the
+media module declares the whole group at boot with `.settings(() => …)`: the ceiling,
+the driver's name and where it keeps the originals — a directory, or a bucket and never
+the key pair that opens it. `StorageDriver` gained an optional `where` for that sentence.

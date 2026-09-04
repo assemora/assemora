@@ -25,7 +25,7 @@ import {
   type VersionDeclaration,
 } from '@assemora/http'
 import type { MutationMode } from '@assemora/mcp'
-import type { StorageDriver } from '@assemora/media'
+import { DEFAULT_UPLOAD_BYTES, type StorageDriver } from '@assemora/media'
 
 /** Requests allowed per client, per window. */
 export type RateWindow = {
@@ -427,8 +427,8 @@ const API_RATE_LIMIT: RateWindow = { max: 600, windowMs: 60_000 }
 /** Tool calls are heavier than requests, and an agent is faster than a person. */
 const MCP_RATE_LIMIT: RateWindow = { max: 120, windowMs: 60_000 }
 
-/** 16 MiB: base64 of a file of about 12 MB, and a phone photograph is 2–5 MB. */
-export const DEFAULT_MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+/** The media module's own default, re-exported so the option's default is visible here. */
+export const DEFAULT_MAX_UPLOAD_BYTES = DEFAULT_UPLOAD_BYTES
 
 /** What `media.upload` accepts, which is the one endpoint sized for a file. */
 export const uploadLimitOf = (media: MediaOptions | undefined): number =>

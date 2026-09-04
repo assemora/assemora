@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { type AssemoraApplication, assemora } from './assemora.js'
 import type { AssemoraOptions } from './options.js'
-import { megabytes, perWindow } from './settings-groups.js'
+import { perWindow } from './settings-groups.js'
 
 const running: AssemoraApplication[] = []
 
@@ -64,7 +64,7 @@ describe('the settings section', () => {
     expect(groupsOf(build()).map((group) => group.name)).toEqual(['general', 'security', 'api'])
   })
 
-  it('gains a group for each thing the application declares, in sidebar order', () => {
+  it('gains a group for each thing the application declares', async () => {
     const built = build({
       modules: [auth(), media()],
       locales: ['uk', 'en'],
@@ -72,13 +72,17 @@ describe('the settings section', () => {
       project: { name: 'Shop', version: '2.0.0' },
     })
 
+    // Media declares its own at boot, after the umbrella's; Studio orders by section,
+    // so where it lands in the registry does not decide where it is drawn.
+    await built.boot()
+
     expect(groupsOf(built).map((group) => group.name)).toEqual([
       'general',
       'security',
       'languages',
-      'media',
       'api',
       'agents',
+      'media',
     ])
   })
 
@@ -94,15 +98,21 @@ describe('the settings section', () => {
     expect(rowOf(build(), 'general', 'project.description')).toBeUndefined()
   })
 
-  it('states the upload ceiling the upload route was actually sized to', () => {
-    // A root is required beside the ceiling, and never written to: nothing here boots.
+  it('tells the media module the ceiling the upload route was sized to, and the module says it', async () => {
+    const root = join(tmpdir(), 'assemora-settings-groups')
     const built = build({
       modules: [auth(), media()],
-      media: { root: join(tmpdir(), 'assemora-settings-groups'), maxUploadBytes: 4 * 1_048_576 },
+      media: { root, maxUploadBytes: 4 * 1_048_576 },
     })
-    const row = rowOf(built, 'media', 'media.max-upload')
 
-    expect(row?.kind === 'value' && row.value).toBe('4 MB')
+    await built.boot()
+
+    const ceiling = rowOf(built, 'media', 'media.max-upload')
+    const where = rowOf(built, 'media', 'media.where')
+
+    expect(ceiling?.kind === 'value' && ceiling.value).toBe('4 MB')
+    expect(where?.kind === 'value' && where.value).toBe(root)
+    expect(built.app.registry.registeredBy('settings', 'media')).toBe('media')
   })
 
   it('states where an agent connects, under the API prefix it was mounted below', () => {
@@ -137,11 +147,6 @@ describe('the settings section', () => {
 })
 
 describe('how a number is written', () => {
-  it('prints whole megabytes without a decimal and a fraction with one', () => {
-    expect(megabytes(16 * 1_048_576)).toBe('16 MB')
-    expect(megabytes(1_500_000)).toBe('1.4 MB')
-  })
-
   it('names a minute as a minute, and anything else in the unit it has', () => {
     expect(perWindow({ max: 600, windowMs: 60_000 })).toBe('600 per minute')
     expect(perWindow({ max: 10, windowMs: 300_000 })).toBe('10 per 5 minutes')

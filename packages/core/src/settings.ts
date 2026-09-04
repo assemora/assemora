@@ -68,6 +68,14 @@ declare module './registry.js' {
   }
 }
 
+/**
+ * A size as a `value` row prints it: whole megabytes without a decimal, a fraction with
+ * one — `16 MB`, `1.4 MB`. Here rather than in each declarer, so two modules writing
+ * the same number write it the same way.
+ */
+export const megabytes = (bytes: number): string =>
+  `${Math.round((bytes / 1_048_576) * 10) / 10} MB`
+
 /** kebab-case, the way a resource's icon and a group's own name are written. */
 const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 
