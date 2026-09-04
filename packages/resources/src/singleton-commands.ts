@@ -141,6 +141,35 @@ export const UpdateSingleton = command('singletons.update', {
   },
 })
 
+/**
+ * The row, for an application's own read.
+ *
+ * A storefront needs a public answer shaped for a visitor — the telephone, the hours —
+ * and `singletons.get` is a query with a permission a stranger does not hold. So an
+ * application declares a query of its own and reads the row here, the way `menu.list`
+ * reads the dishes. Hidden fields are left out, as in every read; there is no write
+ * beside this on purpose — `singletons.update` is the one, and it is what keeps the
+ * row validated, authorized, revised and versioned (ADR-0032).
+ */
+export const readSingleton = async (
+  name: string,
+): Promise<{
+  readonly name: string
+  readonly values: Readonly<Record<string, unknown>>
+  readonly version: number
+  readonly updatedAt: string | null
+}> => {
+  const target = singletonByName(name)
+  const row = await rowOf(name)
+
+  return {
+    name,
+    values: project(target, row?.values ?? {}, undefined),
+    version: row?.version ?? 0,
+    updatedAt: stamp(row),
+  }
+}
+
 export const singletonCommands = [UpdateSingleton] as const
 export const singletonQueries = [GetSingleton] as const
 

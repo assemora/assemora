@@ -26,6 +26,8 @@
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { createApplication, module } from '@assemora/core'
+import { useAdapter } from '@assemora/data'
+import { createMemoryAdapter } from '@assemora/database'
 import * as resources from '@assemora/resources'
 import {
   array,
@@ -33,6 +35,7 @@ import {
   describeField,
   email,
   object,
+  readSingleton,
   registeredFieldKinds,
   richText,
   singleton,
@@ -215,6 +218,9 @@ describe('docs/guide/15-settings.md', () => {
       'open',
     ])
     expect(app.commands.has('singletons.update')).toBe(true)
+    // The read the chapter's second example is built on: empty at version 0, never a 404.
+    useAdapter(createMemoryAdapter())
+    expect(await readSingleton('site')).toMatchObject({ values: {}, version: 0 })
 
     const page = await readFile(SETTINGS_PAGE, 'utf8')
 
