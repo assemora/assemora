@@ -163,3 +163,11 @@ export {
   type SchemaRegistry,
   type SectionName,
 } from './registry.js'
+export {
+  SETTING_SECTIONS,
+  type SettingBlock,
+  type SettingRow,
+  type SettingSection,
+  type SettingsGroupDescriptor,
+  settingsGroup,
+} from './settings.js'

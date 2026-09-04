@@ -111,6 +111,10 @@ export type RouteDescriptor = {
   readonly response?: Readonly<Record<string, unknown>>
   readonly errors: readonly { readonly code: string; readonly status: number }[]
   readonly module?: string
+  /** Which API version published it (SPEC.md §47). Absent on a bare address. */
+  readonly version?: string
+  /** The largest body it accepts, where it is not the server's own (SPEC.md §85). */
+  readonly bodyLimit?: number
 }
 
 export type CommandDescriptor = {
@@ -164,6 +168,45 @@ export type PolicyDescriptor = {
   readonly module?: string
 }
 
+/**
+ * A group on the settings screen, as the registry describes it (ADR-0031).
+ *
+ * Restated rather than imported, for the reason every other descriptor here is: the
+ * words in it are the application's own — a label, a sentence of help, a value already
+ * written as words — and Studio prints them as they arrive, the way it prints a
+ * resource's label. Studio draws the shape and decides nothing about the content.
+ */
+export type SettingRowDescriptor = {
+  readonly key: string
+  readonly label: string
+  readonly help?: string
+} & (
+  | { readonly kind: 'value'; readonly value: string }
+  | { readonly kind: 'link'; readonly href: string; readonly action: string }
+)
+
+export type SettingBlockDescriptor = {
+  readonly title: string
+  readonly note?: string
+  /** Declared in the project's source: drawn with a tag saying so, never with a control. */
+  readonly locked?: boolean
+  readonly rows: readonly SettingRowDescriptor[]
+}
+
+export type SettingSection = 'workspace' | 'content' | 'platform'
+
+export type SettingsGroupDescriptor = {
+  readonly name: string
+  readonly section: SettingSection
+  readonly label: string
+  readonly blurb?: string
+  /** A name from the set `ui/icons.tsx` ships, the way a resource names one. */
+  readonly icon?: string
+  readonly badge?: string
+  readonly blocks: readonly SettingBlockDescriptor[]
+  readonly module?: string
+}
+
 export type Introspection = {
   readonly resources?: readonly ResourceDescriptor[]
   readonly routes?: readonly RouteDescriptor[]
@@ -182,6 +225,8 @@ export type Introspection = {
    * site *is* the frontend serves it at the origin root.
    */
   readonly frontend?: readonly { readonly name: string }[]
+  /** What the settings screen draws: whatever the umbrella and the modules declared. */
+  readonly settings?: readonly SettingsGroupDescriptor[]
 }
 
 export const useIntrospection = (): UseQueryResult<Introspection> =>

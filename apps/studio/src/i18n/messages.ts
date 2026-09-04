@@ -24,8 +24,19 @@ import { DEVELOPER } from './messages/developer.ts'
 import { MEDIA } from './messages/media.ts'
 import { PAGES } from './messages/pages.ts'
 import { PEOPLE } from './messages/people.ts'
+import { SETTINGS } from './messages/settings.ts'
 
-export const SLICES = [COMMON, CHROME, CONTENT, PAGES, MEDIA, PEOPLE, DESIGN, DEVELOPER] as const
+export const SLICES = [
+  COMMON,
+  CHROME,
+  CONTENT,
+  PAGES,
+  MEDIA,
+  PEOPLE,
+  DESIGN,
+  DEVELOPER,
+  SETTINGS,
+] as const
 
 export const MESSAGES = {
   ...COMMON,
@@ -36,6 +47,7 @@ export const MESSAGES = {
   ...PEOPLE,
   ...DESIGN,
   ...DEVELOPER,
+  ...SETTINGS,
 }
 
 export type MessageKey = keyof typeof MESSAGES
@@ -80,6 +92,19 @@ type Filling<M extends Message, V> = Readonly<Record<Holes<English<M>>, V>>
 type Filler<M extends Message, V> = [Holes<English<M>>] extends [never]
   ? []
   : [values: Filling<M, V>]
+
+/**
+ * The keys a screen may hold as *data* — a label in a map, a heading in a table of
+ * tabs — rather than write out at the call site.
+ *
+ * Only a message with no holes can be one: `t(row.label)` cannot know which values a
+ * key it was handed needs, and refusing the wide union at the call site is what keeps
+ * `{count}` from being printed unfilled. A key that takes parameters is still a key; it
+ * is written where its values are.
+ */
+export type PlainKey = {
+  [K in MessageKey]: [Holes<English<(typeof MESSAGES)[K]>>] extends [never] ? K : never
+}[MessageKey]
 
 export type Translate = <K extends MessageKey>(
   key: K,

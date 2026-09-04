@@ -41,6 +41,7 @@ import {
   Image as ImageIcon,
   Images,
   Key,
+  Languages,
   Layers,
   Leaf,
   Link,
@@ -57,10 +58,13 @@ import {
   Percent,
   Phone,
   Pizza,
+  Plug,
   Quote,
   Receipt,
   Rows3,
+  Server,
   Settings,
+  Settings2,
   Shield,
   ShoppingBag,
   ShoppingCart,
@@ -142,7 +146,7 @@ export const ICON_GROUPS: readonly {
   },
   {
     label: 'icons.group.world',
-    names: ['calendar', 'map-pin', 'globe', 'link', 'mail', 'phone', 'leaf', 'sun'],
+    names: ['calendar', 'map-pin', 'globe', 'languages', 'link', 'mail', 'phone', 'leaf', 'sun'],
   },
   {
     label: 'icons.group.signals',
@@ -159,7 +163,10 @@ export const ICON_GROUPS: readonly {
       'list',
       'grid-2x2',
       'settings',
+      'settings-2',
       'wrench',
+      'plug',
+      'server',
     ],
   },
 ]
@@ -204,6 +211,7 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
   calendar: Calendar,
   'map-pin': MapPin,
   globe: Globe,
+  languages: Languages,
   link: Link,
   mail: Mail,
   phone: Phone,
@@ -225,7 +233,10 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
   list: List,
   'grid-2x2': Grid2x2,
   settings: Settings,
+  'settings-2': Settings2,
   wrench: Wrench,
+  plug: Plug,
+  server: Server,
 }
 
 /** Every name this build knows, which is what the picker offers and what a test counts. */

@@ -15,6 +15,7 @@ import type { AnyJob, JobBus } from './jobs.js'
 import type { Logger } from './logger.js'
 import type { AnyQuery, QueryBus } from './queries.js'
 import type { SchemaRegistry } from './registry.js'
+import { type SettingsGroupDescriptor, settingsGroup } from './settings.js'
 
 /**
  * A module that booted and is not running, and why (SPEC.md §88).
@@ -85,6 +86,8 @@ export interface ModuleBuilder {
   queries(...definitions: AnyQuery[]): ModuleBuilder
   /** Durable work the module can schedule (SPEC.md §82). */
   jobs(...definitions: AnyJob[]): ModuleBuilder
+  /** What this module wants the settings screen to say about it (ADR-0031). */
+  settings(...groups: SettingsGroupDescriptor[]): ModuleBuilder
   provide<T>(key: Token<T>, factory: Factory<T>): ModuleBuilder
   on<K extends string>(
     event: K,
@@ -161,6 +164,18 @@ export const module = (name: string): ModuleBuilder => {
     jobs(...definitions: AnyJob[]) {
       registrations.push((context) => {
         for (const definition of definitions) context.jobs.register(definition, name)
+      })
+      return builder
+    },
+
+    // Checked when the module is *built* rather than when it registers: a group that
+    // cannot be drawn is a mistake in the file the author has open, and the stack that
+    // says so should end there rather than in `boot()`.
+    settings(...groups: SettingsGroupDescriptor[]) {
+      const checked = groups.map(settingsGroup)
+
+      registrations.push((context) => {
+        for (const group of checked) context.registry.register('settings', group)
       })
       return builder
     },

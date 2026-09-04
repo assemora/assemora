@@ -23,6 +23,7 @@ import {
   PanelLeft,
   Plus,
   Search,
+  Settings2,
   Sparkles,
   Terminal,
   Users as UsersIcon,
@@ -454,6 +455,10 @@ export const Shell = () => {
           open={profileOpen}
           trigger={profile}
           onDismiss={() => setProfileOpen(false)}
+          onSettings={() => {
+            setProfileOpen(false)
+            void navigate({ to: '/settings' })
+          }}
           onSignOut={() => void signOut()}
         />
 
@@ -599,11 +604,13 @@ const ProfileMenu = ({
   open,
   trigger,
   onDismiss,
+  onSettings,
   onSignOut,
 }: {
   open: boolean
   trigger: React.RefObject<HTMLButtonElement | null>
   onDismiss(): void
+  onSettings(): void
   onSignOut(): void
 }) => {
   const { locales, locale, defaultLocale, multilingual, choose } = useLocales()
@@ -669,6 +676,13 @@ const ProfileMenu = ({
           )}
         </MenuItem>
       ))}
+      <MenuSeparator />
+
+      {/* The settings screen is reached from here, where the redesign puts it: a mode
+          of its own rather than a row in the sidebar (§5). */}
+      <MenuItem icon={<Settings2 className="size-[18px]" />} onClick={onSettings}>
+        {t('settings.title')}
+      </MenuItem>
       <MenuSeparator />
 
       <MenuItem icon={<LogOut className="size-[18px]" />} onClick={onSignOut}>

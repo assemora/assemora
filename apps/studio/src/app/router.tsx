@@ -20,6 +20,7 @@ import { History } from '../screens/history.tsx'
 import { Login } from '../screens/login.tsx'
 import { MediaLibrary } from '../screens/media.tsx'
 import { Pages } from '../screens/pages.tsx'
+import { Settings } from '../screens/settings.tsx'
 import { Users } from '../screens/users.tsx'
 import { Spinner } from '../ui/index.tsx'
 import { Shell } from './shell.tsx'
@@ -115,11 +116,31 @@ const routes = [
   }),
 ]
 
-/** The one screen outside the shell — see `shellRoute`. */
+/** The first screen outside the shell — see `shellRoute`. */
 const builderRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/pages/$id',
   component: Builder,
+})
+
+/**
+ * The second, and for the same reason: Settings is a mode with a chrome bar of its own
+ * and a sidebar of its own (`design_handoff_studio_redesign` §5), and nesting it under
+ * the shell would put two sidebars on one screen.
+ *
+ * Which group is open is in the address, so a group can be linked to. The groups come
+ * from the registry, so the address cannot be checked against a list here — what is
+ * checked is that it is a name at all, and the screen falls back to its first group for
+ * one the registry does not have rather than rendering nothing.
+ */
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings',
+  component: Settings,
+  validateSearch: (search: Record<string, unknown>): { group?: string } =>
+    typeof search.group === 'string' && /^[a-z][a-z0-9-]*$/.test(search.group)
+      ? { group: search.group }
+      : {},
 })
 
 /**
@@ -133,7 +154,7 @@ const builderRoute = createRoute({
 const basepath = import.meta.env.BASE_URL.replace(/\/+$/, '')
 
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([shellRoute.addChildren(routes), builderRoute]),
+  routeTree: rootRoute.addChildren([shellRoute.addChildren(routes), builderRoute, settingsRoute]),
   ...(basepath === '' ? {} : { basepath }),
 })
 

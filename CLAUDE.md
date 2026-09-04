@@ -281,6 +281,23 @@ this?" rather than "fill this in".
   chips name what is true — the API path, the Studio path and the name an agent addresses
   — and the footer says `Ready — 4 fields in testimonials`.
 
+**The settings screen is drawn from the handoff** (§5) **and from the registry**
+(ADR-0031). Its three levels — a section in the sidebar, a block per decision, a row per
+setting — and its mechanisms — a search that reads every group and rewrites the sidebar
+with a hit count, one save bar for the whole screen, a chrome bar of its own with a way
+back — are the prototype's. What the groups *hold* is a `settings` section of the Schema
+Registry: `SettingsGroupDescriptor` in core, declarative data with two row kinds (`value`
+and `link`) and a `locked` flag per block, checked by `settingsGroup()` where it is
+declared. The umbrella registers what only it knows — project, session cookie, languages,
+upload ceiling, API prefix and rate limit, MCP address and mutation mode — and a module
+declares its own with `module(…).settings(…)`. Studio draws whatever arrives, the way the
+sidebar draws whatever resources arrive, and holds one group of its own: which language it
+speaks (ADR-0030), the one row a reader decides on the screen. The prototype's ten groups
+carry a billing plan, single sign-on, a review workflow and a deploy hook, and none is a
+thing this framework has, so none is drawn; there is no `input` row kind on purpose,
+because a stored setting (SPEC.md §135) will be a command, and the Irreversible block and
+its confirm-by-typing dialog are not built for the same reason.
+
 **Studio speaks a language of its own — done (ADR-0030).** Everything above is the
 language the *content* is in. What language the interface is in is a different question:
 the first is a fact about the deployment and decides which rows a screen is about, the

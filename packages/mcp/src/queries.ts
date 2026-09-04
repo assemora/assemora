@@ -84,6 +84,7 @@ export const mcpQueries = (options: McpQueryOptions) => {
       permissions: array(string()),
       locales: array(entry),
       policies: array(entry),
+      settings: array(entry),
     },
     handle: async () => {
       const all = sections()
@@ -116,6 +117,9 @@ export const mcpQueries = (options: McpQueryOptions) => {
         // is that a decision about this subject is made per record, so a permission is
         // not the whole story and a refusal it did not expect is not a fault.
         policies: all.policies ?? [],
+        // What the settings screen shows a person, so an agent asked "what is the
+        // upload limit" reads the same description rather than guessing (ADR-0031).
+        settings: all.settings ?? [],
       }
     },
   })

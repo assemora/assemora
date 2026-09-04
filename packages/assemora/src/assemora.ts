@@ -61,6 +61,7 @@ import {
 } from './options.js'
 import { mountPreview } from './preview-routes.js'
 import { reportedOnce } from './reporting.js'
+import { settingsGroups } from './settings-groups.js'
 import { mountStudio } from './studio.js'
 import { themeRoutes } from './theme-routes.js'
 
@@ -672,6 +673,14 @@ export const assemora = (options: AssemoraOptions): AssemoraApplication => {
   // `app.modules` rather than what was passed: it is the list after the umbrella added
   // what a developer should not have to list.
   const registered = new Set(app.modules)
+
+  // What this deployment says about itself on the settings screen, from the one place
+  // that knows every value: the project's name, the languages, the upload ceiling, the
+  // MCP address. Studio draws the section; nothing about a deployment is described
+  // twice (ADR-0031).
+  for (const group of settingsGroups(settings, registered, app.registry.section('locales'))) {
+    app.registry.register('settings', group)
+  }
   const served =
     settings.api === undefined
       ? undefined

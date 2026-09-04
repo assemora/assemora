@@ -14,6 +14,7 @@ import {
   Network,
   Palette as PaletteIcon,
   Search,
+  Settings2,
   Sparkles,
   Terminal,
   Users,
@@ -134,6 +135,13 @@ export const Palette = ({
         where: t('nav.settings'),
         icon: <Terminal className="size-5" />,
         to: { to: '/developer' },
+      },
+      {
+        key: 'settings',
+        label: t('settings.title'),
+        where: t('nav.settings'),
+        icon: <Settings2 className="size-5" />,
+        to: { to: '/settings' },
       },
     ]
   }, [introspection.data, t])
