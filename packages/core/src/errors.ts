@@ -152,7 +152,9 @@ export class ValidationError extends AssemoraError {
 export class NotFoundError extends AssemoraError {
   constructor(entity: string, id?: string) {
     super(
-      `${entity.toUpperCase()}_NOT_FOUND`,
+      // An entity is named in words and a code is one token: `change set` refused as
+      // `CHANGE SET_NOT_FOUND` was a code no client could match.
+      `${entity.toUpperCase().replace(/\s+/g, '_')}_NOT_FOUND`,
       id === undefined ? `${entity} was not found` : `${entity} ${id} was not found`,
       { status: 404 },
     )

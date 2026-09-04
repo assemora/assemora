@@ -109,6 +109,13 @@ describe('the rest of the error model', () => {
     expect(error.message).toBe('article a-1 was not found')
     expect(new NotFoundError('article').message).toBe('article was not found')
   })
+
+  it('makes one token of an entity named in two words', () => {
+    // `change set` used to answer `CHANGE SET_NOT_FOUND`, a code with a space in it,
+    // which no client comparing codes could ever match.
+    expect(new NotFoundError('change set', 'c-1').code).toBe('CHANGE_SET_NOT_FOUND')
+    expect(new NotFoundError('change set', 'c-1').message).toBe('change set c-1 was not found')
+  })
 })
 
 describe('a field path that is also a name on Object.prototype (SPEC.md §84)', () => {
