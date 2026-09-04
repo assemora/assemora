@@ -7,6 +7,7 @@
  */
 import { type UseQueryResult, useQuery } from '@tanstack/react-query'
 
+import type { Said } from '../settings/said.ts'
 import { api } from './client.ts'
 
 /**
@@ -178,16 +179,16 @@ export type PolicyDescriptor = {
  */
 export type SettingRowDescriptor = {
   readonly key: string
-  readonly label: string
-  readonly help?: string
+  readonly label: Said
+  readonly help?: Said
 } & (
-  | { readonly kind: 'value'; readonly value: string }
-  | { readonly kind: 'link'; readonly href: string; readonly action: string }
+  | { readonly kind: 'value'; readonly value: Said }
+  | { readonly kind: 'link'; readonly href: string; readonly action: Said }
 )
 
 export type SettingBlockDescriptor = {
-  readonly title: string
-  readonly note?: string
+  readonly title: Said
+  readonly note?: Said
   /** Declared in the project's source: drawn with a tag saying so, never with a control. */
   readonly locked?: boolean
   readonly rows: readonly SettingRowDescriptor[]
@@ -198,8 +199,8 @@ export type SettingSection = 'workspace' | 'content' | 'platform'
 export type SettingsGroupDescriptor = {
   readonly name: string
   readonly section: SettingSection
-  readonly label: string
-  readonly blurb?: string
+  readonly label: Said
+  readonly blurb?: Said
   /** A name from the set `ui/icons.tsx` ships, the way a resource names one. */
   readonly icon?: string
   readonly badge?: string

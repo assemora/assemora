@@ -5,7 +5,7 @@
  * the module that holds the bytes: it is the one that knows which driver it was handed
  * and where that driver keeps things.
  */
-import { createApplication } from '@assemora/core'
+import { createApplication, said } from '@assemora/core'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { media } from './index.js'
@@ -47,7 +47,7 @@ describe('the media group', () => {
     const before = await rows()
     const told = before.row('media.max-upload')
 
-    expect(told?.kind === 'value' && told.value).toBe('16 MB')
+    expect(told?.kind === 'value' && said(told.value, 'en')).toBe('16 MB')
 
     clearStorage()
     useStorage(localStorage({ root: '/srv/files' }))
@@ -56,7 +56,7 @@ describe('the media group', () => {
     const after = await rows()
     const changed = after.row('media.max-upload')
 
-    expect(changed?.kind === 'value' && changed.value).toBe('2 MB')
+    expect(changed?.kind === 'value' && said(changed.value, 'en')).toBe('2 MB')
   })
 
   it('names the local directory the originals live in', async () => {
@@ -92,7 +92,7 @@ describe('the media group', () => {
   it('states the ceiling alone when no driver was registered, rather than refusing to boot', async () => {
     const { group, row } = await rows()
 
-    expect(group?.blocks.map((block) => block.title)).toEqual(['Uploads'])
+    expect(group?.blocks.map((block) => said(block.title, 'en'))).toEqual(['Uploads'])
     expect(row('media.max-upload')).toBeDefined()
   })
 

@@ -53,20 +53,32 @@ export const media = (): ModuleBuilder =>
       return {
         name: 'media',
         section: 'content',
-        label: 'Media',
+        label: { en: 'Media', uk: 'Медіа', ru: 'Медиа' },
         icon: 'image',
-        blurb: 'What may be uploaded, how large, and where it is kept.',
+        blurb: {
+          en: 'What may be uploaded, how large, and where it is kept.',
+          uk: 'Що можна завантажувати, якого розміру і де це зберігається.',
+          ru: 'Что можно загружать, какого размера и где это хранится.',
+        },
         blocks: [
           {
-            title: 'Uploads',
-            note: 'Declared in assemora.config.ts. Changing it is a deploy, not a setting.',
+            title: { en: 'Uploads', uk: 'Завантаження', ru: 'Загрузки' },
+            note: {
+              en: 'Declared in assemora.config.ts. Changing it is a deploy, not a setting.',
+              uk: 'Оголошено в assemora.config.ts. Зміна — це розгортання, а не налаштування.',
+              ru: 'Объявлено в assemora.config.ts. Изменение — это развёртывание, а не настройка.',
+            },
             locked: true,
             rows: [
               {
                 key: 'media.max-upload',
                 kind: 'value',
-                label: 'Largest file',
-                help: 'Per file, as it arrives: base64 puts four bytes on the wire for every three stored.',
+                label: { en: 'Largest file', uk: 'Найбільший файл', ru: 'Наибольший файл' },
+                help: {
+                  en: 'Per file, as it arrives: base64 puts four bytes on the wire for every three stored.',
+                  uk: 'На один файл, як він надходить: base64 передає чотири байти на кожні три збережені.',
+                  ru: 'На один файл, как он приходит: base64 передаёт четыре байта на каждые три сохранённых.',
+                },
                 value: megabytes(currentUploadLimit()),
               },
             ],
@@ -75,15 +87,23 @@ export const media = (): ModuleBuilder =>
             ? []
             : [
                 {
-                  title: 'Storage',
-                  note: 'Declared in assemora.config.ts. Changing it is a migration of the files, not a setting.',
+                  title: { en: 'Storage', uk: 'Сховище', ru: 'Хранилище' },
+                  note: {
+                    en: 'Declared in assemora.config.ts. Changing it is a migration of the files, not a setting.',
+                    uk: 'Оголошено в assemora.config.ts. Зміна — це перенесення файлів, а не налаштування.',
+                    ru: 'Объявлено в assemora.config.ts. Изменение — это перенос файлов, а не настройка.',
+                  },
                   locked: true,
                   rows: [
                     {
                       key: 'media.driver',
                       kind: 'value' as const,
-                      label: 'Driver',
-                      help: 'Local disk, or any S3-compatible object store (SPEC.md §63).',
+                      label: { en: 'Driver', uk: 'Драйвер', ru: 'Драйвер' },
+                      help: {
+                        en: 'Local disk, or any S3-compatible object store (SPEC.md §63).',
+                        uk: 'Локальний диск або будь-яке S3-сумісне сховище об’єктів (SPEC.md §63).',
+                        ru: 'Локальный диск или любое S3-совместимое хранилище объектов (SPEC.md §63).',
+                      },
                       value: storage.name,
                     },
                     ...(storage.where === undefined
@@ -92,8 +112,12 @@ export const media = (): ModuleBuilder =>
                           {
                             key: 'media.where',
                             kind: 'value' as const,
-                            label: 'Location',
-                            help: 'The directory or the bucket the originals live in.',
+                            label: { en: 'Location', uk: 'Розташування', ru: 'Расположение' },
+                            help: {
+                              en: 'The directory or the bucket the originals live in.',
+                              uk: 'Каталог або бакет, де лежать оригінали.',
+                              ru: 'Каталог или бакет, где лежат оригиналы.',
+                            },
                             value: storage.where,
                           },
                         ]),

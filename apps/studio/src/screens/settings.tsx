@@ -36,6 +36,7 @@ import { useSession } from '../api/session.tsx'
 import { Avatar } from '../app/shell.tsx'
 import { isLanguage, LANGUAGE_NAMES } from '../i18n/languages.ts'
 import { useLanguage, useT } from '../i18n/translate.tsx'
+import { said } from '../settings/said.ts'
 import { hitsOf, matches } from '../settings/search.ts'
 import { ResourceIcon } from '../ui/icons.tsx'
 import { Button, Failure, join, LinkButton, SearchField, Segmented, Spinner } from '../ui/index.tsx'
@@ -77,9 +78,51 @@ type Row = { readonly key: string; readonly label: string; readonly help?: strin
     }
 )
 
-type Block = Omit<SettingBlockDescriptor, 'rows'> & { readonly rows: readonly Row[] }
+type Block = {
+  readonly title: string
+  readonly note?: string
+  readonly locked?: boolean
+  readonly rows: readonly Row[]
+}
 
-type Group = Omit<SettingsGroupDescriptor, 'blocks'> & { readonly blocks: readonly Block[] }
+type Group = Omit<SettingsGroupDescriptor, 'label' | 'blurb' | 'blocks'> & {
+  readonly label: string
+  readonly blurb?: string
+  readonly blocks: readonly Block[]
+}
+
+/**
+ * A descriptor in the language on screen.
+ *
+ * Every word the application wrote is picked here, once, and the rest of the screen
+ * holds strings: the search, the sidebar and the rows never see a map.
+ */
+const spoken = (
+  { label, blurb, blocks, ...group }: SettingsGroupDescriptor,
+  language: string,
+): Group => ({
+  ...group,
+  label: said(label, language),
+  ...(blurb === undefined ? {} : { blurb: said(blurb, language) }),
+  blocks: blocks.map(
+    (block: SettingBlockDescriptor): Block => ({
+      title: said(block.title, language),
+      ...(block.note === undefined ? {} : { note: said(block.note, language) }),
+      ...(block.locked === undefined ? {} : { locked: block.locked }),
+      rows: block.rows.map((row): Row => {
+        const words = {
+          key: row.key,
+          label: said(row.label, language),
+          ...(row.help === undefined ? {} : { help: said(row.help, language) }),
+        }
+
+        return row.kind === 'value'
+          ? { ...words, kind: 'value', value: said(row.value, language) }
+          : { ...words, kind: 'link', href: row.href, action: said(row.action, language) }
+      }),
+    }),
+  ),
+})
 
 /* ---------------------------------------------------------------------------- rows */
 
@@ -258,7 +301,7 @@ const useGroups = (): { groups: readonly Group[]; ready: boolean; failure: unkno
       ],
     }
 
-    return [...(introspection.data?.settings ?? []), studio]
+    return [...(introspection.data?.settings ?? []).map((group) => spoken(group, language)), studio]
   }, [introspection.data, language, languages, t])
 
   // A registry that could not be read is said, not shown as one lonely group: the

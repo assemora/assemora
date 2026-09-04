@@ -27,21 +27,33 @@ import type { RegistryEntry } from './registry.js'
 /** Where in the system a group lives — the three headings of the settings sidebar. */
 export const SETTING_SECTIONS = ['workspace', 'content', 'platform'] as const
 
+/**
+ * A sentence as a declarer writes it: in one language, or in several keyed by
+ * language tag.
+ *
+ * A plain string is the one every reader gets. A map lets the declarer say the same
+ * thing in the languages it knows — `{ en: 'Largest file', uk: 'Найбільший файл' }` —
+ * and a reader whose language is not among them gets the first. Studio *picks* from
+ * the map and never translates it: the words stay the application's (ADR-0030), and
+ * the application is simply allowed to have written them more than once.
+ */
+export type Said = string | Readonly<Record<string, string>>
+
 export type SettingSection = (typeof SETTING_SECTIONS)[number]
 
 export type SettingRow = {
   /** Stable, and unique within the group: `project.name`. What a search and a test address. */
   readonly key: string
-  readonly label: string
-  readonly help?: string
+  readonly label: Said
+  readonly help?: Said
 } & (
-  | { readonly kind: 'value'; readonly value: string }
-  | { readonly kind: 'link'; readonly href: string; readonly action: string }
+  | { readonly kind: 'value'; readonly value: Said }
+  | { readonly kind: 'link'; readonly href: string; readonly action: Said }
 )
 
 export type SettingBlock = {
-  readonly title: string
-  readonly note?: string
+  readonly title: Said
+  readonly note?: Said
   /**
    * Decided in the project's own source. Drawn with a tag saying so, and never with a
    * control: changing it is a deploy, not a setting.
@@ -52,9 +64,9 @@ export type SettingBlock = {
 
 export type SettingsGroupDescriptor = RegistryEntry & {
   readonly section: SettingSection
-  readonly label: string
+  readonly label: Said
   /** One sentence under the title. */
-  readonly blurb?: string
+  readonly blurb?: Said
   /** A name from the set Studio ships, the way a resource names one (SPEC.md §58). */
   readonly icon?: string
   /** What the sidebar shows beside the name: a count, where one is true. */
@@ -70,17 +82,44 @@ declare module './registry.js' {
 
 /**
  * A size as a `value` row prints it: whole megabytes without a decimal, a fraction with
- * one — `16 MB`, `1.4 MB`. Here rather than in each declarer, so two modules writing
- * the same number write it the same way.
+ * one — `16 MB`, `1.4 MB` — in the languages Studio reads. Here rather than in each
+ * declarer, so two modules writing the same number write it the same way.
  */
-export const megabytes = (bytes: number): string =>
-  `${Math.round((bytes / 1_048_576) * 10) / 10} MB`
+export const megabytes = (bytes: number): Said => {
+  const size = Math.round((bytes / 1_048_576) * 10) / 10
+
+  return { en: `${size} MB`, uk: `${size} МБ`, ru: `${size} МБ` }
+}
 
 /** kebab-case, the way a resource's icon and a group's own name are written. */
 const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 
 /** `project.name`, `media.max-upload`: a dotted path of names. */
 const KEY = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
+
+/** A language tag, as loosely as `locales.ts` reads one. */
+const TAG = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
+
+/**
+ * What a `Said` says in `language`, or in the first language it was written in.
+ *
+ * The first rather than nothing: a group written in Ukrainian and Russian is still a
+ * group to somebody reading in English, and a blank label is not a sentence in any
+ * language.
+ */
+export const said = (text: Said, language: string): string => {
+  if (typeof text === 'string') return text
+
+  return text[language] ?? Object.values(text)[0] ?? ''
+}
+
+/** Whether a `Said` says something, in every language it claims to. */
+const empty = (text: Said | undefined): boolean =>
+  text !== undefined &&
+  (typeof text === 'string'
+    ? text.trim() === ''
+    : Object.keys(text).length === 0 ||
+      Object.entries(text).some(([tag, value]) => !TAG.test(tag) || value.trim() === ''))
 
 const refuse = (group: string, said: string): never => {
   throw new ConfigurationError(`Settings group "${group}": ${said}`)
@@ -101,7 +140,8 @@ export const settingsGroup = (definition: SettingsGroupDescriptor): SettingsGrou
   if (!SETTING_SECTIONS.includes(definition.section)) {
     refuse(name, `the section must be one of ${SETTING_SECTIONS.join(', ')}`)
   }
-  if (definition.label.trim() === '') refuse(name, 'it needs a label')
+  if (definition.label === undefined || empty(definition.label)) refuse(name, 'it needs a label')
+  if (empty(definition.blurb)) refuse(name, 'the blurb says nothing in one of its languages')
   if (definition.icon !== undefined && !NAME.test(definition.icon)) {
     refuse(name, `"${definition.icon}" is not an icon name; use kebab-case, like "credit-card"`)
   }
@@ -111,12 +151,17 @@ export const settingsGroup = (definition: SettingsGroupDescriptor): SettingsGrou
   const titles = new Set<string>()
 
   for (const block of definition.blocks) {
-    if (block.title.trim() === '') refuse(name, 'every block needs a title')
+    if (empty(block.title)) refuse(name, 'every block needs a title')
+    if (empty(block.note)) refuse(name, 'a note says nothing in one of its languages')
+
     // Two blocks with one title are one decision written twice as far as a reader can
-    // tell, and one card twice as far as a screen keyed on the title can.
-    if (titles.has(block.title)) refuse(name, `block title "${block.title}" is used twice`)
-    titles.add(block.title)
-    if (block.rows.length === 0) refuse(name, `block "${block.title}" has no rows`)
+    // tell, and one card twice as far as a screen keyed on the title can. Compared in
+    // the first language written, which is the one every reader falls back to.
+    const title = said(block.title, '')
+
+    if (titles.has(title)) refuse(name, `block title "${title}" is used twice`)
+    titles.add(title)
+    if (block.rows.length === 0) refuse(name, `block "${title}" has no rows`)
 
     for (const row of block.rows) {
       const { key, kind } = row as { key: string; kind: unknown }
@@ -127,10 +172,14 @@ export const settingsGroup = (definition: SettingsGroupDescriptor): SettingsGrou
       if (keys.has(key)) refuse(name, `row key "${key}" is used twice`)
       keys.add(key)
 
-      if (row.label.trim() === '') refuse(name, `row "${key}" needs a label`)
+      if (empty(row.label)) refuse(name, `row "${key}" needs a label`)
+      if (empty(row.help))
+        refuse(name, `row "${key}": the help says nothing in one of its languages`)
       if (kind !== 'value' && kind !== 'link') {
         refuse(name, `row "${key}" has kind "${String(kind)}"; a row is a value or a link`)
       }
+      if (row.kind === 'value' && empty(row.value)) refuse(name, `row "${key}" has an empty value`)
+      if (row.kind === 'link' && empty(row.action)) refuse(name, `row "${key}" has no action`)
     }
   }
 

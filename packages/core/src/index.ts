@@ -165,10 +165,12 @@ export {
 } from './registry.js'
 export {
   megabytes,
+  type Said,
   SETTING_SECTIONS,
   type SettingBlock,
   type SettingRow,
   type SettingSection,
   type SettingsGroupDescriptor,
+  said,
   settingsGroup,
 } from './settings.js'

@@ -89,3 +89,22 @@ is told to that module.** The umbrella now tells `@assemora/media` the ceiling w
 media module declares the whole group at boot with `.settings(() => …)`: the ceiling,
 the driver's name and where it keeps the originals — a directory, or a bucket and never
 the key pair that opens it. `StorageDriver` gained an optional `where` for that sentence.
+
+## Amendment — a word may be written in several languages
+
+ADR-0030 draws the line: Studio translates what Studio says and nothing else. A group's
+words are the application's, and the first cut printed them as they arrived — in
+English, under a Ukrainian chrome, which made the screen the one place in Studio that
+read in two languages at once.
+
+The line stays; what moves is how many times the application may have written a word.
+Every sentence in a descriptor is a `Said`: a string, or a map keyed by language tag —
+`{ en: 'Largest file', uk: 'Найбільший файл' }`. Studio *picks* the language it is
+being read in and falls back to the first one written; it still translates nothing. The
+umbrella and `@assemora/media` write their groups in the three languages Studio reads,
+and a package that writes one language is read in that language by everybody, which is
+what it was before.
+
+Rejected again: translating by key inside Studio. The words would then live in two
+packages, and a package Studio has never heard of would read in English whatever it
+wrote.

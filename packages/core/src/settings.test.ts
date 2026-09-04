@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createApplication } from './application.js'
 import { module } from './module.js'
-import { type SettingsGroupDescriptor, settingsGroup } from './settings.js'
+import { type SettingsGroupDescriptor, said, settingsGroup } from './settings.js'
 
 const GROUP: SettingsGroupDescriptor = {
   name: 'search',
@@ -90,6 +90,25 @@ describe('settingsGroup', () => {
         blocks: [{ title: 'Index', rows: [{ ...row, key: 'Search Index' }] }],
       }),
     ).toThrow(/dotted path/)
+  })
+})
+
+describe('a sentence said in several languages', () => {
+  it('answers in the language asked for, and in the first written when that one is missing', () => {
+    const text = { uk: 'Найбільший файл', en: 'Largest file' }
+
+    expect(said(text, 'en')).toBe('Largest file')
+    expect(said(text, 'de')).toBe('Найбільший файл')
+    expect(said('Largest file', 'uk')).toBe('Largest file')
+  })
+
+  it('is accepted in a group, and refused when one of its languages says nothing', () => {
+    const bilingual = { ...GROUP, label: { en: 'Search', uk: 'Пошук' } }
+
+    expect(settingsGroup(bilingual)).toBe(bilingual)
+    expect(() => settingsGroup({ ...GROUP, label: { en: 'Search', uk: '' } })).toThrow(/label/)
+    expect(() => settingsGroup({ ...GROUP, label: {} })).toThrow(/label/)
+    expect(() => settingsGroup({ ...GROUP, label: { English: 'Search' } })).toThrow(/label/)
   })
 })
 

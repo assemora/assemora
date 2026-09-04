@@ -293,7 +293,10 @@ API prefix and rate limit, MCP address and mutation mode — and a module declar
 with `module(…).settings(…)`, or `.settings(() => …)` called at boot for values it is
 handed later. A group has one declarer: `@assemora/media` declares the Media group (its
 driver, where the bytes live, the upload ceiling), and the umbrella *tells* it the ceiling
-with `useUploadLimit()` the way it hands over the driver with `useStorage()`. Studio draws whatever arrives, the way the
+with `useUploadLimit()` the way it hands over the driver with `useStorage()`. A word in a
+descriptor is a `Said` — a string, or a map keyed by language tag — and Studio *picks* the
+language it reads in, falling back to the first written; it translates nothing (ADR-0030).
+The umbrella and media write theirs in the three languages Studio speaks. Studio draws whatever arrives, the way the
 sidebar draws whatever resources arrive, and holds one group of its own: which language it
 speaks (ADR-0030), the one row a reader decides on the screen. The prototype's ten groups
 carry a billing plan, single sign-on, a review workflow and a deploy hook, and none is a

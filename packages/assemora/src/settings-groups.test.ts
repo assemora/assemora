@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { auth, clearPolicies } from '@assemora/auth'
-import { clearRestorers, createLogger, silentWriter } from '@assemora/core'
+import { clearRestorers, createLogger, said, silentWriter } from '@assemora/core'
 import { createMemoryAdapter } from '@assemora/database'
 import { clearRouteRegistry } from '@assemora/http'
 import { clearStorage, media } from '@assemora/media'
@@ -110,7 +110,8 @@ describe('the settings section', () => {
     const ceiling = rowOf(built, 'media', 'media.max-upload')
     const where = rowOf(built, 'media', 'media.where')
 
-    expect(ceiling?.kind === 'value' && ceiling.value).toBe('4 MB')
+    expect(ceiling?.kind === 'value' && said(ceiling.value, 'en')).toBe('4 MB')
+    expect(ceiling?.kind === 'value' && said(ceiling.value, 'uk')).toBe('4 МБ')
     expect(where?.kind === 'value' && where.value).toBe(root)
     expect(built.app.registry.registeredBy('settings', 'media')).toBe('media')
   })
@@ -140,7 +141,9 @@ describe('the settings section', () => {
 
   it('locks every block the umbrella declares, because every value is in the project source', () => {
     const blocks = groupsOf(build({ mcp: true, locales: ['uk'] })).flatMap((group) => group.blocks)
-    const open = blocks.filter((block) => block.locked !== true).map((block) => block.title)
+    const open = blocks
+      .filter((block) => block.locked !== true)
+      .map((block) => said(block.title, 'en'))
 
     expect(open).toEqual(['Documentation'])
   })
@@ -148,8 +151,9 @@ describe('the settings section', () => {
 
 describe('how a number is written', () => {
   it('names a minute as a minute, and anything else in the unit it has', () => {
-    expect(perWindow({ max: 600, windowMs: 60_000 })).toBe('600 per minute')
-    expect(perWindow({ max: 10, windowMs: 300_000 })).toBe('10 per 5 minutes')
-    expect(perWindow({ max: 5, windowMs: 30_000 })).toBe('5 per 30 seconds')
+    expect(said(perWindow({ max: 600, windowMs: 60_000 }), 'en')).toBe('600 per minute')
+    expect(said(perWindow({ max: 10, windowMs: 300_000 }), 'en')).toBe('10 per 5 minutes')
+    expect(said(perWindow({ max: 5, windowMs: 30_000 }), 'en')).toBe('5 per 30 seconds')
+    expect(said(perWindow({ max: 600, windowMs: 60_000 }), 'uk')).toBe('600 на хвилину')
   })
 })

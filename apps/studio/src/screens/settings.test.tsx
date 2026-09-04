@@ -184,6 +184,33 @@ describe('the settings screen', () => {
     expect(sidebar(markup)).toEqual(['General', 'Studio'])
   })
 
+  it('reads a word the application wrote in several languages in the one on screen', async () => {
+    // Studio is read in English here (no browser to prefer another), so the English
+    // reading is picked; a word with no English falls to the first the application wrote.
+    const bilingual = group({
+      label: { uk: 'Загальні', en: 'General' },
+      blocks: [
+        {
+          title: { en: 'Identity', uk: 'Ідентичність' },
+          rows: [
+            {
+              key: 'project.name',
+              kind: 'value',
+              label: { uk: 'Назва', ru: 'Название' },
+              value: 'Papa Cotta',
+            },
+          ],
+        },
+      ],
+    })
+    const markup = await draw([bilingual])
+
+    expect(sidebar(markup)).toEqual(['General', 'Studio'])
+    expect(words(markup)).toContain('Identity')
+    expect(words(markup)).toContain('Назва Papa Cotta')
+    expect(words(markup)).not.toContain('Ідентичність')
+  })
+
   it('draws Studio’s own language group even when the registry sent nothing', async () => {
     const markup = await draw([])
 
