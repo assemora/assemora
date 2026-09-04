@@ -680,9 +680,6 @@ urgent:
   is `httpOnly: false` at `Path=/` — so a block view can read the parent's cookies.
 - `datetime` renders through `toISOString()` into a `datetime-local`, so 18:00 Kyiv
   displays as 15:00. The write path is correct, so it does not compound.
-- `validateProps` has no null branch while `validateAgainstFields` does, so clearing a
-  block's image, number, date or link throws where the same field in a resource form
-  clears.
 - There is no `media.update`, so `alt`, `width` and `height` are permanently null.
 - A collection's listing emits no `ORDER BY` when no sort is sent, then paginates over an
   unordered heap.
