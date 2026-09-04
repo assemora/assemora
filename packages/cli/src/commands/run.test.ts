@@ -11,6 +11,7 @@
  * group, and the stand-in `api:openapi` registered below would then collide with the
  * real one the moment that group lands.
  */
+import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -21,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseArgs } from '../args.js'
 import { type CapturedOutput, captureOutput } from '../output.js'
 import { commandNamed, defineCommand, register } from '../registry.js'
-import './run.js'
+import { serverArgv } from './run.js'
 
 /** Long enough for a spawned Node to start, which is most of what these cases cost. */
 const PATIENCE = 20_000
@@ -191,45 +192,93 @@ const buried = async (pid: number): Promise<boolean> => {
 }
 
 /**
- * A server that ignores the polite signal and holds a port.
+ * A server that holds a port, and may ignore the polite signal.
  *
- * This is what a graceful drain looks like for the seconds that matter, and it is the
- * case the escalation to SIGKILL exists for. It reports where it is listening and who
- * it is, because both are what the case has to check afterwards.
+ * Ignoring it is what a graceful drain looks like for the seconds that matter, and it
+ * is the case the escalation to SIGKILL exists for. It reports where it is listening,
+ * who it is and who its parent is, because all three are what a case has to check
+ * afterwards: under `dev` the parent is Node's watch wrapper, which has to go too.
  */
-const STUBBORN_SERVER = [
-  "import { writeFileSync } from 'node:fs'",
-  "import { createServer } from 'node:net'",
-  '',
-  "process.on('SIGTERM', () => {})",
-  "process.on('SIGINT', () => {})",
-  '',
-  'const socket = createServer(() => {})',
-  '',
-  "socket.listen(0, '127.0.0.1', () => {",
-  '  const address = socket.address()',
-  '',
-  '  writeFileSync(',
-  "    new URL('./listening.json', import.meta.url),",
-  "    JSON.stringify({ port: typeof address === 'object' && address !== null ? address.port : 0, pid: process.pid }),",
-  '  )',
-  '})',
-  '',
-].join('\n')
+const listeningServer = (options: { readonly stubborn: boolean }): string =>
+  [
+    "import { writeFileSync } from 'node:fs'",
+    "import { createServer } from 'node:net'",
+    '',
+    ...(options.stubborn
+      ? ["process.on('SIGTERM', () => {})", "process.on('SIGINT', () => {})", '']
+      : []),
+    'const socket = createServer(() => {})',
+    '',
+    "socket.listen(0, '127.0.0.1', () => {",
+    '  const address = socket.address()',
+    '',
+    '  writeFileSync(',
+    "    new URL('./listening.json', import.meta.url),",
+    "    JSON.stringify({ port: typeof address === 'object' && address !== null ? address.port : 0, pid: process.pid, ppid: process.ppid }),",
+    '  )',
+    '})',
+    '',
+  ].join('\n')
 
-const whereItListens = async (root: string): Promise<{ port: number; pid: number }> => {
+const STUBBORN_SERVER = listeningServer({ stubborn: true })
+
+const whereItListens = async (
+  root: string,
+): Promise<{ port: number; pid: number; ppid: number }> => {
   const written: unknown = JSON.parse(await waitFor(join(root, 'listening.json')))
 
   if (
     typeof written !== 'object' ||
     written === null ||
     typeof (written as { port?: unknown }).port !== 'number' ||
-    typeof (written as { pid?: unknown }).pid !== 'number'
+    typeof (written as { pid?: unknown }).pid !== 'number' ||
+    typeof (written as { ppid?: unknown }).ppid !== 'number'
   ) {
     throw new Error('the server did not report where it was listening')
   }
 
-  return written as { port: number; pid: number }
+  return written as { port: number; pid: number; ppid: number }
+}
+
+/**
+ * Stands in for the CLI, in a process of its own, so that it can be killed outright.
+ *
+ * It spawns what it is sent exactly as `spawnProcess` does — detached, in a group of
+ * its own — and then waits to be killed. What is under test is the argv `serverArgv`
+ * builds: that a server started with it does not survive the process it names.
+ */
+const SUPERVISOR = [
+  "import { spawn } from 'node:child_process'",
+  '',
+  "let input = ''",
+  "process.stdin.on('data', (chunk) => { input += chunk })",
+  "process.stdin.on('end', () => {",
+  '  const { argv, cwd } = JSON.parse(input)',
+  "  spawn(process.execPath, argv, { cwd, stdio: 'inherit', detached: true })",
+  '  setInterval(() => {}, 1000)',
+  '})',
+  '',
+].join('\n')
+
+/** Starts the stand-in and hands it the server, with itself as the process to watch. */
+const supervise = (root: string, watch: boolean): ChildProcess => {
+  const supervisor = spawn(process.execPath, [join(root, 'supervisor.mjs')], {
+    stdio: ['pipe', 'inherit', 'inherit'],
+  })
+
+  if (supervisor.pid === undefined) throw new Error('the stand-in did not start')
+  stragglers.push(supervisor.pid)
+
+  const argv = serverArgv({
+    watch,
+    passthrough: [],
+    entry: 'server.mjs',
+    supervisor: supervisor.pid,
+  })
+
+  supervisor.stdin?.end(JSON.stringify({ argv, cwd: root }))
+
+  return supervisor
 }
 
 /**
@@ -306,6 +355,26 @@ describe('start', () => {
 
       expect(await invoke(['start', '--', '--no-warnings'], root)).toBe(0)
       expect(await readFile(join(root, 'argv.json'), 'utf8')).toContain('--no-warnings')
+    },
+    PATIENCE,
+  )
+
+  it(
+    'preloads the watchdog, naming the CLI as the process it watches',
+    async () => {
+      const root = await project({
+        'assemora.config.ts': config("server: 'server.mjs'"),
+        'server.mjs': server(beside('argv.json', 'JSON.stringify(process.execArgv)')),
+      })
+
+      expect(await invoke(['start'], root)).toBe(0)
+
+      const argv: unknown = JSON.parse(await readFile(join(root, 'argv.json'), 'utf8'))
+
+      expect(argv).toEqual([
+        '--import',
+        expect.stringMatching(new RegExp(`/watchdog\\.[jt]s\\?parent=${process.pid}$`)),
+      ])
     },
     PATIENCE,
   )
@@ -410,6 +479,58 @@ describe('dev', () => {
 
       expect(await freed(port)).toBe(true)
       expect(await buried(pid)).toBe(true)
+    },
+    PATIENCE,
+  )
+
+  it(
+    'takes everything down when the CLI dies outright, which no signal announces',
+    async () => {
+      const root = await project({
+        'supervisor.mjs': SUPERVISOR,
+        'server.mjs': listeningServer({ stubborn: false }),
+      })
+
+      const supervisor = supervise(root, true)
+      const { port, pid, ppid } = await whereItListens(root)
+      stragglers.push(pid, ppid)
+
+      expect(await listening(port)).toBe(true)
+
+      // SIGKILL is the one signal a process cannot forward, and a tool that ends the
+      // shell it started by killing the shell's group reaches the CLI and stops there:
+      // the server is detached, in a group of its own, and hears nothing. Nineteen of
+      // them were found listening with init for a parent (#27).
+      supervisor.kill('SIGKILL')
+
+      expect(await freed(port)).toBe(true)
+      expect(await buried(pid)).toBe(true)
+      expect(await buried(ppid)).toBe(true)
+    },
+    PATIENCE,
+  )
+
+  it(
+    'and does so for a server that ignores the polite signal, a little later',
+    async () => {
+      const root = await project({
+        'supervisor.mjs': SUPERVISOR,
+        'server.mjs': STUBBORN_SERVER,
+      })
+
+      const supervisor = supervise(root, true)
+      const { port, pid, ppid } = await whereItListens(root)
+      stragglers.push(pid, ppid)
+
+      supervisor.kill('SIGKILL')
+
+      // The watchdog's grace is five seconds, and `buried` gives up at five: the wait
+      // here is for the escalation, and the check afterwards is that it happened.
+      await pause(5_500)
+
+      expect(await freed(port)).toBe(true)
+      expect(await buried(pid)).toBe(true)
+      expect(await buried(ppid)).toBe(true)
     },
     PATIENCE,
   )

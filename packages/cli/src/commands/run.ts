@@ -98,7 +98,9 @@ const stop = (child: ChildProcess, signal: NodeJS.Signals): void => {
  *
  * `detached` is what creates that group. It also takes the child out of the terminal's
  * foreground group, so the terminal's own Ctrl-C no longer reaches it directly and the
- * forwarding below is the only path — which is why SIGHUP is forwarded too.
+ * forwarding below is the only path — which is why SIGHUP is forwarded too. And it
+ * means a CLI killed outright, with nothing forwarded, leaves the group untouched:
+ * `watchdog.ts` is preloaded into the server for exactly that case.
  */
 const spawnProcess = (
   executable: string,
@@ -161,13 +163,44 @@ const serverEntry = async (loaded: LoadedConfig): Promise<string> => {
 }
 
 /**
- * `dev` and `start`, which differ by one flag.
+ * The preload that takes the server down when the CLI dies with no chance to say so.
+ *
+ * Under Vitest this module runs from its source, and the file beside it is the source
+ * too; Node executes it as it executes the project's own `server.ts`.
+ */
+const WATCHDOG = new URL(
+  import.meta.url.endsWith('.ts') ? './watchdog.ts' : './watchdog.js',
+  import.meta.url,
+)
+
+/**
+ * What node is given to run the server.
  *
  * Everything after `--` is node's, and node reads its own options before the script
  * path: `assemora dev -- --inspect` runs `node --watch --inspect src/server.ts`.
  * Arguments meant for the server itself have a better home — a server already reads
  * its port and its database URL from the environment, and the environment is
  * inherited whole.
+ *
+ * The watchdog is preloaded with the pid of the process supervising the server, which
+ * is what it watches. `--watch` hands node's own flags on to the process it restarts,
+ * so the server has it under `dev` too, one process below.
+ */
+export const serverArgv = (options: {
+  readonly watch: boolean
+  readonly passthrough: readonly string[]
+  readonly entry: string
+  readonly supervisor: number
+}): string[] => [
+  ...(options.watch ? ['--watch'] : []),
+  '--import',
+  `${WATCHDOG.href}?parent=${options.supervisor}`,
+  ...options.passthrough,
+  options.entry,
+]
+
+/**
+ * `dev` and `start`, which differ by one flag.
  *
  * The child is `process.execPath` rather than the word `node`, so the server runs
  * under the same Node the CLI is running under, whatever PATH happens to say.
@@ -178,7 +211,7 @@ const runServer = async (cwd: string, args: ParsedArgs, watch: boolean): Promise
 
   return spawnProcess(
     process.execPath,
-    [...(watch ? ['--watch'] : []), ...args.passthrough, entry],
+    serverArgv({ watch, passthrough: args.passthrough, entry, supervisor: process.pid }),
     { cwd: loaded.root },
   )
 }

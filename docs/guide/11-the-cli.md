@@ -71,7 +71,9 @@ Everything is optional except `app`.
 **Run** — `assemora dev`, `assemora build`, `assemora start`, `assemora mcp`. `dev` and `start` spawn
 `node [--watch] <config.server>` under the same Node the CLI is running under,
 forwarding signals and exiting with its code; everything after `--` is node's, so
-`assemora dev -- --inspect` works. `build` is "everything that must be current before
+`assemora dev -- --inspect` works. The server is also handed the CLI's pid, and
+stops itself when that process is gone — so a CLI killed outright, with no chance to
+forward anything, does not leave a server listening behind it. `build` is "everything that must be current before
 this is deployed": your own `build` script if you declare one, otherwise a typecheck
 with your TypeScript and your `tsconfig.json`, then `api:openapi` and `sdk:generate`.
 
