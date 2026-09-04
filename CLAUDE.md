@@ -296,7 +296,19 @@ driver, where the bytes live, the upload ceiling), and the umbrella *tells* it t
 with `useUploadLimit()` the way it hands over the driver with `useStorage()`. A word in a
 descriptor is a `Said` — a string, or a map keyed by language tag — and Studio *picks* the
 language it reads in, falling back to the first written; it translates nothing (ADR-0030).
-The umbrella and media write theirs in the three languages Studio speaks. Studio draws whatever arrives, the way the
+The umbrella and media write theirs in the three languages Studio speaks.
+
+**SPEC.md §135 singletons — done (ADR-0032).** `singleton(name, fields, options)` in
+`@assemora/resources`, registered with `module(…).singletons(…)`: the resource fields, one
+JSONB row per name in `assemora_singletons` (one table, so a footer is never a migration),
+and two generic operations addressed by name the way `entries.*` are — `singletons.get`
+and `singletons.update`, which validates with the function `entries.update` uses, refuses
+fields an agent may not write, asks the record first, states `expectedVersion` like the
+theme, and is a revision under the singleton's own name with a restorer that reaches
+`null`. A singleton is a subject a policy may answer for, and only its own module may
+write that policy. Studio draws it on the settings screen as a group under Content whose
+rows are its fields — the first editable rows there that reach the server, through the
+one save bar with the version the screen read. The theme stays the theme. Studio draws whatever arrives, the way the
 sidebar draws whatever resources arrive, and holds one group of its own: which language it
 speaks (ADR-0030), the one row a reader decides on the screen. The prototype's ten groups
 carry a billing plan, single sign-on, a review workflow and a deploy hook, and none is a

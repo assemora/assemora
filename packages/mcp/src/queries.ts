@@ -40,6 +40,7 @@ const capabilitiesOf = (sections: Readonly<Record<string, readonly Entry[]>>): s
     ...(has('pages.') ? ['pages'] : []),
     ...(has('blocks.') ? ['blocks'] : []),
     ...(has('media.') ? ['media'] : []),
+    ...(has('singletons.') ? ['singletons'] : []),
     ...(has('revisions.') ? ['revisions'] : []),
     ...(has('changesets.') ? ['change-sets'] : []),
     ...(has('audit.') ? ['audit'] : []),
@@ -85,6 +86,7 @@ export const mcpQueries = (options: McpQueryOptions) => {
       locales: array(entry),
       policies: array(entry),
       settings: array(entry),
+      singletons: array(entry),
     },
     handle: async () => {
       const all = sections()
@@ -120,6 +122,9 @@ export const mcpQueries = (options: McpQueryOptions) => {
         // What the settings screen shows a person, so an agent asked "what is the
         // upload limit" reads the same description rather than guessing (ADR-0031).
         settings: all.settings ?? [],
+        // A page there is exactly one of (SPEC.md §135): its fields, so an agent
+        // knows what `singletons.update` takes before it calls it.
+        singletons: all.singletons ?? [],
       }
     },
   })

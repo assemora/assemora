@@ -57,10 +57,10 @@ knows what its own number means. A `link` is somewhere the reader goes to decide
 something the screen does not hold.
 
 There is no `input`. A setting somebody changes at run time is a command's input, and
-a command is already described in its own section of the registry (SPEC.md §14). The
-day a stored setting exists (SPEC.md §135) it arrives as a command — validated,
-authorized, revised, audited, a tool an agent can call — not as a third row kind that
-would need all of that invented again for one screen.
+a command is already described in its own section of the registry (SPEC.md §14). A
+stored setting is a singleton — see below — and it arrives as exactly that: a command,
+validated, authorized, revised, audited, a tool an agent can call, rather than a third
+row kind that would need all of that invented again for one screen.
 
 `locked` says the block's values were declared in the project's own source. Studio
 draws the tag and no control: a screen that offered a switch for a value in
@@ -114,6 +114,49 @@ and the module says both. A group has one declarer: two modules cannot each add 
 block to `media`, so whatever a group needs from elsewhere is told to the module that
 owns it.
 
+## A stored setting
+
+Everything above describes a deployment. A setting a person *changes* — the site's
+name, a footer note, whether orders are open — is a singleton (SPEC.md §135, ADR-0032):
+fields like a resource, one row, no list.
+
+```ts
+import { email, singleton, text, toggle } from '@assemora/resources'
+
+export const Site = singleton(
+  'site',
+  {
+    title: text().required(),
+    tagline: text(),
+    contactEmail: email(),
+    open: toggle().agentAccess({ write: false }),
+  },
+  { label: 'Site settings', icon: 'building' },
+)
+
+export const site = module('site').singletons(Site)
+```
+
+It reaches the settings screen as a group under **Content** whose rows are its fields,
+drawn by the same control every entry form uses and saved through the screen's one
+save bar. It reaches an agent as `singletons.get` and `singletons.update`, two tools for
+every singleton an application has; `open` above is a field an agent may read and not
+write, by the same rule an entry's fields follow (SPEC.md §76).
+
+A write validates against the declared fields, asks the record before writing, states
+the version it read — a save that lost a race is a 409, not an overwrite — and is a
+revision under the singleton's own name, so `revisions.restore` puts it back. The row
+lives in `assemora_singletons`, one table for every singleton, so adding a footer to a
+site is never a migration. A singleton nobody has written is version 0 and empty.
+
+```ts
+await app.commands.execute('singletons.update', {
+  name: 'site',
+  values: { title: 'Papa Cotta', open: true },
+  expectedVersion: 0,
+})
+```
+
 ## What is refused, and where
 
 `settingsGroup()` checks a group where it is written — at `module()` for a group
@@ -131,8 +174,9 @@ rows a search counts as one — on a screen, by somebody who cannot fix it.
 
 ## Where to look next
 
-- [Commands and queries](06-commands-and-queries.md) — what a setting a person
-  *changes* is.
+- [Resources](05-resources.md) — the fields a singleton is declared with.
+- [Commands and queries](06-commands-and-queries.md) — the pipeline `singletons.update`
+  goes through.
 - [Agents and MCP](10-agents-and-mcp.md) — `assemora.describe`, which answers with the
   same section.
 - `docs/adr/0031-settings-are-described.md` for the reasoning, and

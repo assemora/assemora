@@ -25,11 +25,13 @@ import { route } from '@assemora/http'
 import { block, Page } from '@assemora/pages'
 import {
   datetime,
+  email,
   media,
   number as numberField,
   resource,
   richText,
   select,
+  singleton,
   slug,
   text,
   toggle,
@@ -243,10 +245,31 @@ export const PublishArticle = command('articles.publish', {
  */
 export const PublicArticles = policy('articles', { read: () => true })
 
+/**
+ * A page there is exactly one of (SPEC.md §135): the site's own facts, edited on the
+ * settings screen through `singletons.update` and read by the frontend and by an agent.
+ */
+export const Site = singleton(
+  'site',
+  {
+    title: text().required(),
+    tagline: text(),
+    contactEmail: email(),
+    // An agent may propose a tagline and may not decide whether the site is open.
+    open: toggle().agentAccess({ write: false }),
+  },
+  {
+    label: 'Site settings',
+    description: 'What the site calls itself, and whether it is open.',
+    icon: 'building',
+  },
+)
+
 export const blog = () =>
   module('blog')
     .models(Article)
     .resources(Articles)
+    .singletons(Site)
     // A policy belongs to the module that owns the subject, not to the application
     // that assembles the modules — `auth({ policies: [...] })` is for somebody else's.
     .policies(PublicArticles)

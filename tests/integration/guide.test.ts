@@ -29,11 +29,15 @@ import { createApplication, module } from '@assemora/core'
 import * as resources from '@assemora/resources'
 import {
   array,
+  clearSingletonRegistry,
   describeField,
+  email,
   object,
   registeredFieldKinds,
   richText,
+  singleton,
   text,
+  toggle,
   url,
 } from '@assemora/resources'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -181,6 +185,53 @@ describe('docs/guide/15-settings.md', () => {
             },
           ],
         })
+      `),
+    )
+  })
+
+  it("compiles the guide's singleton, registers it with its fields, and prints what it compiled", async () => {
+    clearSingletonRegistry()
+
+    const Site = singleton(
+      'site',
+      {
+        title: text().required(),
+        tagline: text(),
+        contactEmail: email(),
+        open: toggle().agentAccess({ write: false }),
+      },
+      { label: 'Site settings', icon: 'building' },
+    )
+
+    const site = module('site').singletons(Site)
+    const app = createApplication({ modules: [site] })
+
+    await app.boot()
+
+    expect(app.registry.find('singletons', 'site')?.fields.map((field) => field.name)).toEqual([
+      'title',
+      'tagline',
+      'contactEmail',
+      'open',
+    ])
+    expect(app.commands.has('singletons.update')).toBe(true)
+
+    const page = await readFile(SETTINGS_PAGE, 'utf8')
+
+    expect(flattened(page)).toContain(
+      flattened(`
+        export const Site = singleton(
+          'site',
+          {
+            title: text().required(),
+            tagline: text(),
+            contactEmail: email(),
+            open: toggle().agentAccess({ write: false }),
+          },
+          { label: 'Site settings', icon: 'building' },
+        )
+
+        export const site = module('site').singletons(Site)
       `),
     )
   })

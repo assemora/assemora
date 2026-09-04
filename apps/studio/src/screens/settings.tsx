@@ -22,14 +22,19 @@
  * and not about the deployment (ADR-0030). It is the one row a reader decides on this
  * screen, and it goes through the same save bar.
  */
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate, useSearch } from '@tanstack/react-router'
 import { ArrowLeft, Building2, FileText, Server, X } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
+import { ApiError, api } from '../api/client.ts'
 import {
+  type FieldDescriptor,
+  labelOf,
   type SettingBlockDescriptor,
   type SettingSection,
   type SettingsGroupDescriptor,
+  type SingletonDescriptor,
   useIntrospection,
 } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
@@ -42,6 +47,7 @@ import { ResourceIcon } from '../ui/icons.tsx'
 import { Button, Failure, join, LinkButton, SearchField, Segmented, Spinner } from '../ui/index.tsx'
 import { SaveBar } from '../ui/layout.tsx'
 import { Logo } from '../ui/logo.tsx'
+import { FieldInput, type FieldIssues } from './fields.tsx'
 
 /** The three headings of the sidebar, in the order the prototype draws them. */
 const SECTIONS: readonly SettingSection[] = ['workspace', 'content', 'platform']
@@ -64,9 +70,11 @@ const STUDIO_GROUP = 'studio'
 const STUDIO_LANGUAGE = 'studio.language'
 
 /**
- * A row as this screen draws it: the registry's two kinds, plus the one Studio's own
- * group needs. The registry has no `segmented` on purpose — a setting somebody changes
- * is a command's input — so the kind exists here and nowhere below.
+ * A row as this screen draws it: the registry's two kinds, the one Studio's own group
+ * needs, and a singleton's field. The registry has no `segmented` and no `input` on
+ * purpose — a setting somebody changes is a command's input — so those kinds exist here
+ * and nowhere below: a `field` row *is* a command's input, `singletons.update`'s
+ * (SPEC.md §135), drawn by the same control an entry form uses.
  */
 type Row = { readonly key: string; readonly label: string; readonly help?: string } & (
   | { readonly kind: 'value'; readonly value: string }
@@ -76,6 +84,7 @@ type Row = { readonly key: string; readonly label: string; readonly help?: strin
       readonly value: string
       readonly options: readonly { readonly value: string; readonly label: string }[]
     }
+  | { readonly kind: 'field'; readonly field: FieldDescriptor; readonly value: unknown }
 )
 
 type Block = {
@@ -131,12 +140,14 @@ const RowView = ({
   row,
   first,
   staged,
+  issues,
   onStage,
 }: {
   row: Row
   first: boolean
-  staged: string | undefined
-  onStage(key: string, value: string): void
+  staged: unknown
+  issues: FieldIssues | undefined
+  onStage(key: string, value: unknown): void
 }) => (
   <div className={join('px-[18px] py-4', !first && 'border-t border-hairline')}>
     <div className="flex items-start gap-4">
@@ -154,6 +165,7 @@ const RowView = ({
           'flex shrink-0 items-center justify-end',
           row.kind === 'value' && 'max-w-[260px]',
           row.kind === 'segmented' && 'max-w-[320px]',
+          row.kind === 'field' && 'w-[360px]',
         )}
       >
         {row.kind === 'value' && (
@@ -168,11 +180,23 @@ const RowView = ({
         )}
         {row.kind === 'segmented' && (
           <Segmented
-            value={staged ?? row.value}
+            value={typeof staged === 'string' ? staged : row.value}
             options={row.options}
             onChange={(next) => onStage(row.key, next)}
             label={row.label}
           />
+        )}
+        {row.kind === 'field' && (
+          <div className="w-full">
+            {/* The row already says the label, the help and whether it is required;
+                the control draws the box alone. */}
+            <FieldInput
+              field={{ ...row.field, label: '', required: false, help: '' }}
+              value={staged === undefined ? row.value : staged}
+              {...(issues === undefined ? {} : { issues })}
+              onChange={(next) => onStage(row.key, next)}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -183,13 +207,15 @@ const BlockView = ({
   block,
   rows,
   staged,
+  issues,
   onStage,
 }: {
   block: Block
   /** The rows still standing after the search, which is why they are not `block.rows`. */
   rows: readonly Row[]
-  staged: Readonly<Record<string, string>>
-  onStage(key: string, value: string): void
+  staged: Readonly<Record<string, unknown>>
+  issues: FieldIssues | undefined
+  onStage(key: string, value: unknown): void
 }) => {
   const t = useT()
 
@@ -214,6 +240,7 @@ const BlockView = ({
             row={row}
             first={index === 0}
             staged={staged[row.key]}
+            issues={row.kind === 'field' ? narrowed(issues, row.key) : undefined}
             onStage={onStage}
           />
         ))}
@@ -263,6 +290,71 @@ const GroupButton = ({
   </li>
 )
 
+/* ------------------------------------------------------------------------- singletons */
+
+/** A singleton's row key: its name, a dot, the field. What the save bar names. */
+const fieldKey = (name: string, field: string): string => `${name}.${field}`
+
+/**
+ * The issues the application raised about one field, addressed from that field.
+ *
+ * `singletons.update` reports under `values.<field>`, and the HTTP layer under
+ * `body.values.<field>` when it refused the body first; both land on the same input.
+ */
+const narrowed = (issues: FieldIssues | undefined, key: string): FieldIssues | undefined => {
+  if (issues === undefined) return undefined
+
+  const [, field] = key.split('.', 2)
+  const under: Record<string, readonly string[]> = {}
+
+  for (const [path, messages] of Object.entries(issues)) {
+    const at = path.replace(/^body\./, '').replace(/^values\./, '')
+
+    if (at === field) under[''] = messages
+    else if (field !== undefined && at.startsWith(`${field}.`)) {
+      under[at.slice(field.length + 1)] = messages
+    }
+  }
+
+  return Object.keys(under).length === 0 ? undefined : under
+}
+
+/** What `singletons.get` answers with. */
+type SingletonRead = {
+  readonly name: string
+  readonly values: Readonly<Record<string, unknown>>
+  readonly version: number
+  readonly updatedAt: string | null
+}
+
+/**
+ * A singleton as a group: under Content, one block, a row per field the reader may
+ * see (SPEC.md §135). The values are the row's, read once; what the reader types is
+ * staged beside them until the bar is pressed.
+ */
+const singletonGroup = (declared: SingletonDescriptor, read: SingletonRead | undefined): Group => ({
+  name: declared.name,
+  section: 'content',
+  label: declared.label,
+  ...(declared.description === undefined ? {} : { blurb: declared.description }),
+  ...(declared.icon === undefined ? {} : { icon: declared.icon }),
+  blocks: [
+    {
+      title: declared.label,
+      rows: declared.fields
+        .filter((field) => !field.hidden)
+        .map((field) => ({
+          kind: 'field',
+          key: fieldKey(declared.name, field.name),
+          label: labelOf(field),
+          ...(field.help === undefined ? {} : { help: field.help }),
+          field,
+          value: read?.values[field.name],
+        })),
+    },
+  ],
+})
+
 /* ---------------------------------------------------------------------------- screen */
 
 /**
@@ -271,42 +363,76 @@ const GroupButton = ({
  * The registry's arrive as they are. Studio's is built here because its words are
  * Studio's and its one value is read from this browser rather than from any server.
  */
-const useGroups = (): { groups: readonly Group[]; ready: boolean; failure: unknown } => {
+const useGroups = (): {
+  groups: readonly Group[]
+  ready: boolean
+  failure: unknown
+  /** The version each singleton was read at, which its write has to state. */
+  versions: ReadonlyMap<string, number>
+} => {
   const introspection = useIntrospection()
   const { language, languages } = useLanguage()
   const t = useT()
+  const declared = introspection.data?.singletons ?? []
 
-  const groups = useMemo<Group[]>(() => {
-    const studio: Group = {
-      name: STUDIO_GROUP,
-      section: 'workspace',
-      label: t('settings.studio'),
-      blurb: t('settings.studio.blurb'),
-      icon: 'settings-2',
-      blocks: [
-        {
-          title: t('settings.studio'),
-          note: t('settings.studio.note'),
-          rows: [
-            {
-              key: STUDIO_LANGUAGE,
-              kind: 'segmented',
-              label: t('account.interface'),
-              help: t('settings.language.help'),
-              value: language,
-              options: languages.map((code) => ({ value: code, label: LANGUAGE_NAMES[code] })),
-            },
-          ],
-        },
-      ],
-    }
+  const reads = useQueries({
+    queries: declared.map((one) => ({
+      queryKey: ['singleton', one.name],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        api.query<SingletonRead>('singletons.get', { name: one.name }, signal),
+      // The screen holds the values while they are edited; a refetch under it would
+      // throw away what somebody is typing. It invalidates after a save itself.
+      staleTime: Number.POSITIVE_INFINITY,
+    })),
+  })
+  const read = new Map(declared.map((one, index) => [one.name, reads[index]?.data]))
+  const versions = new Map(
+    declared.map((one, index) => [one.name, reads[index]?.data?.version ?? 0]),
+  )
+  const reading = reads.some((one) => one.isPending)
+  const refused = reads.find((one) => one.error !== null)?.error
 
-    return [...(introspection.data?.settings ?? []).map((group) => spoken(group, language)), studio]
-  }, [introspection.data, language, languages, t])
+  // Built on every render rather than memoised: the list is a handful of small
+  // objects, and the answers it is drawn from change by identity as the queries
+  // settle — a dependency list that tracks that is longer than the work it saves.
+  const studio: Group = {
+    name: STUDIO_GROUP,
+    section: 'workspace',
+    label: t('settings.studio'),
+    blurb: t('settings.studio.blurb'),
+    icon: 'settings-2',
+    blocks: [
+      {
+        title: t('settings.studio'),
+        note: t('settings.studio.note'),
+        rows: [
+          {
+            key: STUDIO_LANGUAGE,
+            kind: 'segmented',
+            label: t('account.interface'),
+            help: t('settings.language.help'),
+            value: language,
+            options: languages.map((code) => ({ value: code, label: LANGUAGE_NAMES[code] })),
+          },
+        ],
+      },
+    ],
+  }
+
+  const groups: Group[] = [
+    ...(introspection.data?.settings ?? []).map((group) => spoken(group, language)),
+    ...declared.map((one) => singletonGroup(one, read.get(one.name))),
+    studio,
+  ]
 
   // A registry that could not be read is said, not shown as one lonely group: the
   // reader would otherwise take Studio's own row for the whole of the settings.
-  return { groups, ready: !introspection.isPending, failure: introspection.error ?? undefined }
+  return {
+    groups,
+    ready: !introspection.isPending && !reading,
+    failure: introspection.error ?? refused ?? undefined,
+    versions,
+  }
 }
 
 export const Settings = () => {
@@ -314,11 +440,13 @@ export const Settings = () => {
   const { group: asked } = useSearch({ from: '/settings' })
   const { viewer } = useSession()
   const { choose } = useLanguage()
-  const { groups, ready, failure } = useGroups()
+  const { groups, ready, failure, versions } = useGroups()
+  const client = useQueryClient()
   const t = useT()
   const [query, setQuery] = useState('')
   /** What the reader changed and has not saved, by setting key. */
-  const [staged, setStaged] = useState<Readonly<Record<string, string>>>({})
+  const [staged, setStaged] = useState<Readonly<Record<string, unknown>>>({})
+  const [refusal, setRefusal] = useState<ApiError>()
 
   /**
    * The groups as the sidebar orders them: by section, then as the registry answered.
@@ -326,29 +454,22 @@ export const Settings = () => {
    * reader sees at the top — the registry's own order puts whichever module booted
    * last wherever it fell, and that is not a first anybody chose.
    */
-  const ordered = useMemo(
-    () => SECTIONS.flatMap((section) => groups.filter((one) => one.section === section)),
-    [groups],
-  )
+  const ordered = SECTIONS.flatMap((section) => groups.filter((one) => one.section === section))
   const group = ordered.find((one) => one.name === asked) ?? ordered[0]
 
-  const spoken = useMemo(
-    () =>
-      groups.map((one) => ({
-        key: one.name,
-        label: one.label,
-        rows: one.blocks.flatMap((block) =>
-          block.rows.map((row) => ({ label: row.label, help: row.help ?? '' })),
-        ),
-      })),
-    [groups],
-  )
+  const spokenRows = groups.map((one) => ({
+    key: one.name,
+    label: one.label,
+    rows: one.blocks.flatMap((block) =>
+      block.rows.map((row) => ({ label: row.label, help: row.help ?? '' })),
+    ),
+  }))
 
   const searching = query.trim() !== ''
-  const hits = hitsOf(spoken, query)
+  const hits = hitsOf(spokenRows, query)
   const dirty = Object.keys(staged)
 
-  const stage = (key: string, value: string) =>
+  const stage = (key: string, value: unknown) =>
     setStaged((held) => {
       // Back to what it was is not a change: the bar counts differences, not touches.
       const current = groups
@@ -362,13 +483,56 @@ export const Settings = () => {
         : { ...rest, [key]: value }
     })
 
-  const save = () => {
-    const language = staged[STUDIO_LANGUAGE]
+  /**
+   * One write per singleton that changed, with the version the screen read: a save
+   * that lost a race is a 409 the bar shows, not an overwrite (SPEC.md §66). Studio's
+   * own row is applied last and locally — it was never on any server.
+   */
+  const saving = useMutation({
+    mutationFn: async (held: Readonly<Record<string, unknown>>) => {
+      const written = new Set<string>()
 
-    if (language !== undefined && isLanguage(language)) choose(language)
+      for (const name of versions.keys()) {
+        const values = Object.fromEntries(
+          Object.entries(held)
+            .filter(([key]) => key.startsWith(`${name}.`))
+            .map(([key, value]) => [key.slice(name.length + 1), value]),
+        )
 
-    setStaged({})
-  }
+        if (Object.keys(values).length === 0) continue
+
+        await api.command('singletons.update', {
+          name,
+          values,
+          expectedVersion: versions.get(name),
+        })
+        written.add(name)
+      }
+
+      return written
+    },
+    onSuccess: async (written, held) => {
+      const language = held[STUDIO_LANGUAGE]
+
+      if (typeof language === 'string' && isLanguage(language)) choose(language)
+
+      setStaged({})
+      setRefusal(undefined)
+      await Promise.all(
+        [...written].map((name) => client.invalidateQueries({ queryKey: ['singleton', name] })),
+      )
+    },
+    onError: async (error) => {
+      setRefusal(error instanceof ApiError ? error : undefined)
+      // A conflict means the row moved: read it again so the next save states the
+      // version that is actually there. What was typed stays staged.
+      if (error instanceof ApiError && error.status === 409) {
+        await client.invalidateQueries({ queryKey: ['singleton'] })
+      }
+    },
+  })
+
+  const save = () => saving.mutate(staged)
 
   const leave = useCallback(() => void navigate({ to: '/' }), [navigate])
 
@@ -545,12 +709,19 @@ export const Settings = () => {
                     </div>
                   </header>
 
+                  {refusal !== undefined && (
+                    <div className="mt-5">
+                      <Failure error={refusal} except={Object.keys(refusal.fields)} />
+                    </div>
+                  )}
+
                   {blocks.map(({ block, rows }) => (
                     <BlockView
                       key={block.title}
                       block={block}
                       rows={rows}
                       staged={staged}
+                      issues={refusal?.fields}
                       onStage={stage}
                     />
                   ))}
@@ -578,12 +749,20 @@ export const Settings = () => {
               >
                 <Button
                   variant="secondary"
-                  disabled={dirty.length === 0}
-                  onClick={() => setStaged({})}
+                  disabled={dirty.length === 0 || saving.isPending}
+                  onClick={() => {
+                    setStaged({})
+                    setRefusal(undefined)
+                  }}
                 >
                   {t('entry.discard')}
                 </Button>
-                <Button variant="accent" disabled={dirty.length === 0} onClick={save}>
+                <Button
+                  variant="accent"
+                  busy={saving.isPending}
+                  disabled={dirty.length === 0}
+                  onClick={save}
+                >
                   {t('entry.saveChanges')}
                 </Button>
               </SaveBar>

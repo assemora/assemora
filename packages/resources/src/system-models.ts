@@ -36,5 +36,22 @@ export const ResourceEntryModel = model(
   { softDeletes: true },
 )
 
+/**
+ * A singleton's one row (SPEC.md §135).
+ *
+ * One table for every singleton rather than one per name, for the reason collections
+ * share a table: a page there is exactly one of is data, and adding a footer to a site
+ * must not be a migration.
+ */
+export const SingletonModel = model('assemora_singletons', {
+  id: uuid().primary().defaultRandom(),
+  name: string().unique(),
+  values: json<Record<string, unknown>>(),
+  version: integer().default(1),
+  updatedBy: uuid().nullable(),
+  createdAt: timestamp().created(),
+  updatedAt: timestamp().updated(),
+})
+
 /** Every system table this package owns, for schema generation. */
-export const systemModels = [ResourceDefinitionModel, ResourceEntryModel] as const
+export const systemModels = [ResourceDefinitionModel, ResourceEntryModel, SingletonModel] as const

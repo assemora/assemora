@@ -141,6 +141,23 @@ export {
   resource,
 } from './resource.js'
 export {
+  clearSingletonRegistry,
+  registeredSingletons,
+  registerSingleton,
+  type Singleton,
+  type SingletonDescriptor,
+  type SingletonOptions,
+  singleton,
+  singletonByName,
+} from './singleton.js'
+export {
+  GetSingleton,
+  registerSingletonRestorer,
+  singletonCommands,
+  singletonQueries,
+  UpdateSingleton,
+} from './singleton-commands.js'
+export {
   ResourceDefinitionModel,
   ResourceEntryModel,
   systemModels,

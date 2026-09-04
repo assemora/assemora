@@ -208,6 +208,19 @@ export type SettingsGroupDescriptor = {
   readonly module?: string
 }
 
+/**
+ * A page there is exactly one of (SPEC.md §135): fields like a resource, and no list.
+ * Drawn on the settings screen as a group whose rows are its fields.
+ */
+export type SingletonDescriptor = {
+  readonly name: string
+  readonly label: string
+  readonly description?: string
+  readonly icon?: string
+  readonly fields: readonly FieldDescriptor[]
+  readonly module?: string
+}
+
 export type Introspection = {
   readonly resources?: readonly ResourceDescriptor[]
   readonly routes?: readonly RouteDescriptor[]
@@ -228,6 +241,8 @@ export type Introspection = {
   readonly frontend?: readonly { readonly name: string }[]
   /** What the settings screen draws: whatever the umbrella and the modules declared. */
   readonly settings?: readonly SettingsGroupDescriptor[]
+  /** Every singleton, whose one row the settings screen edits through `singletons.update`. */
+  readonly singletons?: readonly SingletonDescriptor[]
 }
 
 export const useIntrospection = (): UseQueryResult<Introspection> =>

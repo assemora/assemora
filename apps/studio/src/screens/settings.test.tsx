@@ -21,7 +21,11 @@ import {
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import type { Introspection, SettingsGroupDescriptor } from '../api/introspection.ts'
+import type {
+  Introspection,
+  SettingsGroupDescriptor,
+  SingletonDescriptor,
+} from '../api/introspection.ts'
 import { SessionProvider, type Viewer } from '../api/session.tsx'
 import { Settings } from './settings.tsx'
 
@@ -32,13 +36,35 @@ const VIEWER: Viewer = {
   permissions: [],
 }
 
+/** A singleton the registry described, and the row `singletons.get` answered with. */
+type Stored = {
+  readonly declared: SingletonDescriptor
+  readonly values: Readonly<Record<string, unknown>>
+  readonly version: number
+}
+
 /** The screen at `/settings`, with the query string the address carries. */
-const draw = async (settings: readonly SettingsGroupDescriptor[], search = ''): Promise<string> => {
+const draw = async (
+  settings: readonly SettingsGroupDescriptor[],
+  search = '',
+  singletons: readonly Stored[] = [],
+): Promise<string> => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const introspection: Introspection = { settings }
+  const introspection: Introspection = {
+    settings,
+    singletons: singletons.map((one) => one.declared),
+  }
 
   client.setQueryData(['viewer'], VIEWER)
   client.setQueryData(['introspection'], introspection)
+  for (const one of singletons) {
+    client.setQueryData(['singleton', one.declared.name], {
+      name: one.declared.name,
+      values: one.values,
+      version: one.version,
+      updatedAt: null,
+    })
+  }
 
   const root = createRootRoute({ component: Outlet })
   const router = createRouter({
@@ -209,6 +235,50 @@ describe('the settings screen', () => {
     expect(words(markup)).toContain('Identity')
     expect(words(markup)).toContain('Назва Papa Cotta')
     expect(words(markup)).not.toContain('Ідентичність')
+  })
+
+  it('draws a singleton as a group under Content whose rows are its fields, filled from its row', async () => {
+    const site: Stored = {
+      declared: {
+        name: 'site',
+        label: 'Site settings',
+        description: 'What the site calls itself.',
+        icon: 'building',
+        fields: [
+          {
+            name: 'title',
+            kind: 'text',
+            required: true,
+            searchable: false,
+            sortable: false,
+            filterable: false,
+            hidden: false,
+            readOnly: false,
+            label: 'Title',
+            help: 'Shown in the tab.',
+          },
+          {
+            name: 'notes',
+            kind: 'text',
+            required: false,
+            searchable: false,
+            sortable: false,
+            filterable: false,
+            hidden: true,
+            readOnly: false,
+          },
+        ],
+      },
+      values: { title: 'Papa Cotta' },
+      version: 3,
+    }
+    const markup = await draw([group()], '?group=site', [site])
+
+    expect(sidebar(markup)).toEqual(['General', 'Studio', 'Site settings'])
+    expect(words(markup)).toContain('Site settings What the site calls itself. Content')
+    expect(words(markup)).toContain('Title Shown in the tab.')
+    expect(markup).toContain('value="Papa Cotta"')
+    expect(words(markup)).not.toContain('Notes')
   })
 
   it('draws Studio’s own language group even when the registry sent nothing', async () => {

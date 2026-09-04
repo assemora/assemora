@@ -54,7 +54,7 @@ import type { SchemaRegistry } from '@assemora/core'
  * A model is registered under its table and a resource under its name, and both of
  * those are what a subject is spelled as — `articles`, `pages`, `media`.
  */
-const NAMING_SECTIONS = ['resources', 'models'] as const
+const NAMING_SECTIONS = ['resources', 'models', 'singletons'] as const
 
 /**
  * The sections whose entry names *contain* a subject.

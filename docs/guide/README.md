@@ -24,7 +24,7 @@ the detail behind the page that mentions it.
 | [12. Deploying](12-deploying.md) | The database, storage, the security defaults |
 | [13. Jobs](13-jobs.md) | `job()`, `dispatch()`, the queue adapter, the worker process |
 | [14. The theme](14-theme.md) | Tokens, the five groups, the generated stylesheet, the Design section |
-| [15. Settings](15-settings.md) | `.settings()`, the `settings` section, what Studio draws and an agent reads |
+| [15. Settings](15-settings.md) | `.settings()`, `singleton()`, what Studio draws and an agent reads |
 
 ## Reading it in less than fifteen pages
 

@@ -12,11 +12,19 @@ import { entryQueries } from './queries.js'
 import { registerResource } from './registry.js'
 import type { AnyResource } from './resource.js'
 import { registerEntryRestorer } from './restorer.js'
+import { registerSingleton, type Singleton } from './singleton.js'
+import {
+  registerSingletonRestorer,
+  singletonCommands,
+  singletonQueries,
+} from './singleton-commands.js'
 
 declare module '@assemora/core' {
   interface ModuleBuilder {
     /** Registers resources, and with them the CRUD commands they are reached through. */
     resources(...resources: AnyResource[]): ModuleBuilder
+    /** Registers singletons — one row each — and the two commands they are reached through (SPEC.md §135). */
+    singletons(...singletons: Singleton[]): ModuleBuilder
   }
 }
 
@@ -48,6 +56,30 @@ export const defineResourceFacet = (): void => {
         registerResource(registered)
         context.registry.register('resources', registered.descriptor)
         registerEntryRestorer(registered.name)
+      }
+    })
+  })
+
+  defineModuleFacet('singletons', (internals, args) => {
+    internals.addRegistration((context) => {
+      for (const definition of singletonCommands) {
+        if (!context.commands.has(definition.name)) {
+          context.commands.register(definition, 'resources')
+        }
+      }
+
+      for (const definition of singletonQueries) {
+        if (!context.queries.has(definition.name)) {
+          context.queries.register(definition, 'resources')
+        }
+      }
+
+      for (const candidate of args) {
+        const declared = candidate as Singleton
+
+        registerSingleton(declared)
+        context.registry.register('singletons', declared.descriptor)
+        registerSingletonRestorer(declared.name)
       }
     })
   })
