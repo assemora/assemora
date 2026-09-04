@@ -206,6 +206,7 @@ export const GenerateSitemap = job('sitemap.generate', {
 export const PublishArticle = command('articles.publish', {
   description: 'Publishes an article',
   input: { id: uuidSchema() },
+  output: { id: uuidSchema(), slug: stringSchema() },
   handle: async ({ id }, context) => {
     const article = await Article.findOrFail(id)
     const before = article.toJSON()

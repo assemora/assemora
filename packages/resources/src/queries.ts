@@ -6,7 +6,16 @@
  * exactly as it dispatches a command (SPEC.md §8).
  */
 import { ForbiddenError, query } from '@assemora/core'
-import { json, number, string, unknown as unknownSchema, uuid } from '@assemora/schema'
+import {
+  array,
+  boolean,
+  json,
+  number,
+  object,
+  string,
+  unknown as unknownSchema,
+  uuid,
+} from '@assemora/schema'
 
 import { resourceByName } from './registry.js'
 import { PERSISTENCE } from './resource.js'
@@ -25,6 +34,15 @@ export const ListEntries = query('entries.list', {
     page: number().optional(),
     perPage: number().optional(),
   },
+  // An item is an entry projected to the resource's declared fields, whose shape only
+  // the resource knows; the envelope around it is fixed.
+  output: {
+    data: array(unknownSchema()),
+    total: number(),
+    page: number(),
+    perPage: number(),
+    lastPage: number(),
+  },
   handle: async ({ resource, ...rest }) => {
     const target = resourceByName(resource)
 
@@ -37,6 +55,8 @@ export const ListEntries = query('entries.list', {
 export const GetEntry = query('entries.get', {
   description: 'Reads one entry of a resource',
   input: { resource: string(), id: uuid() },
+  // The entry projected to its declared fields, or null: a shape only the resource knows.
+  output: unknownSchema(),
   handle: async ({ resource, id }) => {
     const target = resourceByName(resource)
 
@@ -50,6 +70,17 @@ export const GetEntry = query('entries.get', {
 export const ListTranslations = query('entries.translations', {
   description: 'Which languages an entry is written in, and which of them are out of date',
   input: { resource: string(), id: uuid() },
+  output: {
+    translations: array(
+      object({
+        id: unknownSchema(),
+        locale: string(),
+        isOriginal: boolean(),
+        updatedAt: string().nullable(),
+        stale: boolean().nullable(),
+      }),
+    ),
+  },
   handle: async ({ resource, id }, context) => {
     const target = resourceByName(resource)
 

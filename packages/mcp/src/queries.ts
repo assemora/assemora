@@ -11,10 +11,13 @@
  * interpreting them (ADR-0020).
  */
 import { NotFoundError, query, type SchemaRegistry } from '@assemora/core'
-import { string } from '@assemora/schema'
+import { array, json, object, string, unknown as unknownSchema } from '@assemora/schema'
 
 /** A registry entry, as this package is able to see one. */
 type Entry = Readonly<Record<string, unknown>>
+
+/** A registry entry as it is answered: a description passed through, never interpreted. */
+const entry = json<Entry>()
 
 const named = (entry: unknown): string => String((entry as Entry).name ?? '')
 
@@ -69,6 +72,19 @@ export const mcpQueries = (options: McpQueryOptions) => {
   const Describe = query('assemora.describe', {
     description: 'Everything this project declares: models, resources, blocks, commands, queries',
     input: {},
+    output: {
+      project: object({ name: string(), description: string().nullable() }),
+      capabilities: array(string()),
+      models: array(entry),
+      resources: array(entry),
+      pages: array(entry),
+      blocks: array(entry),
+      commands: array(entry),
+      queries: array(entry),
+      permissions: array(string()),
+      locales: array(entry),
+      policies: array(entry),
+    },
     handle: async () => {
       const all = sections()
 
@@ -107,6 +123,9 @@ export const mcpQueries = (options: McpQueryOptions) => {
   const ListResources = query('assemora.resources.list', {
     description: 'The resources this project declares, by name',
     input: {},
+    // `label` and `kind` are read off a description this package does not interpret,
+    // so they are answered as found.
+    output: array(object({ name: string(), label: unknownSchema(), kind: unknownSchema() })),
     handle: async () =>
       (sections().resources ?? []).map((resource) => ({
         name: named(resource),
@@ -118,6 +137,7 @@ export const mcpQueries = (options: McpQueryOptions) => {
   const DescribeResource = query('assemora.resources.describe', {
     description: 'One resource in full: every field, and what may be done with it',
     input: { name: string().min(1) },
+    output: entry,
     handle: async ({ name }) => {
       const found = (sections().resources ?? []).find((resource) => named(resource) === name)
 
@@ -130,6 +150,7 @@ export const mcpQueries = (options: McpQueryOptions) => {
   const BlockTypes = query('assemora.blocks.types', {
     description: 'The block types a page can be assembled from (SPEC.md §55, §56)',
     input: {},
+    output: array(entry),
     handle: async () => sections().blocks ?? [],
   })
 

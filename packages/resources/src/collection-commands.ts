@@ -20,7 +20,7 @@ import {
   ValidationError,
 } from '@assemora/core'
 import type { Issue } from '@assemora/schema'
-import { array, string } from '@assemora/schema'
+import { array, boolean, json, number, object, string, uuid } from '@assemora/schema'
 
 import {
   type Collection,
@@ -32,7 +32,7 @@ import {
   withdrawCollection,
 } from './collections.js'
 import { apiExposureOf, collectionDefinitionSchema } from './definition.js'
-import { type ApiExposure, humanize } from './descriptor.js'
+import { type ApiExposure, humanize, type ResourceDescriptor } from './descriptor.js'
 import {
   type DynamicDefinition,
   dynamicResource,
@@ -524,6 +524,13 @@ export const CreateCollection = command('collections.create', {
      */
     api: collectionDefinitionSchema.shape.api,
   },
+  // The resource is its registry description, handed on as the registry holds it.
+  output: {
+    id: uuid(),
+    name: string(),
+    resource: json<ResourceDescriptor>(),
+    note: string(),
+  },
   handle: async ({ name, label, icon, fields, api }, context) => {
     // Everything goes through the parser, whatever the bus already checked. It is the
     // one place that knows a field kind has to be registered, and the one place §86 is
@@ -585,6 +592,14 @@ export const UpdateCollection = command('collections.update', {
      * refused, because the values stay behind in every entry.
      */
     drop: array(string()).optional(),
+  },
+  output: {
+    id: uuid(),
+    name: string(),
+    resource: json<ResourceDescriptor>(),
+    dropped: array(string()),
+    entries: number(),
+    note: string(),
   },
   handle: async ({ name, label, icon, fields, api, drop }, context) => {
     const row = await storedByName(name)
@@ -673,6 +688,7 @@ export const UpdateCollection = command('collections.update', {
 export const DeleteCollection = command('collections.delete', {
   description: 'Deletes an empty collection',
   input: { name: collectionDefinitionSchema.shape.name },
+  output: { id: uuid(), name: string(), orphanedEntries: number(), note: string() },
   // Deliberately the one command that acts on a stored definition without needing it
   // to be registered: it is how a collection the parser refuses at boot is got rid of.
   handle: async ({ name }, context) => {
@@ -762,6 +778,19 @@ const summarize = (collection: Collection): CollectionSummary => ({
 export const ListCollections = query('collections.list', {
   description: 'The collections this application has, and every resource name already taken',
   input: {},
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        name: string(),
+        label: string(),
+        icon: string().optional(),
+        fields: number(),
+        api: object({ create: boolean(), read: boolean(), update: boolean(), delete: boolean() }),
+      }),
+    ),
+    taken: array(string()),
+  },
   handle: async () => ({
     // The registry, not the table: a collection is one that actually registered, and a
     // stored definition the parser refused at boot is deliberately not one of them.
@@ -787,6 +816,15 @@ export const ListCollections = query('collections.list', {
 export const GetCollection = query('collections.get', {
   description: 'One collection: its stored definition, its dropped field names, its entry count',
   input: { name: string() },
+  // The definition is the document a declaration is parsed from, so it is described by
+  // the same schema; the resource is what the registry made of it.
+  output: {
+    id: uuid(),
+    resource: json<ResourceDescriptor>(),
+    definition: collectionDefinitionSchema,
+    dropped: array(string()),
+    entries: number(),
+  },
   handle: async ({ name }) => {
     const collection = collectionByName(name)
 

@@ -14,6 +14,7 @@
 import type { QueryBus, SchemaRegistry } from '@assemora/core'
 import type { JsonSchema } from '@assemora/schema'
 
+import { documented } from './commands.js'
 import type { Route } from './route.js'
 
 /** The part of a query description these endpoints need. */
@@ -21,6 +22,8 @@ export type QueryEndpoint = {
   readonly name: string
   readonly description?: string
   readonly input: JsonSchema
+  /** Absent when the query did not say what it answers with. */
+  readonly output?: JsonSchema
   readonly module?: string
 }
 
@@ -98,9 +101,9 @@ export const queryRoutes = (endpoints: readonly QueryEndpoint[], queries: QueryB
     // second implementation of it, and two validators drift (SPEC.md §14).
     query: undefined,
     body: undefined,
-    // A query answers with whatever it answers with, and nothing describes that shape
-    // yet. Promising a schema here would be inventing one (SPEC.md §42).
-    response: undefined,
+    // Described where the query described it, and not judged — the same reading a
+    // command's endpoint gives its output (SPEC.md §42).
+    response: endpoint.output === undefined ? undefined : documented(endpoint.output),
     auth: false,
     source: undefined,
     // Like a command's endpoint: a query is the application's, not a version's

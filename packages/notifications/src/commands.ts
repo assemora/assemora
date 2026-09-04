@@ -23,11 +23,19 @@
  * ```
  */
 import { command, NotFoundError, ValidationError } from '@assemora/core'
-import { enumOf, string, unknown as unknownSchema, uuid } from '@assemora/schema'
+import {
+  array,
+  enumOf,
+  number,
+  object,
+  string,
+  unknown as unknownSchema,
+  uuid,
+} from '@assemora/schema'
 
 import { channelNamed } from './channel.js'
 import { DeliverNotification } from './jobs.js'
-import { NotificationDelivery, NotificationRecipient } from './models.js'
+import { DELIVERY_STATUSES, NotificationDelivery, NotificationRecipient } from './models.js'
 import { notificationFor, notificationTopics, renderMessage } from './notification.js'
 
 /**
@@ -49,6 +57,17 @@ export const SendNotification = command('notifications.send', {
   description:
     'Announces a declared topic to every active recipient subscribed to it. The payload is validated against the topic',
   input: { topic: string(), payload: unknownSchema() },
+  output: {
+    topic: string(),
+    deliveries: array(
+      object({
+        id: uuid(),
+        channel: string(),
+        address: string(),
+        status: enumOf(...DELIVERY_STATUSES),
+      }),
+    ),
+  },
   handle: async ({ topic, payload }, context) => {
     const definition = notificationFor(topic)
 
@@ -131,6 +150,7 @@ export const RecordDelivery = command('notifications.record', {
     outcome: enumOf('sent', 'failed'),
     error: string().optional(),
   },
+  output: { id: uuid(), status: enumOf(...DELIVERY_STATUSES), attempts: number().integer() },
   handle: async ({ deliveryId, outcome, error }) => {
     const delivery = await NotificationDelivery.find(deliveryId)
 

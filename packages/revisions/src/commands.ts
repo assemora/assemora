@@ -5,9 +5,20 @@
  * leaves a revision of its own. Undoing is never a way around the pipeline.
  */
 import { AssemoraError, type CommandContext, command, NotFoundError, query } from '@assemora/core'
-import { changedFields, diff, enumOf, number, string, uuid } from '@assemora/schema'
+import {
+  array,
+  changedFields,
+  diff,
+  enumOf,
+  json,
+  number,
+  object,
+  string,
+  timestamp,
+  uuid,
+} from '@assemora/schema'
 
-import { Revision } from './models.js'
+import { Revision, type RevisionPatch } from './models.js'
 import { restorerFor } from './restore.js'
 
 declare module '@assemora/core' {
@@ -37,6 +48,21 @@ const summarise = (revision: Awaited<ReturnType<typeof Revision.findOrFail>>) =>
   createdAt: revision.createdAt,
 })
 
+/** The shape of a timeline row, as `summarise` answers it. */
+const SUMMARY = {
+  id: uuid(),
+  sequence: number(),
+  entityType: string(),
+  entityId: string(),
+  actorType: string().nullable(),
+  actorId: string().nullable(),
+  command: string(),
+  changed: array(string()),
+  patch: json<RevisionPatch>(),
+  metadata: json<Record<string, unknown>>(),
+  createdAt: timestamp(),
+}
+
 export const ListRevisions = query('revisions.list', {
   description: 'The history of one entity, newest first',
   input: {
@@ -44,6 +70,13 @@ export const ListRevisions = query('revisions.list', {
     entityId: string(),
     page: number().integer().optional(),
     perPage: number().integer().optional(),
+  },
+  output: {
+    data: array(object(SUMMARY)),
+    total: number(),
+    page: number(),
+    perPage: number(),
+    lastPage: number(),
   },
   handle: async ({ entityType, entityId, page, perPage }, context) => {
     // The input names what is read, so reading it is a second question: holding
@@ -62,6 +95,7 @@ export const ListRevisions = query('revisions.list', {
 export const GetRevision = query('revisions.get', {
   description: 'One revision, with both snapshots',
   input: { id: uuid() },
+  output: { ...SUMMARY, before: json<unknown>(), after: json<unknown>() },
   handle: async ({ id }, context) => {
     const revision = await Revision.find(id)
 
@@ -76,6 +110,7 @@ export const GetRevision = query('revisions.get', {
 export const CompareRevisions = query('revisions.compare', {
   description: 'What changed between two revisions of the same entity',
   input: { from: uuid(), to: uuid() },
+  output: { entityType: string(), entityId: string(), patch: json<RevisionPatch>() },
   handle: async ({ from, to }, context) => {
     const earlier = await Revision.find(from)
     const later = await Revision.find(to)
@@ -226,6 +261,12 @@ const NOTHING_TO_UNDO = (what: string) =>
 export const UndoChange = command('revisions.undo', {
   description: 'Reverses the most recent change to an entity (SPEC.md §60, §65)',
   input: { entityType: string(), entityId: string() },
+  output: {
+    entityType: string(),
+    entityId: string(),
+    restoredFrom: uuid(),
+    restoredTo: enumOf('before', 'after'),
+  },
   handle: async ({ entityType, entityId }, context) => {
     const revision = undoable(await historyOf(entityType, entityId))
 
@@ -238,6 +279,12 @@ export const UndoChange = command('revisions.undo', {
 export const RedoChange = command('revisions.redo', {
   description: 'Puts back what the last undo took away (SPEC.md §60)',
   input: { entityType: string(), entityId: string() },
+  output: {
+    entityType: string(),
+    entityId: string(),
+    restoredFrom: uuid(),
+    restoredTo: enumOf('before', 'after'),
+  },
   handle: async ({ entityType, entityId }, context) => {
     const revision = redoable(await historyOf(entityType, entityId))
 
@@ -260,6 +307,12 @@ export const RestoreRevision = command('revisions.restore', {
      * genuinely different acts and the caller says which (SPEC.md §65).
      */
     to: enumOf('before', 'after').optional(),
+  },
+  output: {
+    entityType: string(),
+    entityId: string(),
+    restoredFrom: uuid(),
+    restoredTo: enumOf('before', 'after'),
   },
   handle: async ({ id, to }, context) => {
     const revision = await Revision.find(id)

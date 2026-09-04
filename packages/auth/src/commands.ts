@@ -111,6 +111,7 @@ export const SignIn = command('auth.login', {
   description: 'Exchanges an email and a password for a session',
   reachableFrom: 'its own route',
   input: { email: emailSchema(), password: string() },
+  output: { token: string(), expiresAt: timestamp(), userId: uuid() },
   handle: async ({ email, password }, context) => {
     const user = await User.where('email', email.toLowerCase()).first()
     const correct = await verifyPassword(user?.passwordHash ?? DECOY, password)
@@ -138,6 +139,7 @@ export const SignOut = command('auth.logout', {
   description: 'Ends a session',
   reachableFrom: 'its own route',
   input: { token: string() },
+  output: { ended: boolean() },
   handle: async ({ token }, context) => {
     await endSession(token)
     context.emit('auth.signed-out', { userId: context.actor?.id })
@@ -154,6 +156,7 @@ export const CreateUser = command('auth.users.create', {
     password: string().min(12),
     roles: array(string()).optional(),
   },
+  output: { id: uuid() },
   handle: async ({ email, name, password, roles }, context) => {
     const user = await User.create({
       email: email.toLowerCase(),
@@ -189,6 +192,7 @@ export const CreateUser = command('auth.users.create', {
 export const GrantRole = command('auth.roles.grant', {
   description: 'Gives a user a role',
   input: { userId: uuid(), role: string() },
+  output: { userId: uuid(), role: string() },
   handle: async ({ userId, role }) => {
     const found = await Role.where('name', role).first()
 
@@ -212,6 +216,7 @@ export const CreateApiToken = command('auth.tokens.create', {
     userId: uuid().optional(),
     expiresAt: timestamp().optional(),
   },
+  output: { token: string(), id: uuid() },
   handle: async (input, context) => {
     await grantable(input.permissions, context)
 
@@ -227,6 +232,7 @@ export const CreateApiToken = command('auth.tokens.create', {
 export const CreateAgent = command('auth.agents.create', {
   description: 'Creates an agent identity and its first token (SPEC.md §72)',
   input: { name: string(), description: string().optional(), permissions: array(string()) },
+  output: { agentId: uuid(), token: string(), tokenId: uuid() },
   handle: async (input, context) => {
     await grantable(input.permissions, context)
 
@@ -268,6 +274,7 @@ export const UpdateUser = command('auth.users.update', {
     email: emailSchema().optional(),
     active: boolean().optional(),
   },
+  output: { id: uuid(), version: number().integer() },
   handle: async ({ id, expectedVersion, name, email, active }, context) => {
     const user = await versioned(() => User.find(id), 'user', id, expectedVersion)
     const before = user.toJSON()
@@ -295,6 +302,7 @@ export const UpdateUser = command('auth.users.update', {
 export const SetPassword = command('auth.users.password', {
   description: 'Sets a user password. The old one is never read back to check it',
   input: { id: uuid(), password: string().min(12) },
+  output: { id: uuid() },
   handle: async ({ id, password }, context) => {
     const user = await User.find(id)
 
@@ -313,6 +321,7 @@ export const SetPassword = command('auth.users.password', {
 export const RevokeRole = command('auth.roles.revoke', {
   description: 'Takes a role away from a user',
   input: { userId: uuid(), role: string() },
+  output: { userId: uuid(), role: string() },
   handle: async ({ userId, role }, context) => {
     const found = await Role.where('name', role).first()
 
@@ -333,6 +342,7 @@ export const RevokeRole = command('auth.roles.revoke', {
 export const CreateRole = command('auth.roles.create', {
   description: 'Creates a role and the permissions it carries',
   input: { name: string().min(1), label: string().min(1), permissions: array(string()) },
+  output: { id: uuid(), name: string() },
   handle: async ({ name, label, permissions }, context) => {
     await grantable(permissions, context)
 
@@ -365,6 +375,7 @@ export const UpdateRole = command('auth.roles.update', {
     label: string().min(1).optional(),
     permissions: array(string()).optional(),
   },
+  output: { id: uuid(), version: number().integer() },
   handle: async ({ id, expectedVersion, label, permissions }, context) => {
     const role = await versioned(() => Role.find(id), 'role', id, expectedVersion)
     const before = role.toJSON()
@@ -390,6 +401,7 @@ export const UpdateRole = command('auth.roles.update', {
 export const DeleteRole = command('auth.roles.delete', {
   description: 'Deletes a role, and takes it from everyone who held it',
   input: { id: uuid() },
+  output: { id: uuid() },
   handle: async ({ id }, context) => {
     const role = await Role.find(id)
 
@@ -409,6 +421,7 @@ export const DeleteRole = command('auth.roles.delete', {
 export const RevokeApiToken = command('auth.tokens.revoke', {
   description: 'Stops an API token working, at once and for good',
   input: { id: uuid() },
+  output: { id: uuid() },
   handle: async ({ id }, context) => {
     const token = await ApiToken.find(id)
 
@@ -429,6 +442,7 @@ export const UpdateAgent = command('auth.agents.update', {
     permissions: array(string()).optional(),
     enabled: boolean().optional(),
   },
+  output: { id: uuid(), enabled: boolean() },
   handle: async ({ id, description, permissions, enabled }, context) => {
     if (permissions !== undefined) await grantable(permissions, context)
 

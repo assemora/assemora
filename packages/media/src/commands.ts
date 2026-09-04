@@ -37,6 +37,7 @@ export const UploadMedia = command('media.upload', {
     height: number().integer().optional(),
     metadata: json<Record<string, unknown>>().optional(),
   },
+  output: { id: uuid(), url: string(), size: number().integer() },
   handle: async (input, context) => {
     const storage = currentStorage()
     const path = storagePath(input.filename)
@@ -95,6 +96,12 @@ const EDITABLE = {
 export const UpdateMedia = command('media.update', {
   description: 'Changes what the library records about a file',
   input: { id: uuid(), ...EDITABLE },
+  output: {
+    id: uuid(),
+    alt: string().nullable(),
+    width: number().integer().nullable(),
+    height: number().integer().nullable(),
+  },
   handle: async ({ id, ...changes }, context) => {
     const item = await Media.find(id)
 
@@ -128,6 +135,7 @@ export const DeleteMedia = command('media.delete', {
   /** The file is gone from storage before the transaction has a say. */
   previewable: false,
   input: { id: uuid() },
+  output: { id: uuid() },
   handle: async ({ id }, context) => {
     const item = await Media.find(id)
 

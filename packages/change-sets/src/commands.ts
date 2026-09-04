@@ -8,7 +8,19 @@
  * mutate — which SPEC.md §14 does not allow.
  */
 import { AssemoraError, command, NotFoundError, type Preview, query } from '@assemora/core'
-import { array, json, number, string, unknown as unknownSchema, uuid } from '@assemora/schema'
+import {
+  array,
+  boolean,
+  enumOf,
+  json,
+  number,
+  object,
+  type Patch,
+  string,
+  timestamp,
+  unknown as unknownSchema,
+  uuid,
+} from '@assemora/schema'
 
 import { ChangeSet, type ChangeSetStatus, type ProposedChange } from './models.js'
 import { summarise, summariseTree } from './summary.js'
@@ -83,6 +95,17 @@ const changesOf = (previews: readonly Preview[]): ProposedChange[] =>
     }),
   )
 
+/** One line of a proposal, as `ProposedChange` is answered. The patch is keyed by the entity's own fields. */
+const proposedChange = object({
+  entityType: string(),
+  entityId: string(),
+  patch: json<Patch>(),
+  summary: string(),
+})
+
+/** One command of a proposal, as `ProposedCommand` is answered. */
+const proposedCommand = object({ command: string(), input: unknownSchema() })
+
 export const ProposeChangeSet = command('changesets.propose', {
   description: 'Previews a sequence of commands and stores it for a person to approve',
   /**
@@ -103,6 +126,12 @@ export const ProposeChangeSet = command('changesets.propose', {
     title: string().min(1),
     commands: array(json<{ readonly command: string; readonly input: unknown }>()).min(1),
     ttlMs: number().integer().optional(),
+  },
+  output: {
+    id: uuid(),
+    status: string(),
+    changes: array(proposedChange),
+    expiresAt: timestamp(),
   },
   handle: async ({ title, commands, ttlMs }, context) => {
     // The preview runs every command through validation, authorization and the real
@@ -158,6 +187,14 @@ const openOrFail = async (id: string) => {
 export const ApplyChangeSet = command('changesets.apply', {
   description: 'Runs the commands a change set proposed, in the applier’s own name',
   input: { id: uuid() },
+  // `changed` names the entities that moved, and is only there when they did.
+  output: {
+    id: uuid(),
+    status: enumOf('applied', 'conflicted', 'expired'),
+    applied: boolean(),
+    changed: array(string()).optional(),
+    results: array(unknownSchema()),
+  },
   // Applying runs real commands; previewing a preview is not a thing.
   previewable: false,
   handle: async ({ id }, context) => {
@@ -224,6 +261,9 @@ export const RejectChangeSet = command('changesets.reject', {
    */
   proposable: false,
   input: { id: uuid(), reason: string().optional() },
+  // `status` is always 'rejected' here, but the literal widens before the compiler
+  // compares it, and the column it echoes is a plain string.
+  output: { id: uuid(), status: string(), reason: string().nullable() },
   handle: async ({ id, reason }, context) => {
     const proposal = await openOrFail(id)
 
@@ -243,6 +283,25 @@ export const ListChangeSets = query('changesets.list', {
     actorId: string().optional(),
     page: number().integer().optional(),
     perPage: number().integer().optional(),
+  },
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        title: string(),
+        status: string(),
+        actorType: string().nullable(),
+        actorId: string().nullable(),
+        changes: number(),
+        expiresAt: timestamp(),
+        createdAt: timestamp(),
+        appliedAt: timestamp().nullable(),
+      }),
+    ),
+    total: number(),
+    page: number(),
+    perPage: number(),
+    lastPage: number(),
   },
   handle: async ({ status, actorId, page, perPage }) => {
     let found = ChangeSet.orderBy('createdAt', 'desc')
@@ -272,6 +331,18 @@ export const ListChangeSets = query('changesets.list', {
 export const GetChangeSet = query('changesets.get', {
   description: 'One proposal, with every line a person is approving',
   input: { id: uuid() },
+  output: {
+    id: uuid(),
+    title: string(),
+    status: string(),
+    actorType: string().nullable(),
+    actorId: string().nullable(),
+    commands: array(proposedCommand),
+    changes: array(proposedChange),
+    expiresAt: timestamp(),
+    createdAt: timestamp(),
+    appliedAt: timestamp().nullable(),
+  },
   handle: async ({ id }) => {
     const proposal = await ChangeSet.find(id)
 

@@ -1,4 +1,4 @@
-import { boolean, enumOf, number, string, uuid } from '@assemora/schema'
+import { array, boolean, enumOf, number, string, uuid } from '@assemora/schema'
 import { describe, expectTypeOf, it } from 'vitest'
 
 import { createApplication } from './application.js'
@@ -44,6 +44,50 @@ describe('command input inference', () => {
     const result = await app.commands.execute(PublishPage, {})
 
     expectTypeOf(result).toEqualTypeOf<{ id: string; status: 'draft' | 'published' }>()
+  })
+
+  it('types what execute answers from the declared output, not from the handler', async () => {
+    const Archive = command('pages.archive', {
+      input: { id: uuid() },
+      output: { id: uuid(), archived: boolean() },
+      // A model row answers with more than the output names, and that is allowed:
+      // the output is what a caller is promised, not everything the handler knows.
+      handle: async ({ id }) => ({ id, archived: true, touchedAt: new Date() }),
+    })
+    const app = createApplication({ authorization: permitAll() })
+    const result = await app.commands.execute(Archive, {})
+
+    // Read-only, because an answer is a caller's to read and never to write.
+    expectTypeOf(result).toEqualTypeOf<{ readonly id: string; readonly archived: boolean }>()
+  })
+
+  it('takes a schema as the output where the answer is not an object', async () => {
+    const stored: readonly string[] = ['a', 'b']
+    const Ids = command('pages.ids', {
+      input: {},
+      output: array(uuid()),
+      // A row's own array is read-only, and `array()` still describes it.
+      handle: async () => stored,
+    })
+    const app = createApplication({ authorization: permitAll() })
+
+    expectTypeOf(await app.commands.execute(Ids, {})).toEqualTypeOf<readonly string[]>()
+  })
+
+  it('refuses a handler that answers something its output does not describe', () => {
+    command('pages.archive', {
+      input: { id: uuid() },
+      output: { id: uuid(), archived: boolean() },
+      // @ts-expect-error `archived` is promised and not answered
+      handle: async ({ id }) => ({ id }),
+    })
+
+    command('pages.count', {
+      input: {},
+      output: number(),
+      // @ts-expect-error a string is not the number the output promised
+      handle: async () => 'many',
+    })
   })
 
   it('returns unknown when a command is addressed by name', async () => {

@@ -7,15 +7,23 @@
  * document they resolve to, which is what a stylesheet is rendered from.
  */
 import { query } from '@assemora/core'
+import { number, string, timestamp } from '@assemora/schema'
 
 import { themeVersion } from './css.js'
 import { resolveTheme } from './defaults.js'
 import { THEME_ID, Theme } from './models.js'
-import type { ThemeOverrides } from './tokens.js'
+import { type ThemeOverrides, themeOverrides, themeTokens } from './tokens.js'
 
 export const GetTheme = query('theme.get', {
   description: 'The theme: the tokens somebody set, and the document they resolve to',
   input: {},
+  output: {
+    version: number().integer(),
+    overrides: themeOverrides(),
+    tokens: themeTokens(),
+    cssVersion: string(),
+    updatedAt: timestamp().nullable(),
+  },
   handle: async () => {
     const stored = await Theme.find(THEME_ID)
     const overrides: ThemeOverrides = stored?.tokens ?? {}

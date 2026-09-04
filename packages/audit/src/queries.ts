@@ -6,7 +6,7 @@
  * grow forever.
  */
 import { query } from '@assemora/core'
-import { number, string } from '@assemora/schema'
+import { array, json, number, object, string, timestamp, uuid } from '@assemora/schema'
 
 import { AuditLog } from './models.js'
 
@@ -22,6 +22,29 @@ export const ListAuditLog = query('audit.list', {
     outcome: string().optional(),
     page: number().integer().optional(),
     perPage: number().integer().optional(),
+  },
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        actorType: string().nullable(),
+        actorId: string().nullable(),
+        source: string(),
+        action: string(),
+        kind: string(),
+        entityType: string().nullable(),
+        entityId: string().nullable(),
+        requestId: string(),
+        outcome: string(),
+        durationMs: number(),
+        metadata: json<Record<string, unknown>>(),
+        createdAt: timestamp(),
+      }),
+    ),
+    total: number(),
+    page: number(),
+    perPage: number(),
+    lastPage: number(),
   },
   handle: async ({
     action,

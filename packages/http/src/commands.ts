@@ -27,6 +27,8 @@ export type CommandEndpoint = {
   readonly name: string
   readonly description?: string
   readonly input: JsonSchema
+  /** Absent when the command did not say what it answers with. */
+  readonly output?: JsonSchema
   readonly module?: string
   readonly reachableFrom?: CommandReach
 }
@@ -50,6 +52,23 @@ const described = (input: JsonSchema): Schema<Record<string, unknown>> => ({
       ? ok(value as Record<string, unknown>)
       : fail('type', 'Expected an object'),
   toJsonSchema: () => input,
+})
+
+/**
+ * A response the route documents but does not judge.
+ *
+ * The registry keeps a command's output as JSON Schema, and the handler's answer is
+ * the application's own truth: parsing it here would turn a description that fell
+ * behind the handler into a 500 for every caller, which is a worse outcome than a
+ * document that is wrong (SPEC.md §42).
+ */
+export const documented = (output: JsonSchema): Schema<unknown> => ({
+  kind: 'unknown',
+  isOptional: false,
+  isNullable: false,
+  description: undefined,
+  parse: (value) => ok(value),
+  toJsonSchema: () => output,
 })
 
 const isCommandEndpoint = (entry: unknown): entry is CommandEndpoint => {
@@ -92,9 +111,11 @@ export const commandRoutes = (
     params: undefined,
     query: undefined,
     body: described(endpoint.input),
-    // A command answers with whatever it answers with, and nothing describes that
-    // shape yet. Promising a schema here would be inventing one (SPEC.md §42).
-    response: undefined,
+    // Described where the command described it, and not judged: the bus hands
+    // back what the handler answered, and the schema is what OpenAPI and the SDK
+    // read (SPEC.md §42). A command that said nothing is documented as saying nothing
+    // rather than promised a shape somebody invented here.
+    response: endpoint.output === undefined ? undefined : documented(endpoint.output),
     auth: false,
     source: undefined,
     // A command belongs to the application rather than to a shape of its REST surface,

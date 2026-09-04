@@ -6,9 +6,22 @@
  * (ADR-0014). A browser reaches these through `server.mountQueries()`.
  */
 import { NotFoundError, query } from '@assemora/core'
-import { type BlockTree, emptyTree, enumOf, number, string, uuid } from '@assemora/schema'
+import {
+  array,
+  type BlockTree,
+  blockTree,
+  boolean,
+  emptyTree,
+  enumOf,
+  json,
+  number,
+  object,
+  string,
+  timestamp,
+  uuid,
+} from '@assemora/schema'
 
-import { Page } from './models.js'
+import { Page, type PageMeta } from './models.js'
 
 export type PageMode = 'draft' | 'published'
 
@@ -55,6 +68,25 @@ export const ListPages = query('pages.list', {
     page: number().integer().optional(),
     perPage: number().integer().optional(),
   },
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        slug: string(),
+        title: string(),
+        status: enumOf('draft', 'published', 'archived'),
+        locale: string(),
+        translationOf: uuid().nullable(),
+        version: number(),
+        publishedAt: timestamp().nullable(),
+        updatedAt: timestamp(),
+      }),
+    ),
+    total: number(),
+    page: number(),
+    perPage: number(),
+    lastPage: number(),
+  },
   handle: async ({ status, search, page, perPage }) => {
     let found = Page.orderBy('updatedAt', 'desc')
 
@@ -86,6 +118,22 @@ export const GetPage = query('pages.get', {
     id: uuid().optional(),
     slug: string().optional(),
     mode: enumOf('draft', 'published').optional(),
+  },
+  output: {
+    id: uuid(),
+    slug: string(),
+    title: string(),
+    status: enumOf('draft', 'published', 'archived'),
+    locale: string(),
+    translationOf: uuid().nullable(),
+    mode: enumOf('draft', 'published'),
+    tree: blockTree(),
+    meta: json<PageMeta>(),
+    version: number(),
+    hasUnpublishedChanges: boolean(),
+    publishedAt: timestamp().nullable(),
+    updatedAt: timestamp(),
+    updatedBy: uuid().nullable(),
   },
   handle: async ({ id, slug, mode }) => {
     const found =
@@ -127,6 +175,19 @@ export const GetPage = query('pages.get', {
 export const ListPageTranslations = query('pages.translations', {
   description: 'Which languages a page is written in, and which of them are out of date',
   input: { id: uuid() },
+  output: {
+    translations: array(
+      object({
+        id: uuid(),
+        locale: string(),
+        slug: string(),
+        status: enumOf('draft', 'published', 'archived'),
+        isOriginal: boolean(),
+        updatedAt: timestamp(),
+        stale: boolean().nullable(),
+      }),
+    ),
+  },
   handle: async ({ id }, context) => {
     const named = await Page.find(id)
 

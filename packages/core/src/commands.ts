@@ -25,6 +25,7 @@ import {
 import type { EventBus, PayloadOf } from './events.js'
 import { collectDispatches, type JobRequest, queuedFrom } from './jobs.js'
 import type { Logger } from './logger.js'
+import { type InferOutput, type Output, outputSchema } from './output.js'
 import {
   type AuditPort,
   type AuthorizationPort,
@@ -111,6 +112,8 @@ export type CommandDefinition<S extends Shape, R> = {
   readonly name: string
   readonly description: string | undefined
   readonly input: Schema<InferShape<S>>
+  /** What it answers with, when it said. See `output.ts`. */
+  readonly output: Schema<R> | undefined
   /**
    * What this command acts on, when that is not what its name says.
    *
@@ -155,6 +158,7 @@ export type AnyCommand = {
   readonly name: string
   readonly description: string | undefined
   readonly input: Schema<unknown>
+  readonly output: Schema<unknown> | undefined
   readonly subject: string | undefined
   readonly previewable: boolean
   readonly reachableFrom: CommandReach
@@ -193,45 +197,79 @@ export type Preview = {
   readonly jobs: readonly string[]
 }
 
+/** Everything a command declares besides what it answers with and how. */
+type CommandDeclaration<S extends Shape> = {
+  readonly input: S
+  readonly description?: string
+  /** What it acts on, when the command's own name does not say it. */
+  readonly subject?: string
+  /** Defaults to true. Say `false` when the handler reaches outside the database. */
+  readonly previewable?: boolean
+  /**
+   * Defaults to `'anywhere'`. Say `'its own route'` when the command is publicly
+   * authorized and a route written for it is what makes it safe.
+   */
+  readonly reachableFrom?: CommandReach
+  /**
+   * Defaults to true. Say `false` when this command is how a proposal is made or
+   * refused, so that making a proposal of it would be circular.
+   */
+  readonly proposable?: boolean
+}
+
 /**
  * ```ts
  * export const PublishPage = command('pages.publish', {
  *   input: { id: uuid() },
+ *   output: { id: uuid(), status: enumOf('draft', 'published') },
  *   handle: async ({ id }, ctx) => { ... },
  * })
  * ```
+ *
+ * With an `output`, the handler must answer what it describes; without one, the
+ * handler's own return type is what `execute()` answers with, and the generated
+ * endpoint and tool carry an undocumented response.
  */
-export const command = <S extends Shape, R>(
+/*
+ * The overload without an output is listed first, and it is not the order the
+ * documentation reads in: the compiler reports the *last* overload's error, and the
+ * error that matters is "the handler does not answer what the output promises", not
+ * "the output is not undefined".
+ */
+export function command<S extends Shape, R>(
   name: string,
-  definition: {
-    readonly input: S
-    readonly description?: string
-    /** What it acts on, when the command's own name does not say it. */
-    readonly subject?: string
-    /** Defaults to true. Say `false` when the handler reaches outside the database. */
-    readonly previewable?: boolean
-    /**
-     * Defaults to `'anywhere'`. Say `'its own route'` when the command is publicly
-     * authorized and a route written for it is what makes it safe.
-     */
-    readonly reachableFrom?: CommandReach
-    /**
-     * Defaults to true. Say `false` when this command is how a proposal is made or
-     * refused, so that making a proposal of it would be circular.
-     */
-    readonly proposable?: boolean
+  definition: CommandDeclaration<S> & {
+    readonly output?: undefined
     handle(input: InferShape<S>, context: CommandContext): Promise<R>
   },
-): CommandDefinition<S, R> => ({
-  name,
-  description: definition.description,
-  input: object(definition.input),
-  subject: definition.subject,
-  previewable: definition.previewable ?? true,
-  reachableFrom: definition.reachableFrom ?? 'anywhere',
-  proposable: definition.proposable ?? true,
-  handle: definition.handle,
-})
+): CommandDefinition<S, R>
+export function command<S extends Shape, O extends Output>(
+  name: string,
+  definition: CommandDeclaration<S> & {
+    readonly output: O
+    handle(input: InferShape<S>, context: CommandContext): Promise<InferOutput<O>>
+  },
+): CommandDefinition<S, InferOutput<O>>
+export function command<S extends Shape, R>(
+  name: string,
+  definition: CommandDeclaration<S> & {
+    readonly output?: Output | undefined
+    handle(input: InferShape<S>, context: CommandContext): Promise<R>
+  },
+): CommandDefinition<S, R> {
+  return {
+    name,
+    description: definition.description,
+    input: object(definition.input),
+    // The overloads above are what tie the output to `R`; here it is either.
+    output: outputSchema(definition.output) as Schema<R> | undefined,
+    subject: definition.subject,
+    previewable: definition.previewable ?? true,
+    reachableFrom: definition.reachableFrom ?? 'anywhere',
+    proposable: definition.proposable ?? true,
+    handle: definition.handle,
+  }
+}
 
 export type CommandBus = {
   register(definition: AnyCommand, module?: string): void
@@ -636,6 +674,7 @@ export const createCommandBus = (options: CommandBusOptions): CommandBus => {
         name: definition.name,
         ...(definition.description === undefined ? {} : { description: definition.description }),
         input: definition.input.toJsonSchema(),
+        ...(definition.output === undefined ? {} : { output: definition.output.toJsonSchema() }),
         ...(module === undefined ? {} : { module }),
         // Carried only when it restricts something. The presence of the field is the
         // declaration, so the description of a command that made none is unchanged.

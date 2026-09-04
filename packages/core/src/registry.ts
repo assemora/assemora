@@ -34,6 +34,8 @@ export type CommandReach = 'anywhere' | 'its own route'
 export type CommandDescriptor = RegistryEntry & {
   readonly description?: string
   readonly input: JsonSchema
+  /** Absent when the command did not say what it answers with. */
+  readonly output?: JsonSchema
   readonly module?: string
   /**
    * Absent when the command is reachable from anywhere, which is nearly all of them.

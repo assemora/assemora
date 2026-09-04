@@ -19,11 +19,13 @@ import { UNSPECIFIED_LOCALE } from '@assemora/data'
 import {
   type BlockTree,
   blockDesignPatch,
+  blockTree,
   boolean,
   emptyTree,
   json,
   number,
   string,
+  timestamp,
   uuid,
 } from '@assemora/schema'
 
@@ -82,6 +84,7 @@ const VERSIONED = { id: uuid(), expectedVersion: number().integer().optional() }
 export const CreatePage = command('pages.create', {
   description: 'Creates an empty page',
   input: { slug: string().min(1), title: string().min(1), meta: json<PageMeta>().optional() },
+  output: { id: uuid(), slug: string(), version: number() },
   handle: async ({ slug, title, meta }, context) => {
     const page = await Page.create({
       slug,
@@ -120,6 +123,7 @@ export const UpdatePage = command('pages.update', {
     slug: string().min(1).optional(),
     meta: json<PageMeta>().optional(),
   },
+  output: { id: uuid(), version: number() },
   handle: async ({ id, expectedVersion, title, slug, meta }, context) => {
     const page = await loadPage(id, expectedVersion)
     const before = snapshotOf(page)
@@ -144,6 +148,7 @@ export const UpdatePage = command('pages.update', {
 export const PublishPage = command('pages.publish', {
   description: 'Makes the draft tree the one visitors see',
   input: VERSIONED,
+  output: { id: uuid(), version: number(), publishedAt: timestamp().nullable() },
   handle: async ({ id, expectedVersion }, context) => {
     const page = await loadPage(id, expectedVersion)
     const before = snapshotOf(page)
@@ -225,6 +230,7 @@ export const AddBlock = command('blocks.add', {
     parentId: uuid().optional(),
     index: number().integer().optional(),
   },
+  output: { id: uuid(), version: number(), tree: blockTree(), blockId: uuid().optional() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
 
@@ -243,6 +249,7 @@ export const UpdateBlock = command('blocks.update', {
   description: 'Changes the props of a block',
   subject: 'pages',
   input: { ...VERSIONED, blockId: uuid(), props: json<Record<string, unknown>>() },
+  output: { id: uuid(), version: number(), tree: blockTree() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
 
@@ -264,6 +271,7 @@ export const DesignBlock = command('blocks.design', {
     /** Merged into what is there. A control set to `null` goes back to the theme. */
     design: blockDesignPatch(),
   },
+  output: { id: uuid(), version: number(), tree: blockTree() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
 
@@ -285,6 +293,7 @@ export const MoveBlock = command('blocks.move', {
     parentId: uuid().optional(),
     index: number().integer().optional(),
   },
+  output: { id: uuid(), version: number(), tree: blockTree() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
 
@@ -301,6 +310,7 @@ export const RemoveBlock = command('blocks.remove', {
   description: 'Removes a block and everything inside it',
   subject: 'pages',
   input: { ...VERSIONED, blockId: uuid() },
+  output: { id: uuid(), version: number(), tree: blockTree() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
 
@@ -312,6 +322,7 @@ export const DuplicateBlock = command('blocks.duplicate', {
   description: 'Copies a block beside itself, with new ids throughout',
   subject: 'pages',
   input: { ...VERSIONED, blockId: uuid() },
+  output: { id: uuid(), version: number(), tree: blockTree(), blockId: uuid().optional() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
     const copied = duplicateBlock(page.draftTree, values.blockId)
@@ -324,6 +335,7 @@ export const HideBlock = command('blocks.hide', {
   description: 'Keeps a block in the tree and out of the rendered page',
   subject: 'pages',
   input: { ...VERSIONED, blockId: uuid(), hidden: boolean() },
+  output: { id: uuid(), version: number(), tree: blockTree() },
   handle: async (values, context) => {
     const { page, before } = await openForEdit(values.id, values.expectedVersion, context)
 
@@ -339,6 +351,7 @@ export const HideBlock = command('blocks.hide', {
 export const UnpublishPage = command('pages.unpublish', {
   description: 'Takes a page off the site without touching its draft',
   input: VERSIONED,
+  output: { id: uuid(), version: number() },
   handle: async ({ id, expectedVersion }, context) => {
     const page = await loadPage(id, expectedVersion)
     const before = snapshotOf(page)
@@ -363,6 +376,7 @@ export const UnpublishPage = command('pages.unpublish', {
 export const ArchivePage = command('pages.archive', {
   description: 'Files a page away: off the site, out of the list, still restorable',
   input: VERSIONED,
+  output: { id: uuid(), version: number() },
   handle: async ({ id, expectedVersion }, context) => {
     const page = await loadPage(id, expectedVersion)
     const before = snapshotOf(page)
@@ -387,6 +401,7 @@ export const ArchivePage = command('pages.archive', {
 export const DeletePage = command('pages.delete', {
   description: 'Deletes a page. Its revisions outlive it',
   input: VERSIONED,
+  output: { id: uuid() },
   handle: async ({ id, expectedVersion }, context) => {
     const page = await loadPage(id, expectedVersion)
     const before = snapshotOf(page)
@@ -411,6 +426,7 @@ export const TranslatePage = command('pages.translate', {
     slug: string().min(1).optional(),
     title: string().min(1).optional(),
   },
+  output: { id: uuid(), slug: string(), locale: string(), version: number() },
   handle: async ({ id, locale, slug, title }, context) => {
     const served = currentContext()?.locales
 

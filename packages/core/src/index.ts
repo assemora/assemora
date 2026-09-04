@@ -102,6 +102,7 @@ export {
   module,
   type NotStarted,
 } from './module.js'
+export type { InferOutput, Output } from './output.js'
 export {
   type AuditEntry,
   type AuditPort,

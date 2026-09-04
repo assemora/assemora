@@ -373,6 +373,7 @@ ${importFrom(['uuid'], '@assemora/schema')}
 export const ${definition} = command('${commandName}', {
   description: '${sentenceCase(verb)}${subjectWords === '' ? '' : ` ${subjectWords}`}',
   input: { id: uuid() },
+  output: { id: uuid() },
   handle: async ({ id }, context) => {
     context.logger.info('${commandName}', { id })
 

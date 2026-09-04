@@ -49,6 +49,13 @@ export const PublishPost = command('posts.publish', {
 the bus has already validated and stripped anything outside it before the handler runs
 — which is how mass assignment is prevented.
 
+`output` is what the command answers with, written the same way — or as one schema,
+`array(uuid())`, where the answer is not an object. It types the handler: a handler that
+answers something the output does not describe does not compile. It is also what the
+generated endpoint documents in OpenAPI, what the SDK's method returns and what an
+agent is told to expect, so a command that leaves it out is a command whose response
+nobody can read about.
+
 The context carries what the pipeline needs from a handler:
 
 | | |
@@ -120,6 +127,7 @@ export const ListRevisions = query('revisions.list', {
     page: number().integer().optional(),
     perPage: number().integer().optional(),
   },
+  output: { data: array(json()), total: number(), page: number(), perPage: number() },
   handle: async ({ entityType, entityId, page, perPage }, context) => {
     // The input names what is read, so reading it is a second question: holding
     // `revisions.read` must not open the history of every entity in the application.

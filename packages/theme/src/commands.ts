@@ -8,14 +8,20 @@
  * tool anywhere that takes CSS, because there is no command anywhere that takes CSS.
  */
 import { type CommandContext, ConflictError, command, ValidationError } from '@assemora/core'
-import { number } from '@assemora/schema'
+import { number, string } from '@assemora/schema'
 
 import { themeVersion } from './css.js'
 import { resolveTheme } from './defaults.js'
 import { THEME_ID, Theme } from './models.js'
 import { applyThemePatch } from './patch.js'
 import { usableOverrides } from './repair.js'
-import { type ThemeOverrides, type ThemePatch, themePatchShape } from './tokens.js'
+import {
+  type ThemeOverrides,
+  type ThemePatch,
+  themeOverrides,
+  themePatchShape,
+  themeTokens,
+} from './tokens.js'
 import { writeThemeIfUnchanged } from './write.js'
 
 declare module '@assemora/core' {
@@ -80,6 +86,12 @@ export const UpdateTheme = command('theme.update', {
   description:
     'Sets theme tokens (SPEC.md §62). Tokens not named are left alone; a token set to null goes back to the default',
   input: { ...themePatchShape, expectedVersion: number().integer().optional() },
+  output: {
+    version: number().integer(),
+    overrides: themeOverrides(),
+    tokens: themeTokens(),
+    cssVersion: string(),
+  },
   handle: async (values, context) => {
     for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
       const existing = await Theme.find(THEME_ID)

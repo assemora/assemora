@@ -11,7 +11,7 @@ import {
   query,
   silentWriter,
 } from '@assemora/core'
-import { email, json, number, string, uuid } from '@assemora/schema'
+import { boolean, email, json, number, string, uuid } from '@assemora/schema'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { bytes } from './bytes.js'
@@ -357,6 +357,7 @@ describe('commands are reachable over HTTP (SPEC.md §14)', () => {
   const Publish = command('pages.publish', {
     description: 'Makes a page visible',
     input: { id: uuid() },
+    output: { id: uuid(), published: boolean() },
     handle: async ({ id }) => ({ id, published: true }),
   })
 
@@ -404,6 +405,54 @@ describe('commands are reachable over HTTP (SPEC.md §14)', () => {
 
     expect(described?.body).toEqual(command?.input)
     expect(described?.description).toBe('Makes a page visible')
+  })
+
+  it('documents the command output as the endpoint response', async () => {
+    const { application, server: running } = start()
+
+    running.mountCommands()
+    await running.ready()
+
+    const described = application.registry.find('routes', 'post /commands/pages.publish')
+    const command = application.registry.find('commands', 'pages.publish')
+
+    // The same description, so OpenAPI and the SDK read what the command said (#16).
+    expect(described?.response).toEqual(command?.output)
+    expect(described?.response).toEqual({
+      type: 'object',
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        published: { type: 'boolean' },
+      },
+      required: ['id', 'published'],
+      additionalProperties: false,
+    })
+  })
+
+  it('documents nothing for a command that said nothing, rather than inventing a shape', async () => {
+    const Quiet = command('pages.touch', {
+      input: { id: uuid() },
+      handle: async ({ id }) => ({ id }),
+    })
+    const application = createApplication({
+      modules: [module('pages').commands(Quiet)],
+      authorization: permitAll(),
+      logger: createLogger(silentWriter),
+    })
+    const running = createHttpServer({
+      registry: application.registry,
+      commands: application.commands,
+      queries: application.queries,
+      logger: application.logger,
+    })
+
+    running.mountCommands()
+    await running.ready()
+
+    expect(
+      application.registry.find('routes', 'post /commands/pages.touch')?.response,
+    ).toBeUndefined()
+    await running.close()
   })
 
   it('leaves validation to the bus rather than repeating it', async () => {
@@ -690,6 +739,7 @@ describe('queries are reachable over HTTP (SPEC.md §15)', () => {
       draft: json<boolean>().optional(),
       filters: json<Record<string, unknown>>().optional(),
     },
+    output: { asked: json<Record<string, unknown>>() },
     handle: async (input) => ({ asked: input }),
   })
 
@@ -710,6 +760,19 @@ describe('queries are reachable over HTTP (SPEC.md §15)', () => {
       }),
     }
   }
+
+  it('documents the query output as the endpoint response', async () => {
+    const { application, server: running } = start()
+
+    running.mountQueries()
+    await running.ready()
+
+    const described = application.registry.find('routes', 'get /queries/revisions.list')
+    const query = application.registry.find('queries', 'revisions.list')
+
+    expect(described?.response).toEqual(query?.output)
+    expect(described?.response).toMatchObject({ type: 'object', required: ['asked'] })
+  })
 
   it('generates one GET endpoint per registered query', async () => {
     const { server: running } = start()

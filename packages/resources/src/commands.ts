@@ -14,7 +14,7 @@ import {
   NotFoundError,
 } from '@assemora/core'
 import { UNSPECIFIED_LOCALE } from '@assemora/data'
-import { string, unknown as unknownSchema, uuid } from '@assemora/schema'
+import { json, string, unknown as unknownSchema, uuid } from '@assemora/schema'
 
 import { refuseUnwritableFields } from './agent-fields.js'
 import { resourceByName } from './registry.js'
@@ -47,6 +47,9 @@ const refuseWhenDisabled = (
 export const CreateEntry = command('entries.create', {
   description: 'Creates an entry in a resource',
   input: { resource: string(), data: unknownSchema() },
+  // The id is whatever the model's primary key is, which the persistence seam does not
+  // narrow; the entry is the row projected to the resource's declared fields.
+  output: { id: unknownSchema(), entry: json<Record<string, unknown>>() },
   handle: async ({ resource, data }, context) => {
     const target = resourceByName(resource)
 
@@ -92,6 +95,7 @@ export const CreateEntry = command('entries.create', {
 export const UpdateEntry = command('entries.update', {
   description: 'Updates an entry of a resource',
   input: { resource: string(), id: uuid(), data: unknownSchema() },
+  output: { id: uuid(), entry: json<Record<string, unknown>>() },
   handle: async ({ resource, id, data }, context) => {
     const target = resourceByName(resource)
 
@@ -117,6 +121,7 @@ export const UpdateEntry = command('entries.update', {
 export const DeleteEntry = command('entries.delete', {
   description: 'Deletes an entry of a resource',
   input: { resource: string(), id: uuid() },
+  output: { id: uuid() },
   handle: async ({ resource, id }, context) => {
     const target = resourceByName(resource)
 
@@ -136,6 +141,7 @@ export const DeleteEntry = command('entries.delete', {
 export const TranslateEntry = command('entries.translate', {
   description: 'Writes an entry of a resource in another language',
   input: { resource: string(), id: uuid(), locale: string(), data: unknownSchema().optional() },
+  output: { id: unknownSchema(), entry: json<Record<string, unknown>>() },
   handle: async ({ resource, id, locale, data }, context) => {
     const target = resourceByName(resource)
 

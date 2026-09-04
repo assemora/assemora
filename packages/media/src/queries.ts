@@ -6,7 +6,7 @@
  * the kind of thing an application may want to keep behind one (SPEC.md §51).
  */
 import { NotFoundError, query } from '@assemora/core'
-import { number, string, uuid } from '@assemora/schema'
+import { array, number, object, string, timestamp, uuid } from '@assemora/schema'
 
 import { Media } from './models.js'
 import { currentStorage } from './storage.js'
@@ -27,6 +27,20 @@ const describe = (item: StoredMedia) => ({
   createdAt: item.createdAt,
 })
 
+/** What `describe` answers with, as the document and the SDK read it. */
+const described = {
+  id: uuid(),
+  filename: string(),
+  mimeType: string(),
+  size: number().integer(),
+  width: number().integer().nullable(),
+  height: number().integer().nullable(),
+  alt: string().nullable(),
+  url: string(),
+  createdBy: uuid().nullable(),
+  createdAt: timestamp(),
+} as const
+
 export const ListMedia = query('media.list', {
   description: 'A page of the media library, newest first',
   input: {
@@ -34,6 +48,13 @@ export const ListMedia = query('media.list', {
     type: string().optional(),
     page: number().integer().optional(),
     perPage: number().integer().optional(),
+  },
+  output: {
+    data: array(object(described)),
+    total: number().integer(),
+    page: number().integer(),
+    perPage: number().integer(),
+    lastPage: number().integer(),
   },
   handle: async ({ search, type, page, perPage }) => {
     // `id` underneath, so the ordering is total: two files uploaded in the same
@@ -54,6 +75,7 @@ export const ListMedia = query('media.list', {
 export const GetMedia = query('media.get', {
   description: 'One file in the library',
   input: { id: uuid() },
+  output: described,
   handle: async ({ id }) => {
     const item = await Media.find(id)
 

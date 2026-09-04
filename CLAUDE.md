@@ -533,12 +533,21 @@ Carried into phase 3 deliberately, do not mistake them for oversights:
 - The restorer registry is a core seam, like the ports — `revisions` restores an
   entity without knowing what it is.
 
+**A command and a query say what they answer with — done.** `command()` and `query()`
+take `output`, written the way `input` is or as one schema where the answer is not an
+object, and every first-party handler declares one. It types the handler — a handler
+that answers something its output does not describe does not compile — and it is what
+the generated endpoint documents, what the SDK's method returns and what an agent is told
+to expect. `tests/integration/documented-responses.test.ts` holds the line: no
+`/commands/*` or `/queries/*` operation may reach `/api/openapi.json` without a `200`
+schema. It is described and never judged at runtime: the handler's answer is the
+application's own truth, and refusing to hand it over because a description fell behind
+would turn a wrong document into an outage. An answer's type is deeply read-only, because
+`array()` infers a mutable array and a row's own `readonly string[]` could not otherwise
+be described by it.
+
 Known gaps, each with a reason rather than an oversight:
 
-- A command and a query declare an input schema but no *output* schema, so their
-  generated endpoints appear in OpenAPI and the SDK with an undocumented response.
-  Closing it means adding `output` to `command()` and `query()` and writing one for
-  every existing handler — worth doing, and not what SPEC.md §115 asked for.
 - The Design section of SPEC.md §58 is not built: SPEC.md §62 fixes the theme token
   document but declares no table, no commands and no routes for it. That contract has
   to be designed before a screen can edit it.

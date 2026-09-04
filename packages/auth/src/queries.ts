@@ -9,7 +9,16 @@
  * package and stop here (SPEC.md §85).
  */
 import { NotFoundError, query } from '@assemora/core'
-import { boolean, number, string, uuid } from '@assemora/schema'
+import {
+  array,
+  boolean,
+  email as emailSchema,
+  number,
+  object,
+  string,
+  timestamp,
+  uuid,
+} from '@assemora/schema'
 
 import { Agent, ApiToken, Permission, Role, RolePermission, User, UserRole } from './models.js'
 import { permissionsOf } from './permissions.js'
@@ -17,6 +26,14 @@ import { permissionsOf } from './permissions.js'
 const paging = {
   page: number().integer().optional(),
   perPage: number().integer().optional(),
+}
+
+/** What every listing answers beside its rows: the page it is, and how many there are. */
+const paged = {
+  total: number().integer(),
+  page: number().integer(),
+  perPage: number().integer(),
+  lastPage: number().integer(),
 }
 
 const limit = (perPage: number | undefined): number => Math.min(perPage ?? 20, 100)
@@ -48,6 +65,20 @@ const rolesByUser = async (userIds: readonly string[]): Promise<Map<string, stri
 export const ListUsers = query('auth.users.list', {
   description: 'A page of users, with the roles they hold',
   input: { search: string().optional(), active: boolean().optional(), ...paging },
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        email: emailSchema(),
+        name: string(),
+        active: boolean(),
+        roles: array(string()),
+        version: number().integer(),
+        createdAt: timestamp(),
+      }),
+    ),
+    ...paged,
+  },
   handle: async ({ search, active, page, perPage }) => {
     let found = User.orderBy('createdAt', 'desc')
 
@@ -80,6 +111,17 @@ export const ListUsers = query('auth.users.list', {
 export const GetUser = query('auth.users.get', {
   description: 'One user, with their roles and everything those roles allow',
   input: { id: uuid() },
+  output: {
+    id: uuid(),
+    email: emailSchema(),
+    name: string(),
+    active: boolean(),
+    roles: array(string()),
+    permissions: array(string()),
+    version: number().integer(),
+    createdAt: timestamp(),
+    updatedAt: timestamp(),
+  },
   handle: async ({ id }) => {
     const user = await User.find(id)
 
@@ -104,6 +146,17 @@ export const GetUser = query('auth.users.get', {
 export const ListRoles = query('auth.roles.list', {
   description: 'Every role, with the permissions it carries',
   input: {},
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        name: string(),
+        label: string(),
+        version: number().integer(),
+        permissions: array(string()),
+      }),
+    ),
+  },
   handle: async () => {
     const roles = await Role.orderBy('name', 'asc').get()
     const links = await RolePermission.whereIn(
@@ -134,6 +187,9 @@ export const ListRoles = query('auth.roles.list', {
 export const ListPermissions = query('auth.permissions.list', {
   description: 'Every permission that has been recorded',
   input: {},
+  output: {
+    data: array(object({ id: uuid(), name: string(), description: string().nullable() })),
+  },
   handle: async () => ({
     data: (await Permission.orderBy('name', 'asc').get()).map((permission) => ({
       id: permission.id,
@@ -146,6 +202,21 @@ export const ListPermissions = query('auth.permissions.list', {
 export const ListApiTokens = query('auth.tokens.list', {
   description: 'Which API tokens exist. Never what they are',
   input: { userId: uuid().optional(), ...paging },
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        name: string(),
+        userId: uuid().nullable(),
+        /** As the column declares it: `array()` infers a mutable array, and the row's is not. */
+        permissions: array(string()),
+        expiresAt: timestamp().nullable(),
+        lastUsedAt: timestamp().nullable(),
+        createdAt: timestamp(),
+      }),
+    ),
+    ...paged,
+  },
   handle: async ({ userId, page, perPage }) => {
     let found = ApiToken.orderBy('createdAt', 'desc')
 
@@ -171,6 +242,19 @@ export const ListApiTokens = query('auth.tokens.list', {
 export const ListAgents = query('auth.agents.list', {
   description: 'The agent identities this application knows (SPEC.md §72)',
   input: paging,
+  output: {
+    data: array(
+      object({
+        id: uuid(),
+        name: string(),
+        description: string().nullable(),
+        permissions: array(string()),
+        enabled: boolean(),
+        createdAt: timestamp(),
+      }),
+    ),
+    ...paged,
+  },
   handle: async ({ page, perPage }) => {
     const listed = await Agent.orderBy('name', 'asc').paginate(page ?? 1, limit(perPage))
 

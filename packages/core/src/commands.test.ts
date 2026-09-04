@@ -324,6 +324,37 @@ describe('where a command may be called from (SPEC.md §85)', () => {
     expect(SignIn.reachableFrom).toBe('its own route')
   })
 
+  it('carries the output to the registry, and nothing where none was declared', () => {
+    const { bus, registry } = harness()
+
+    bus.register(
+      command('pages.archive', {
+        input: { id: uuid() },
+        output: { id: uuid(), archived: boolean() },
+        handle: async ({ id }) => ({ id, archived: true }),
+      }),
+    )
+    bus.register(
+      command('pages.touch', {
+        input: { id: uuid() },
+        handle: async ({ id }) => ({ id }),
+      }),
+    )
+
+    expect(registry.find('commands', 'pages.archive')?.output).toEqual({
+      type: 'object',
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        archived: { type: 'boolean' },
+      },
+      required: ['id', 'archived'],
+      additionalProperties: false,
+    })
+    // Absent rather than `{}`: a document that says "anything" where the command
+    // said nothing is a promise nobody made (#16).
+    expect(registry.find('commands', 'pages.touch')).not.toHaveProperty('output')
+  })
+
   it('tells the registry, because the generators read the registry and not the bus', () => {
     const { bus, registry } = harness()
     bus.register(SignIn, 'auth')

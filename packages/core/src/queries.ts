@@ -10,6 +10,7 @@ import { type InferShape, object, type Schema, type Shape } from '@assemora/sche
 import { type AssemoraContext, contextOrInternal } from './context.js'
 import { UnknownQueryError, ValidationError } from './errors.js'
 import type { Logger } from './logger.js'
+import { type InferOutput, type Output, outputSchema } from './output.js'
 import {
   type AuditPort,
   type AuthorizationPort,
@@ -37,6 +38,8 @@ export type QueryDefinition<S extends Shape, R> = {
   readonly name: string
   readonly description: string | undefined
   readonly input: Schema<InferShape<S>>
+  /** What it answers with, when it said. See `output.ts`. */
+  readonly output: Schema<R> | undefined
   handle(input: InferShape<S>, context: QueryContext): Promise<R>
 }
 
@@ -44,6 +47,7 @@ export type AnyQuery = {
   readonly name: string
   readonly description: string | undefined
   readonly input: Schema<unknown>
+  readonly output: Schema<unknown> | undefined
   handle(input: never, context: QueryContext): Promise<unknown>
 }
 
@@ -52,6 +56,8 @@ export type QueryDescriptor = {
   readonly name: string
   readonly description?: string
   readonly input: ReturnType<Schema<unknown>['toJsonSchema']>
+  /** Absent when the query did not say what it answers with. */
+  readonly output?: ReturnType<Schema<unknown>['toJsonSchema']>
   readonly module?: string
 }
 
@@ -65,23 +71,56 @@ declare module './registry.js' {
  * ```ts
  * export const ListEntries = query('entries.list', {
  *   input: { resource: string() },
+ *   output: array(json()),
  *   handle: async ({ resource }) => resourceByName(resource).list(),
  * })
  * ```
+ *
+ * `output` types the handler and documents the endpoint, exactly as it does for a
+ * command; see `output.ts`.
  */
-export const query = <S extends Shape, R>(
+/*
+ * The overload without an output is listed first, and it is not the order the
+ * documentation reads in: the compiler reports the *last* overload's error, and the
+ * error that matters is "the handler does not answer what the output promises", not
+ * "the output is not undefined".
+ */
+export function query<S extends Shape, R>(
   name: string,
   definition: {
     readonly input: S
+    readonly output?: undefined
     readonly description?: string
     handle(input: InferShape<S>, context: QueryContext): Promise<R>
   },
-): QueryDefinition<S, R> => ({
-  name,
-  description: definition.description,
-  input: object(definition.input),
-  handle: definition.handle,
-})
+): QueryDefinition<S, R>
+export function query<S extends Shape, O extends Output>(
+  name: string,
+  definition: {
+    readonly input: S
+    readonly output: O
+    readonly description?: string
+    handle(input: InferShape<S>, context: QueryContext): Promise<InferOutput<O>>
+  },
+): QueryDefinition<S, InferOutput<O>>
+export function query<S extends Shape, R>(
+  name: string,
+  definition: {
+    readonly input: S
+    readonly output?: Output | undefined
+    readonly description?: string
+    handle(input: InferShape<S>, context: QueryContext): Promise<R>
+  },
+): QueryDefinition<S, R> {
+  return {
+    name,
+    description: definition.description,
+    input: object(definition.input),
+    // The overloads above are what tie the output to `R`; here it is either.
+    output: outputSchema(definition.output) as Schema<R> | undefined,
+    handle: definition.handle,
+  }
+}
 
 export type QueryBus = {
   register(definition: AnyQuery, module?: string): void
@@ -214,6 +253,7 @@ export const createQueryBus = (options: QueryBusOptions): QueryBus => {
         name: definition.name,
         ...(definition.description === undefined ? {} : { description: definition.description }),
         input: definition.input.toJsonSchema(),
+        ...(definition.output === undefined ? {} : { output: definition.output.toJsonSchema() }),
         ...(module === undefined ? {} : { module }),
       })
     },
