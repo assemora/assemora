@@ -1,181 +1,311 @@
 # Deploying
 
-## The database
-
-PostgreSQL, named by `DATABASE_URL`:
-
-```ts
-const url = process.env.DATABASE_URL ?? ''
-
-assemora({ database: postgres({ url }), … })
+```bash
+pnpm assemora db:generate --check   # fails when a model change has no migration
+pnpm assemora build                 # typecheck, then regenerate OpenAPI and the SDK
+pnpm assemora db:migrate            # on the target, before any process serves
+pnpm assemora start
 ```
 
-`postgres()` takes a `url`, an optional `schema` (default `public`) and pool settings
-(`max`, `idleTimeoutMs`, `connectionTimeoutMs`). Drizzle and `pg` live inside that
-package and nowhere else; nothing above it knows they exist.
+Four steps, in that order. The rest of this page is what each one relies on.
 
-Migrations are files you have already reviewed:
+## The database
+
+PostgreSQL, named by `DATABASE_URL`.
+
+```ts
+import { postgres } from '@assemora/database-postgres'
+
+assemora({
+  database: postgres({
+    url: process.env.DATABASE_URL ?? '',
+    schema: 'public', // the default
+    pool: { max: 10, idleTimeoutMs: 30_000, connectionTimeoutMs: 5_000 },
+  }),
+})
+```
+
+The pool numbers are yours; `schema` is the only one with a default. Drizzle and `pg`
+live inside that package and nowhere else.
+
+## Migrations
+
+Migrations are files you have already reviewed.
 
 ```bash
 assemora db:generate <name>   # in development, committed with the change
 assemora db:migrate           # on deploy
-assemora db:status            # what is applied, and drift
+assemora db:status            # which migrations are applied
 ```
 
-`db:generate --check` in CI fails the build when a model change has no migration
-beside it. Outside development, a migration that changes or destroys stored data needs
-`--force`, and so does any rollback — `NODE_ENV` is the only signal the CLI has, so
-anything that is not `development` or `test` is treated as production.
+```bash
+assemora db:generate --check                        # CI: a model change with no migration fails
+NODE_ENV=production assemora db:migrate --force     # a migration that destroys stored data
+NODE_ENV=production assemora db:rollback --force    # any rollback
+```
 
-**The application does not migrate itself on boot.** `applySchema()` exists in
-`@assemora/database-postgres` and is what the test suites use to stand a schema up from
-the model registry; a deployment runs `db:migrate` as its own step, ahead of the
-processes that will serve traffic.
+Outside development, a destructive migration needs `--force`. So does any rollback.
+`NODE_ENV` is the only signal the CLI has. Anything that is not `development` or `test`
+is treated as production.
+
+The application does not migrate itself on boot. `applySchema()` in
+`@assemora/database-postgres` is what the test suites use. A deployment runs
+`db:migrate` as its own step, ahead of the processes that serve traffic.
 
 ## Storage
 
-The media library needs somewhere to put bytes. Under `assemora()`, saying nothing gets
-the local driver pointed at the project's own `storage/media`, with one warning saying
-so — a working development answer, and a directory a container replaces on the next
-deploy. A deployment says where the bytes really go. Both drivers SPEC.md §63 makes
-mandatory implement the same interface, and neither names a vendor in a signature:
+The media library needs somewhere to put bytes, and a deployment says where.
 
 ```ts
-useStorage(localStorage({ root: './storage/media' }))
+assemora({ database, modules: [media()] })
+// warn  Uploaded files are stored on this process’s own disk
+//       root: <project>/storage/media
+//       option: media: { root } for another directory, media: { storage } for a bucket
+```
+
+That directory is a working development answer. A container replaces it on the next
+deploy.
+
+```ts
+assemora({ media: { root: './storage/media' } })   // the local driver
+assemora({ media: { storage: s3Storage({ … }) } }) // a driver you built
 ```
 
 ```ts
-useStorage(
-  s3Storage({
-    bucket: 'assets',
-    region: 'auto',
-    endpoint: 'https://<account>.r2.cloudflarestorage.com',
-    accessKeyId: S3_KEY,
-    secretAccessKey: S3_SECRET,
-  }),
-)
+useStorage(localStorage({ root: './storage/media' }))   // outside assemora()
 ```
 
-The S3 driver talks to anything that speaks S3 — AWS, Cloudflare R2, MinIO, Backblaze
-B2, DigitalOcean Spaces — over `fetch`, signing with SigV4 computed from `node:crypto`.
-There is no vendor SDK behind it.
+Both drivers implement the same interface, and neither names a vendor in a signature.
 
-Four things about it are decisions rather than defaults:
+```ts
+import { s3Storage } from '@assemora/media'
 
-- **`addressing` defaults to `'path'`** and is stated, never inferred from the endpoint.
-  Path style is what every S3-compatible service understands. Set
-  `addressing: 'virtual-hosted'` for AWS S3.
-- **Without `publicUrl`, `url(path)` returns a presigned GET URL** that expires
-  (`signedUrlExpiresIn`, one hour by default, seven days at most). Studio and the REST
-  layer ask for it as they render, so they are fine. Anything that *persists* a URL — a
-  cached response, a static build, an exported document — should use `publicUrl` or keep
-  the path and ask again.
-- **A refused request becomes a 502**, never the bucket's own status, and its payload
-  carries `{ operation }` and nothing else. A 403 from S3 means this deployment's
-  credentials are wrong, and repeating it would tell a perfectly authorized caller they
-  are forbidden. The bucket, key, status and S3 error code go to `logger.error` instead.
-- **An upload claiming `image/svg+xml` or `text/html` is stored as
-  `application/octet-stream` with `Content-Disposition: attachment`.** An SVG scripts
-  whatever origin renders it, and a CDN in front of a bucket is normally a subdomain of
-  the application.
+const storage = s3Storage({
+  bucket: 'assets',
+  region: 'auto', // part of the signature; R2 uses `auto`
+  endpoint: 'https://<account>.r2.cloudflarestorage.com',
+  accessKeyId: process.env.S3_KEY ?? '',
+  secretAccessKey: process.env.S3_SECRET ?? '',
+  // sessionToken: temporary credentials carry one
+  addressing: 'path', // the default; 'virtual-hosted' for AWS S3
+  publicUrl: 'https://cdn.example.com', // a CDN or a public bucket
+  signedUrlExpiresIn: 3600, // seconds; one hour by default
+  logger, // where a refused request is explained
+})
+```
 
-The local driver reaches the same answers, but narrows the type as it *serves*; the S3
-driver narrows on the way *in*, because by the time an object store answers for itself
-the application is no longer in the request path.
+The S3 driver talks to anything that speaks S3: AWS, Cloudflare R2, MinIO, Backblaze
+B2, DigitalOcean Spaces. It uses `fetch` and signs with SigV4 from `node:crypto`. There
+is no vendor SDK behind it.
 
-## The security defaults
+Four things about it are decisions rather than defaults.
 
-Under `assemora()`, SPEC.md §85 is configured in one place and you mostly do not touch
-it:
+Addressing is stated, never inferred from the endpoint.
 
-- **Authorization is `policies()`.** Never `permitAll()` — core denies by default and
-  the umbrella must not be the thing that opens the door.
-- **CSRF is on.** It is optional in `createHttpServer` and leaving it out turns it off,
-  so the umbrella passes it unconditionally. A mutation carrying cookies is exempt only
-  when it also carries a `Bearer` credential — the header alone is not the exemption,
-  because a header that is not a bearer token leaves the session cookie doing the
-  authenticating.
-- **`/api/_introspection` requires a credential**, unlike `/openapi.json` beside it: it
-  answers with the registry itself, and the API Explorer that reads it is behind
-  Studio's login. `api: { introspection: 'public' }` is the opt-out.
-- **CORS is registered only when `origins` names something**, always as a list, never
-  `*`. Every entry is checked to be `scheme://host[:port]`; `*` is refused with a
-  sentence saying why, and so is anything carrying a `;` — a CSP source list is
-  terminated by one, and an origin is not a place to hide a directive.
-- **The CSP is the strict one.** `frame-ancestors` is `'none'` unless the application
-  serves a `frontend`, and then it is `'self'` plus `frontend.framedBy`. That is the one
-  line an application has to think about: the builder canvas frames `/preview`, and
-  nothing else may. `origins` says who may *call* the API and has no say in who may
-  frame it.
-- **The session cookie is `httpOnly`, `SameSite=Strict` and `Secure`.** `Secure` does
-  not consult `NODE_ENV`: a default decided by an environment variable is not a default.
-  `session: { secure: false }` is the opt-out, and it is written in your own source.
-- **Media URLs pass the same policy the library does.** `GET /api/media/*` runs
-  `media.get` on the Query Bus before it fetches a byte.
-- **An MCP mutation is a proposal.** `mcp: { mutations: 'direct' }` is the opt-out.
+```ts
+addressing: 'path'            // the default; every S3-compatible service understands it
+addressing: 'virtual-hosted'  // AWS S3
+```
 
-### What the rate limits actually count
+Without `publicUrl`, `url(path)` is a presigned GET URL, and it expires.
 
-Rate limits are 600 requests a minute and 120 MCP tool calls a minute. Both are
-enforced — the HTTP one by `@assemora/http`, which registers its plugin ahead of every
-route it mounts, and the MCP one inside `@assemora/mcp` — and `api: { rateLimit }` and
-`mcp: { rateLimit }` set them.
+```ts
+signedUrlExpiresIn: 3600     // the default: one hour
+signedUrlExpiresIn: 604_800  // the ceiling: seven days
+```
 
-Both are **per-process counters**, and that is the part to plan around: two instances
-behind a load balancer give a caller twice the allowance, and a restart forgets
-everything counted so far. A shared limiter in front of the processes is how a
-deployment gets one ceiling rather than one per replica.
+Studio and the REST layer ask as they render, so they are fine. Anything that persists a
+URL should use `publicUrl`, or keep the path and ask again.
 
-Images are the other thing worth knowing about the policy above: when media is stored
-in a bucket or behind a CDN, that origin is added to `img-src` and `media-src`
-automatically, read off the storage driver you configured. Nothing else in the policy
-moves, and there is no option that widens it by hand.
+A refused request is a 502, never the bucket's own status.
+
+```json
+{ "error": { "code": "STORAGE_REQUEST_FAILED", "message": "S3 put failed", "details": { "operation": "put" } } }
+```
+
+A 403 from S3 means this deployment's credentials are wrong. Repeating it would tell an
+authorized caller they are forbidden. The bucket, key, status and S3 error code go to
+`logger.error` instead.
+
+An upload claiming `image/svg+xml` or `text/html` is stored as a download.
+
+```text
+Content-Type: application/octet-stream
+Content-Disposition: attachment
+```
+
+An SVG scripts whatever origin renders it. A CDN in front of a bucket is normally a
+subdomain of the application. The local driver narrows the type as it serves; the S3
+driver narrows on the way in, because an object store answers for itself.
+
+## Security defaults
+
+Under `assemora()`, SPEC.md §85 is configured in one place, and you mostly do not touch it.
+
+```ts
+assemora({
+  database,
+  modules: [auth(), pages(), media()],
+  origins: ['https://www.example.com'], // CORS: a list, never `*`
+  frontend: {
+    root: join(import.meta.dirname, '../app/dist'),
+    framedBy: [], // who may frame /preview, beside 'self'
+  },
+  session: { secure: true, sameSite: 'strict' }, // the defaults, written out
+  api: { introspection: 'authenticated' }, // the default
+  mcp: { mutations: 'change-set' }, // the default
+})
+```
+
+Authorization is `policies()`, never `permitAll()`. Core denies by default, and the
+umbrella must not be the thing that opens the door. There is no option for it.
+
+CSRF is on. A mutation carrying cookies repeats the CSRF cookie in a header.
+
+```http
+POST /api/commands/pages.publish
+Cookie: assemora_session=…; assemora_csrf=…
+x-csrf-token: …
+```
+
+```http
+POST /api/commands/pages.publish
+Authorization: Bearer <token>        # exempt: a bearer credential was presented
+```
+
+The header alone is not the exemption. A header that is not a bearer token leaves the
+session cookie doing the authenticating.
+
+`/api/_introspection` requires a credential, unlike `/api/openapi.json` beside it.
+
+```ts
+api: { introspection: 'public' }   // the opt-out
+```
+
+It answers with the registry itself, and the API Explorer that reads it is behind
+Studio's login.
+
+CORS is registered only when `origins` names something.
+
+```ts
+origins: ['https://www.example.com', 'http://localhost:5173']   // scheme://host[:port]
+origins: ['*']                             // refused at boot, with a sentence saying why
+origins: ['https://a.example; img-src *']  // refused: a CSP source list ends at `;`
+```
+
+The CSP is the strict one.
+
+```text
+frame-ancestors 'none'                          # no frontend
+frame-ancestors 'self' https://studio.example   # frontend: { framedBy: ['https://studio.example'] }
+img-src 'self' data: blob: https://cdn.example.com   # read off the storage driver
+```
+
+`framedBy` is the one line an application has to think about. The builder canvas frames
+`/preview`, and nothing else may. `origins` says who may call the API and has no say in
+who may frame it. Media behind a bucket or a CDN is added to `img-src` and `media-src`
+automatically. Nothing else in the policy moves, and no option widens it by hand.
+
+The session cookie is `httpOnly`, `SameSite=Strict` and `Secure`.
+
+```ts
+session: { secure: false }    // the opt-out, in your own source
+session: { sameSite: 'lax' }  // for a Studio reached by link
+```
+
+`Secure` does not consult `NODE_ENV`. A default decided by an environment variable is
+not a default.
+
+Media URLs pass the same policy the library does.
+
+```text
+GET /api/media/*   → media.get on the Query Bus, then the bytes
+```
+
+An MCP mutation is a proposal.
+
+```ts
+mcp: { mutations: 'direct' }   // the opt-out
+```
+
+## Rate limits
+
+Rate limits are per-process counters.
+
+```ts
+api: { rateLimit: { max: 600, windowMs: 60_000 } }   // the default: 600 requests a minute
+mcp: { rateLimit: { max: 120, windowMs: 60_000 } }   // the default: 120 tool calls a minute
+```
+
+Both are enforced. `@assemora/http` registers its plugin ahead of every route it mounts;
+`@assemora/mcp` counts inside the server. Two instances behind a load balancer give a
+caller twice the allowance. A restart forgets everything counted so far. A shared limiter
+in front of the processes is how a deployment gets one ceiling.
 
 ## Static files
 
-Studio and your own frontend are directories of files rather than endpoints, and they
-are served with the three headers that decide how much a returning visitor downloads.
+Studio and your frontend are directories of files, served with the headers that decide
+what a returning visitor downloads.
 
-- **What the bundler fingerprinted is kept for a year.** Which files those are is a
-  fact about *where* they are, not what they are called: Vite hashes everything it
-  writes into `assets/` and copies `public/` to the root untouched. So `assets/` is the
-  default, and a frontend built by something else names its own —
-  `frontend: { immutableAssets: '_next/static/' }`, or `false` for a directory of
-  hand-written files.
+```text
+GET /preview/assets/index-BRIFoUvp.js
+Cache-Control: public, max-age=31536000, immutable
 
-  It is deliberately not guessed from the name. A hash is written in the same alphabet
-  English is, so nothing can tell `index-BRIFoUvp.js` from `hero-photograph.jpg` by
-  looking — and guessing wrong pins a file in every visitor's cache for a year, with
-  nothing a deploy can do to reach it.
+GET /preview/index.html
+Cache-Control: no-cache
+ETag: "…"
+Last-Modified: …
 
-- **Everything else carries an `ETag`.** `no-cache` does not mean "do not store this",
-  it means "store it and ask first", so a second visit costs a request and gets a 304
-  with no body. The entry document is always in this group: it is the one file whose
-  name never changes and it names all the others, so a cached one would point at the
-  assets of the deploy before this one.
+GET /preview/index.html  +  If-None-Match: "…"
+304 Not Modified
+```
 
-- **Text is compressed**, brotli where the browser takes it and gzip otherwise. Studio's
-  shell is 698,751 bytes and 165,420 of them over the wire. Fonts and images are sent
-  as they are, because they arrived compressed and running gzip over them spends
-  processor time to make them slightly larger.
+What the bundler fingerprinted is kept for a year. Which files those are is a fact about
+where they are, not what they are called.
 
-Nothing here is configurable beyond `immutableAssets`, and none of it applies to `/api`:
-these are files on a disk, and an API response is not one.
+```ts
+frontend: { immutableAssets: 'assets/' }        // the default: where Vite writes what it hashes
+frontend: { immutableAssets: '_next/static/' }  // a frontend built by something else
+frontend: { immutableAssets: false }            // hand-written files: nothing is immutable
+```
+
+It is deliberately not guessed from the name. A hash is written in the same alphabet
+English is, so nothing tells `index-BRIFoUvp.js` from `hero-photograph.jpg` by looking.
+Guessing wrong pins a file in every cache for a year, beyond what a deploy can reach.
+
+Everything else carries an `ETag`. `no-cache` means "store it and ask first": a second
+visit costs a request and gets a 304 with no body. The entry document is always in this
+group. Its name never changes, and it names all the others.
+
+Text is compressed.
+
+```text
+Accept-Encoding: br, gzip   → Content-Encoding: br
+Accept-Encoding: gzip       → Content-Encoding: gzip
+```
+
+Text, JSON and SVG are compressed. Fonts and images are sent as they are: they arrived
+compressed, and gzip over them makes them slightly larger.
+
+Nothing here is configurable beyond `immutableAssets`, and none of it applies to `/api`.
 
 ## Background work
 
-An application that declares a job and configures no queue runs its jobs inside the
-process that schedules them, awaited, and says so once on boot. That is a real answer
-for a small deployment; it is not a durable one, because a restart loses whatever was
-in flight and a slow job slows the request that scheduled it.
+Without a queue, jobs run inside the process that schedules them, awaited.
+
+```text
+warn  Jobs run inside the process that schedules them
+      effect: a restart loses what is in flight, and a slow job slows the request
+      option: jobs: { queue } for a durable queue
+```
 
 ```ts
+import { bullQueue } from '@assemora/queue-bullmq'
+
 const queue = bullQueue({ connection: { url: process.env.REDIS_URL ?? '' } })
 
 assemora({ …, jobs: { queue, worker: () => queue.work({ concurrency: 4 }) } })
 ```
-
-The worker is a second process, running the same application:
 
 ```ts
 // src/worker.ts
@@ -183,16 +313,18 @@ await createApp().work()
 ```
 
 `listen()` serves, `work()` works, and a process that does both calls both. There is no
-`assemora worker` command — SPEC.md §77 fixes twenty-two of them and none is a worker.
-See [Jobs](13-jobs.md) for the whole of it.
+`assemora worker` command: SPEC.md §77 fixes twenty-two commands, and none is a worker.
+See [Jobs](13-jobs.md).
 
 ## Environment
 
-The framework reads exactly two variables on its own:
+The framework reads `PORT` and `HOST` on its own, and nothing else.
 
 ```bash
-DATABASE_URL=postgres://user@host:5432/database
-PORT=3000                 # 3000 when unset
+PORT=3000                                          # 3000 when unset
+HOST=0.0.0.0                                       # loopback when unset
+DATABASE_URL=postgres://user@host:5432/database    # read by your own src/app.ts
+NODE_ENV=production                                # read by the CLI alone, for --force
 ```
 
 Everything else arrives as an option, in your own source, where it can be reviewed.
@@ -201,30 +333,54 @@ never reach either.
 
 ## Health and readiness
 
+Liveness and readiness are two different questions.
+
 ```text
-GET /api/health   liveness: this process is answering
-GET /api/ready    readiness: 503 until it has booted and its modules are running
+GET /api/health   200 { "status": "ok" }      this process is answering
+GET /api/ready    200 { "status": "ready" }   booted, and every module started
+GET /api/ready    503                         still starting, or a module could not start
 ```
 
-They are two different questions, and a deployment that cannot tell them apart restarts
-a process that was only still starting. `/ready` does **not** probe the database: the
-adapter contract has no portable ping, and a readiness check that lies about what it
-verified is worse than one that says what it means.
+```json
+{
+  "error": {
+    "code": "NOT_READY",
+    "message": "This application booted, but collections did not start, so it is not ready to serve.",
+    "details": {
+      "notStarted": [{ "module": "collections", "reason": "…", "remedy": "…" }]
+    }
+  }
+}
+```
 
-A module that booted and could not start is not a probe either — it is something the
-boot already established. An application whose tables have not been migrated yet
-listens, serves Studio, and answers `/ready` with 503 naming the module and what to do
-about it, so nothing routes traffic at it. That refusal is never sent to your error
-tracker, however often the probe asks: it is what the endpoint exists to say, and the
-condition lasts until you fix it and restart.
+A deployment that cannot tell them apart restarts a process that was only still
+starting. `/ready` does not probe the database: the adapter contract has no portable
+ping. A module that could not start is not probed either. The boot established it.
 
-## Logging and observability
+An application whose tables are not migrated listens, serves Studio and answers 503
+naming the module and what to do. Nothing routes traffic at it. That refusal is
+`expected`, so it never reaches your error tracker, however often the probe asks.
 
-Logging is structured. Every entry carries what the pipeline knew: `requestId`,
-`actorType`, `actorId`, `command`, `entityType`, `entityId`, `duration`. Pass your own
-logger as `logger` — the S3 driver takes one too, and that is where a refused request is
-explained.
+## Logging
 
+Logging is structured, one JSON object per line.
+
+```json
+{"level":"info","message":"Request completed","requestId":"…","source":"rest","actorType":"user","actorId":"…","method":"POST","path":"/api/commands/pages.publish","status":200,"durationMs":41.2}
+```
+
+```ts
+assemora({
+  logger, // your own; the default writes to the console
+  observability: {
+    errors: myErrorTracker, // the default logs; nothing is discarded
+    slowQueryMs: 200, // the default; `false` switches it off
+    slowRequestMs: 1000, // the default; a slower request is logged as a warning
+  },
+})
+```
+
+The S3 driver takes a `logger` too, and that is where a refused request is explained.
 The audit log answers the other question: who attempted what, from which source, and how
 it ended, including the attempts authorization refused.
 
@@ -236,10 +392,13 @@ pnpm assemora build                 # typecheck, then regenerate OpenAPI and the
 pnpm assemora db:migrate            # on the target
 ```
 
-The performance targets to hold yourself to, on a development-class PostgreSQL: a
-simple REST read under 100ms at p95, a simple CRUD mutation under 150ms, excluding WAN
-latency. Studio never loads a whole dataset — pagination is mandatory — and N+1 relation
-queries are caught by tests and logs rather than by code review.
+```text
+Simple REST read       p95 < 100ms   development-class PostgreSQL, excluding WAN latency
+Simple CRUD mutation   p95 < 150ms
+```
+
+Studio never loads a whole dataset. N+1 relation queries are caught by tests and logs,
+not by code review.
 
 ## Where to look next
 

@@ -548,9 +548,6 @@ be described by it.
 
 Known gaps, each with a reason rather than an oversight:
 
-- The Design section of SPEC.md §58 is not built: SPEC.md §62 fixes the theme token
-  document but declares no table, no commands and no routes for it. That contract has
-  to be designed before a screen can edit it.
 - Studio's own calls are recorded as `source: rest`, because Studio reaches the same
   generic `/api/commands/*` routes any REST client does. Separating them means either
   a header the server would have to trust, or routes Studio alone may call — a
