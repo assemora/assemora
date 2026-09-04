@@ -658,10 +658,6 @@ The rest of what that measurement found is real and unfixed. Each carries its `p
 in `docs/architecture/site-kits.md`, whose Tier 0 and Tier 1 are the ones a package makes
 urgent:
 
-- `assetCacheControl` tests for a hex hash and Vite's alphabet is base64url, so every
-  asset this repository builds is `no-cache` — and there is no `ETag` and no
-  `Last-Modified`, so a conditional request re-downloads in full. Nothing is compressed
-  either: the shell bundle is 202,723 bytes against 63,732 gzipped.
 - A collection has no `titleField`: a dynamic definition does not carry one, so a
   collection made in Studio still falls to the guess. The picker itself works there,
   because a relation's target is in the descriptor either way.
@@ -678,11 +674,6 @@ urgent:
   requires impersonating a module.
 - The builder canvas frames `/preview` same-origin with no `sandbox`, and the CSRF cookie
   is `httpOnly: false` at `Path=/` — so a block view can read the parent's cookies.
-- `datetime` renders through `toISOString()` into a `datetime-local`, so 18:00 Kyiv
-  displays as 15:00. The write path is correct, so it does not compound.
-- There is no `media.update`, so `alt`, `width` and `height` are permanently null.
-- A collection's listing emits no `ORDER BY` when no sort is sent, then paginates over an
-  unordered heap.
 - A validation message is English prose with its parameter baked in and `toPayload` drops
   the code, so a non-English site cannot show a server-side field error. §131 does not
   fix it — a translated row inherits the same untranslatable English.
