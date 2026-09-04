@@ -768,3 +768,4 @@ repository-wide reformat in the same commit.
 @docs/rules/security.md
 @docs/rules/testing.md
 @docs/rules/studio.md
+@docs/rules/writing.md
