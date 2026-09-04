@@ -1,9 +1,17 @@
 # Assemora
 
+**An agent's write to your site is a change set a person reviews — produced by running
+the real command and rolling it back, so the preview cannot disagree with the write it
+predicts.**
+
 [![verify](https://github.com/assemora/assemora/actions/workflows/verify.yml/badge.svg)](https://github.com/assemora/assemora/actions/workflows/verify.yml)
 
-A TypeScript framework and CMS where one application layer serves the developer
-(TypeScript API), the user (Studio) and the AI agent (MCP).
+Around that claim is a TypeScript framework and CMS with one application layer, which
+the developer (TypeScript API), the person editing (Studio) and the AI agent (MCP) all
+reach the same way. Every mutation is a command on one bus — validated, authorized,
+transactional, revised and audited — and every command is already an MCP tool, so an
+agent can be trusted with a site because the surface it touches is the one a person
+uses, and its writes wait for a person.
 
 > Build visually. Extend with TypeScript. Control with AI.
 
@@ -209,6 +217,36 @@ Every line of that runs in CI. [`tests/integration/agent-e2e.test.ts`](tests/int
 is the scenario of SPEC.md §97 over real JSON-RPC, and
 [`tests/integration/mcp-transport.test.ts`](tests/integration/mcp-transport.test.ts)
 connects with the MCP SDK's own client rather than with curl.
+
+## How it compares
+
+Payload, Strapi and Directus each ship an MCP server now, and each one is a good piece
+of work. The difference is what a tool call *does*. Theirs writes — through the
+project's own permissions, hooks and, where it exists, draft state. Assemora's proposes:
+the command runs for real inside a transaction, the transaction is rolled back, and what
+is stored is the diff, for a person to apply or reject. There is no second code path
+for the preview, so it cannot lie, and a proposal written against a page that has since
+changed is refused rather than applied over the top (`docs/adr/0019` and `0020`).
+
+The rest of the table is where Assemora loses today, stated plainly.
+
+| | Assemora | Payload 3 | Strapi 5 | Directus |
+| --- | --- | --- | --- | --- |
+| What an agent's write does | Stores a change set a person applies; previewed by executing and rolling back | Writes directly; access rules and hooks apply | Writes directly; a draft where Draft & Publish is on, then a `publish` tool | Writes directly through the user's permissions; delete protection is opt-in |
+| Where the MCP tools come from | Generated from the Schema Registry: one per command and query, nobody keeps a list | Official plugin generates find, create, update, delete per collection | Built in: list, get, create, update, delete, publish, unpublish per content type | Official server |
+| One schema declaration feeds | Types, validation, database, Studio, OpenAPI, SDK and MCP | Types, REST, GraphQL, admin | Types, REST, GraphQL, admin | Introspected from the database |
+| Pages | A block tree, never HTML, with undo and redo; the theme is tokens and nothing accepts CSS | Blocks field with live preview | Dynamic zones | Not a page builder |
+| Databases | PostgreSQL only | PostgreSQL, MongoDB, SQLite | PostgreSQL, MySQL, MariaDB, SQLite | PostgreSQL, MySQL, MariaDB, SQLite, MS SQL, Oracle, CockroachDB |
+| GraphQL | No | Yes | Yes, as a plugin | Yes |
+| Realtime | No | No | No | WebSockets and GraphQL subscriptions |
+| License | Apache-2.0 | MIT | MIT | Source-available (MSCL); free below $5M revenue and 50 employees |
+| On npm | Not yet | Yes | Yes | Yes |
+
+As of September 2026, read from each project's own documentation:
+[Payload](https://payloadcms.com/docs/plugins/mcp),
+[Strapi](https://docs.strapi.io/cms/features/strapi-mcp-server),
+[Directus](https://directus.com/docs/guides/ai/mcp). If a cell is out of date, a pull
+request fixing it is welcome.
 
 ## Requirements
 
