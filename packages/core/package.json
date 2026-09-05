@@ -1,6 +1,6 @@
 {
   "name": "@assemora/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Application kernel: modules, container, context, Command Bus, Event Bus, errors",
   "license": "Apache-2.0",
   "publishConfig": {

@@ -1,6 +1,6 @@
 {
   "name": "@assemora/database-postgres",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "PostgreSQL adapter: Query AST translation, transactions, migrations (Drizzle inside)",
   "license": "Apache-2.0",
   "publishConfig": {

@@ -1,6 +1,6 @@
 {
   "name": "@assemora/schema",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Schema primitives: field definitions, type inference, neutral JSON representation",
   "license": "Apache-2.0",
   "publishConfig": {
