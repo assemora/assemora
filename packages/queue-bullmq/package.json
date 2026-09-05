@@ -1,6 +1,6 @@
 {
   "name": "@assemora/queue-bullmq",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "BullMQ queue adapter: durable jobs on Redis (BullMQ inside)",
   "license": "Apache-2.0",
   "publishConfig": {
