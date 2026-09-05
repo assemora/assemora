@@ -182,19 +182,27 @@ describe('run', () => {
   /**
    * The one instruction, rather than an instruction and a retraction of it.
    *
-   * Until the packages are published there is nothing for `pnpm install` to fetch, so
-   * printing it and then explaining that it does not work leaves whoever stops reading
-   * after the first line running a command that cannot resolve a single dependency.
+   * The packages are on npm, so a generated project installs: the executable prints
+   * `pnpm install` and nothing about a checkout. The other branch — the checkout route
+   * printed while the tree was at `0.0.0` — is `nextSteps(…, false)`, kept for a fork
+   * that has not released.
    */
-  it('names the checkout route instead, while nothing is published', async () => {
+  it('names the install route, now that the packages are published', async () => {
     const root = await temporary()
     const template = await writeTemplate(root)
 
     const { out } = await drive(['my-project', `--template=${template}`], { cwd: root })
 
-    expect(out).toContain('not published yet')
-    expect(out).toContain('git clone https://github.com/assemora/assemora.git')
-    expect(out).not.toContain('  pnpm install\n')
+    expect(out).toContain('  pnpm install\n')
+    expect(out).not.toContain('not published yet')
+    expect(out).not.toContain('git clone')
+  })
+
+  it('still names the checkout route for a tree that has not released', () => {
+    const steps = nextSteps('/work', '/work/my-project', false).join('\n')
+
+    expect(steps).toContain('git clone https://github.com/assemora/assemora.git')
+    expect(steps).not.toContain('  pnpm install\n')
   })
 
   it('writes the project where the name says, relative to the working directory', async () => {

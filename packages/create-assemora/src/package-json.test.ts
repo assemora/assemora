@@ -85,8 +85,10 @@ describe('dependencyRange', () => {
     expect(dependencyRange('0.4.2')).toBe('^0.4.2')
   })
 
-  it('is honest that nothing is published yet', async () => {
-    expect(isUnreleased(await packageVersion())).toBe(true)
+  it('knows a released version from the placeholder the tree carried before the first one', async () => {
+    // Every manifest is at the version `pnpm release` wrote, never `0.0.0` again.
+    expect(isUnreleased(await packageVersion())).toBe(false)
+    expect(isUnreleased('0.0.0')).toBe(true)
     expect(isUnreleased('0.1.0')).toBe(false)
   })
 })
