@@ -117,6 +117,23 @@ export {
   url,
   video,
 } from './fields.js'
+export {
+  type Layout,
+  type LayoutDescriptor,
+  type LayoutField,
+  type LayoutSection,
+  type LayoutTab,
+  layoutIssues,
+  placedFields,
+} from './layout.js'
+export {
+  arrangeResource,
+  LAYOUT_ENTITY,
+  layoutCommands,
+  loadLayouts,
+  registerLayoutRestorer,
+  rememberLayout,
+} from './layout-commands.js'
 export { defineResourceFacet } from './module.js'
 export { entryQueries, GetEntry, ListEntries } from './queries.js'
 export {

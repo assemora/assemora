@@ -12,24 +12,24 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { Ellipsis, History as HistoryIcon, Trash2 } from 'lucide-react'
+import { Ellipsis, History as HistoryIcon, LayoutPanelLeft, Trash2 } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 
 import { ApiError, api, hasMoreToSay } from '../api/client.ts'
 import {
-  asideFields,
   declaredValues,
   editableFields,
   labelOf,
-  mainFields,
   useIntrospection,
   valueAt,
 } from '../api/introspection.ts'
+import { useSession } from '../api/session.tsx'
 import { useDates, useT } from '../i18n/translate.tsx'
-import { Button, Card, Failure, IconButton, join, Spinner } from '../ui/index.tsx'
+import { EntryFields } from '../layout/form.tsx'
+import { arrange } from '../layout/resolve.ts'
+import { Button, Failure, IconButton, Spinner } from '../ui/index.tsx'
 import { SaveBar, Screen, ScreenBody, ScreenHead, ScreenTitle } from '../ui/layout.tsx'
 import { ConfirmByTyping, Menu, MenuItem } from '../ui/overlay.tsx'
-import { FieldInput } from './fields.tsx'
 import { Translations } from './translations.tsx'
 
 type Entry = Record<string, unknown>
@@ -61,6 +61,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
   const more = useRef<HTMLButtonElement>(null)
 
   const introspection = useIntrospection()
+  const { can } = useSession()
   const t = useT()
   const dates = useDates()
   const resource = introspection.data?.resources?.find((entry) => entry.name === params.resource)
@@ -199,23 +200,16 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
 
   const singular = resource.label.replace(/s$/, '')
   const title = nameOf(fields, resource.titleField, draft)
-  const main = mainFields(fields)
-  const aside = asideFields(fields)
-
-  /** One field, drawn the same way in either column. */
-  const draw = (field: (typeof fields)[number]) => {
-    const issues = issuesFor(field.name)
-
-    return (
-      <FieldInput
-        key={field.name}
-        field={field}
-        value={valueAt(draft, field.name)}
-        {...(issues === undefined ? {} : { issues })}
-        onChange={(value) => setDraft((current) => ({ ...current, [field.name]: value }))}
-      />
-    )
-  }
+  const canArrange = can('resources.arrange')
+  /**
+   * How the fields are arranged: the registry's layout for this resource when somebody
+   * declared or arranged one, and the two columns derived from the kinds otherwise
+   * (ADR-0033). Either way every editable field is drawn.
+   */
+  const arranged = arrange(
+    fields,
+    introspection.data?.layouts?.find((entry) => entry.name === params.resource)?.layout,
+  )
 
   const translations =
     mode === 'edit' && params.id !== undefined ? (
@@ -306,8 +300,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
               : t('entry.edit', { name: singular }))
           }
           actions={
-            mode === 'edit' &&
-            resource.api.delete && (
+            (canArrange || (mode === 'edit' && resource.api.delete)) && (
               <>
                 <IconButton
                   ref={more}
@@ -323,16 +316,35 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
                   onDismiss={() => setMenuOpen(false)}
                   label={t('row.entryActions')}
                 >
-                  <MenuItem
-                    icon={<Trash2 className="size-5" />}
-                    tone="danger"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      setConfirming(true)
-                    }}
-                  >
-                    {t('entry.deleteThis', { name: singular.toLowerCase() })}
-                  </MenuItem>
+                  {/* How this form is arranged is a fact about the resource, not the row,
+                      so the way to it is the same on a new entry and an old one
+                      (ADR-0033). */}
+                  {canArrange && (
+                    <MenuItem
+                      icon={<LayoutPanelLeft className="size-5" />}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        void navigate({
+                          to: '/content/$resource/form',
+                          params: { resource: params.resource },
+                        })
+                      }}
+                    >
+                      {t('form.arrange')}
+                    </MenuItem>
+                  )}
+                  {mode === 'edit' && resource.api.delete && (
+                    <MenuItem
+                      icon={<Trash2 className="size-5" />}
+                      tone="danger"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setConfirming(true)
+                      }}
+                    >
+                      {t('entry.deleteThis', { name: singular.toLowerCase() })}
+                    </MenuItem>
+                  )}
                 </Menu>
               </>
             )
@@ -350,8 +362,8 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
          * `flex-wrap` with a basis rather than a grid: at a narrow window the panel drops
          * under the card instead of squeezing a rich-text editor into 300px.
          */}
-        <form id="entry-form" className="flex flex-wrap items-start gap-6" onSubmit={submit}>
-          {/* Above both columns and not beside the Save button: which language this row
+        <form id="entry-form" className="flex flex-col gap-6" onSubmit={submit}>
+          {/* Above the fields and not beside the Save button: which language this row
               is in decides what saving *means*, so it has to be read before the fields
               are. */}
           {(translations !== null || failure !== undefined || remove.isError) && (
@@ -364,41 +376,26 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
             </div>
           )}
 
-          <Card
-            className={join(
-              'min-w-0 overflow-hidden',
-              aside.length === 0 ? 'w-full max-w-[760px]' : 'flex-[1_1_480px]',
-            )}
-          >
-            {/* The design's own words. Not the resource's label: "Articles content" is
-                a sentence somebody has to parse, and this heading is only saying which
-                of the two columns is the entry itself. */}
-            <div className="flex h-[46px] items-center border-b border-line bg-surface-raised px-5 text-md font-[650] text-ink-strong">
-              {t('entry.mainContent')}
-            </div>
-            <div className="flex flex-col gap-[22px] p-5">
-              {main.map(draw)}
-              {main.length === 0 && (
-                <p className="py-4 text-base text-ink-soft">{t('entry.allMetadata')}</p>
-              )}
-            </div>
-          </Card>
-
-          {aside.length > 0 && (
-            <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-3 lg:max-w-[360px]">
-              <Card className="flex flex-col gap-[18px] p-[18px]">{aside.map(draw)}</Card>
-
-              {/* When the row was last written, where the design puts "Saved 12 minutes
-                  ago by Dana". Only the time, and only when the read returned it: who
-                  saved it is in the revision history, and this screen has not asked. */}
-              {typeof existing.data?.updatedAt === 'string' && (
-                <div className="flex min-h-11 items-center gap-2 rounded-xl bg-surface px-4 py-3 text-base text-ink-soft shadow-[0_1px_0_rgb(0_0_0/0.05)]">
-                  <HistoryIcon aria-hidden className="size-5 shrink-0" />
-                  {t('entry.savedAt', { when: dates.dateTime(existing.data.updatedAt) })}
-                </div>
-              )}
-            </div>
-          )}
+          <EntryFields
+            arranged={arranged}
+            draft={draft}
+            issuesFor={issuesFor}
+            onChange={(name, value) => setDraft((current) => ({ ...current, [name]: value }))}
+            {...(typeof existing.data?.updatedAt === 'string'
+              ? {
+                  /* When the row was last written, where the design puts "Saved 12
+                     minutes ago by Dana". Only the time, and only when the read returned
+                     it: who saved it is in the revision history, and this screen has not
+                     asked. */
+                  asideFooter: (
+                    <div className="flex min-h-11 items-center gap-2 rounded-xl bg-surface px-4 py-3 text-base text-ink-soft shadow-[0_1px_0_rgb(0_0_0/0.05)]">
+                      <HistoryIcon aria-hidden className="size-5 shrink-0" />
+                      {t('entry.savedAt', { when: dates.dateTime(existing.data.updatedAt) })}
+                    </div>
+                  ),
+                }
+              : {})}
+          />
         </form>
       </ScreenBody>
 

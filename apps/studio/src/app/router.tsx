@@ -17,6 +17,7 @@ import { Design } from '../screens/design.tsx'
 import { DEVELOPER_VIEWS, Developer, type DeveloperView } from '../screens/developer.tsx'
 import { EntryForm } from '../screens/entry.tsx'
 import { History } from '../screens/history.tsx'
+import { LayoutEditor } from '../screens/layout.tsx'
 import { Login } from '../screens/login.tsx'
 import { MediaLibrary } from '../screens/media.tsx'
 import { Pages } from '../screens/pages.tsx'
@@ -68,6 +69,13 @@ const routes = [
     getParentRoute: () => shellRoute,
     path: '/content/$resource/new',
     component: () => <EntryForm mode="create" />,
+  }),
+  // Before `$id`, so `form` is a screen and never an entry that happens to be called
+  // that: how the resource's entry form is arranged (ADR-0033).
+  createRoute({
+    getParentRoute: () => shellRoute,
+    path: '/content/$resource/form',
+    component: LayoutEditor,
   }),
   createRoute({
     getParentRoute: () => shellRoute,

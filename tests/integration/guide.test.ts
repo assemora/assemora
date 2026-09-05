@@ -34,6 +34,8 @@ import {
   clearSingletonRegistry,
   describeField,
   email,
+  type Layout,
+  layoutIssues,
   object,
   readSingleton,
   registeredFieldKinds,
@@ -46,6 +48,13 @@ import {
 import { beforeAll, describe, expect, it } from 'vitest'
 
 const PAGE = fileURLToPath(new URL('../../docs/guide/05-resources.md', import.meta.url))
+
+/**
+ * The layout the chapter shows, checked by the compiler and by `layoutIssues()` against
+ * the fields it names — so a key the descriptor loses, or a rule the validator gains,
+ * breaks the build before it breaks the page (ADR-0033).
+ */
+const LAYOUT_FIELDS = ['title', 'slug', 'content', 'excerpt', 'status', 'featured']
 
 let guide = ''
 
@@ -238,6 +247,52 @@ describe('docs/guide/15-settings.md', () => {
         )
 
         export const site = module('site').singletons(Site)
+      `),
+    )
+  })
+
+  it("compiles the guide's layout, and it fits the fields it names", () => {
+    const layout: Layout = {
+      tabs: [
+        {
+          key: 'write',
+          label: { en: 'Write', uk: 'Текст' },
+          sections: [
+            {
+              key: 'head',
+              title: 'Head',
+              columns: 2,
+              fields: [
+                { field: 'title', width: 'half' },
+                { field: 'slug', width: 'half' },
+              ],
+            },
+            { key: 'body', fields: ['content'] },
+          ],
+        },
+        { key: 'seo', label: 'SEO', sections: [{ key: 'meta', fields: ['excerpt'] }] },
+      ],
+      aside: [{ key: 'state', title: 'State', fields: ['status', 'featured'] }],
+    }
+    const fields = LAYOUT_FIELDS.map((name) => describeField(name, text()))
+
+    expect(layoutIssues(fields, layout)).toEqual([])
+    expect(flattened(guide)).toContain(
+      flattened(`
+        layout: {
+          tabs: [
+            {
+              key: 'write',
+              label: { en: 'Write', uk: 'Текст' },
+              sections: [
+                { key: 'head', title: 'Head', columns: 2, fields: [{ field: 'title', width: 'half' }, { field: 'slug', width: 'half' }] },
+                { key: 'body', fields: ['content'] },
+              ],
+            },
+            { key: 'seo', label: 'SEO', sections: [{ key: 'meta', fields: ['excerpt'] }] },
+          ],
+          aside: [{ key: 'state', title: 'State', fields: ['status', 'featured'] }],
+        },
       `),
     )
   })

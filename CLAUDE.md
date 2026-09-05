@@ -298,6 +298,21 @@ descriptor is a `Said` — a string, or a map keyed by language tag — and Stud
 language it reads in, falling back to the first written; it translates nothing (ADR-0030).
 The umbrella and media write theirs in the three languages Studio speaks.
 
+**A form's layout is a view, declared or arranged — done (ADR-0033).** `resource(…, {
+layout })` says how the entry form is drawn — tabs of sections, or sections alone, a column
+beside them, one or two columns per section, a width per field — and `resources.arrange`
+stores one per resource (static or dynamic) that wins over the declaration, `null` putting
+it back. The registry's `layouts` section carries the resolved layout and its source; a
+resource with none is drawn from the kinds, as before. A layout cannot hide a field: what
+it leaves out lands in a trailing section, and the validator refuses a hidden field placed.
+Studio draws the form from it in one component (`layout/form.tsx`), and
+`/content/$resource/form` is the screen that arranges it beside a live preview, one pure
+step per click (`layout/edit.ts`). A section may be shown on a condition —
+`visibleWhen: { field, equals }` or `{ field, present: true }`, evaluated in Studio against
+the draft, never by the server — and a required field may not sit under one, because the
+refusal would land on an input nobody can see. List columns and the block inspector are
+deferred and named in the ADR.
+
 **SPEC.md §135 singletons — done (ADR-0032).** `singleton(name, fields, options)` in
 `@assemora/resources`, registered with `module(…).singletons(…)`: the resource fields, one
 JSONB row per name in `assemora_singletons` (one table, so a footer is never a migration),

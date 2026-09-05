@@ -19,6 +19,7 @@ import type { Issue } from '@assemora/schema'
 import { readableByActor } from './agent-fields.js'
 import { type ApiExposure, describeField, humanize, type ResourceDescriptor } from './descriptor.js'
 import type { AnyField } from './fields.js'
+import { type Layout, layoutIssues } from './layout.js'
 import { listingOrder, parseSort } from './ordering.js'
 import { validateAgainstFields } from './validation.js'
 
@@ -46,6 +47,12 @@ export type ResourceOptions = {
    * may read is not a title (SPEC.md §35, §58).
    */
   readonly titleField?: string
+  /**
+   * How the entry form is arranged: tabs, sections, and the column beside them
+   * (ADR-0033). Checked here against the fields; a stored arrangement made in Studio or
+   * by an agent wins over it, and `resources.arrange` with `null` puts it back.
+   */
+  readonly layout?: Layout
   /**
    * The heading Studio files this resource under — `'Блог'`, `'Shop'`, `'Menu'`.
    *
@@ -133,6 +140,8 @@ export type Resource<
   readonly model: Model<F, SN, C>
   readonly fields: RF
   readonly descriptor: ResourceDescriptor
+  /** What `resource()` was told about the form, or nothing; the registry resolves it. */
+  readonly declaredLayout: Layout | undefined
   /** The fields by name, for the checks the command path runs (SPEC.md §52). */
   readonly writableFields: ReadonlyMap<string, AnyField>
   /** A page of entries. Never the whole dataset (SPEC.md §89). */
@@ -149,6 +158,7 @@ export type AnyResource = {
   readonly name: string
   readonly label: string
   readonly descriptor: ResourceDescriptor
+  readonly declaredLayout: Layout | undefined
   readonly writableFields: ReadonlyMap<string, AnyField>
   list(query?: ListQuery): Promise<Page<unknown>>
   find(id: unknown): Promise<unknown>
@@ -225,6 +235,21 @@ export const resource = <
     ...(options.group === undefined ? {} : { group: options.group }),
     ...(options.icon === undefined ? {} : { icon: options.icon }),
     perPage,
+  }
+
+  if (options.layout !== undefined) {
+    const wrong = layoutIssues(descriptor.fields, options.layout)
+
+    // Refused where it was written: a layout naming a field that does not exist is a
+    // form with a hole in it, and the person who sees the hole is not the one who
+    // wrote the line.
+    if (wrong.length > 0) {
+      throw new ConfigurationError(
+        `"${name}" declares a layout that does not fit its fields: ${wrong
+          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+          .join('; ')}`,
+      )
+    }
   }
 
   const fieldByName = new Map(entries)
@@ -406,6 +431,7 @@ export const resource = <
     model,
     fields,
     descriptor,
+    declaredLayout: options.layout,
     writableFields: fieldByName,
 
     // `async` on purpose: a rejected list query has to arrive as a rejected promise,

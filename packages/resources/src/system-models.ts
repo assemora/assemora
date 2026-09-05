@@ -7,6 +7,7 @@
 import { enumOf, integer, json, model, string, timestamp, uuid } from '@assemora/data'
 
 import type { DynamicDefinition } from './dynamic.js'
+import type { Layout } from './layout.js'
 
 export const ResourceDefinitionModel = model('assemora_resource_definitions', {
   id: uuid().primary().defaultRandom(),
@@ -53,5 +54,27 @@ export const SingletonModel = model('assemora_singletons', {
   updatedAt: timestamp().updated(),
 })
 
+/**
+ * How a resource's form is arranged, when somebody arranged it (ADR-0033).
+ *
+ * One row per resource, static or dynamic alike; a resource nobody arranged has no row
+ * and draws its declaration. One table for the same reason the others are: arranging
+ * a form is content work, not a migration.
+ */
+export const ResourceLayoutModel = model('assemora_resource_layouts', {
+  id: uuid().primary().defaultRandom(),
+  resource: string().unique(),
+  layout: json<Layout>(),
+  version: integer().default(1),
+  updatedBy: uuid().nullable(),
+  createdAt: timestamp().created(),
+  updatedAt: timestamp().updated(),
+})
+
 /** Every system table this package owns, for schema generation. */
-export const systemModels = [ResourceDefinitionModel, ResourceEntryModel, SingletonModel] as const
+export const systemModels = [
+  ResourceDefinitionModel,
+  ResourceEntryModel,
+  SingletonModel,
+  ResourceLayoutModel,
+] as const

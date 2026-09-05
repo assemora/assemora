@@ -93,7 +93,7 @@ describe('assemora.describe (SPEC.md §71)', () => {
       app.queries.execute('assemora.describe', {}),
     )) as Record<string, unknown>
 
-    // The nine of §71, plus four.
+    // The nine of §71, plus five.
     //
     // `queries` — an agent that can only see commands would not know how to read
     // anything. `policies` — `permissions` alone says what an actor *can be granted*,
@@ -104,6 +104,7 @@ describe('assemora.describe (SPEC.md §71)', () => {
       'blocks',
       'capabilities',
       'commands',
+      'layouts',
       'locales',
       'models',
       'pages',

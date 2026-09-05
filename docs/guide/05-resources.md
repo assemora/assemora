@@ -419,6 +419,48 @@ An icon Studio does not know draws the document every resource drew before. A
 resource with `api: { delete: false }` offers no delete in Studio, over MCP or in the
 generated SDK, not only at `/api`.
 
+## Layout
+
+How the entry form is arranged (ADR-0033): tabs of sections, or sections alone, and
+the column beside them. A section has one or two columns; a field takes the row or half
+of it.
+
+```ts
+resource(Article, fields, {
+  layout: {
+    tabs: [
+      {
+        key: 'write',
+        label: { en: 'Write', uk: 'Текст' },
+        sections: [
+          { key: 'head', title: 'Head', columns: 2, fields: [{ field: 'title', width: 'half' }, { field: 'slug', width: 'half' }] },
+          { key: 'body', fields: ['content'] },
+        ],
+      },
+      { key: 'seo', label: 'SEO', sections: [{ key: 'meta', fields: ['excerpt'] }] },
+    ],
+    aside: [{ key: 'state', title: 'State', fields: ['status', 'featured'] }],
+  },
+})
+```
+
+A section may be shown on a condition — `visibleWhen: { field: 'fulfilment', equals:
+'delivery' }`, or `{ field: 'notes', present: true }` — evaluated in Studio against what
+is typed. A required field may not sit under one: the server would refuse the save while
+the input that could fix it is hidden.
+
+A layout says where a field is drawn and nothing about what it is: validation, OpenAPI,
+the SDK and the MCP schema never read it. It cannot hide a field either — one it leaves
+out is drawn in a trailing section, so a column added to the model is never invisible.
+It is refused where it is written for a field that does not exist, a hidden field, a
+field placed twice or an empty section.
+
+An administrator arranges the form on `/content/<resource>/form` in Studio, and an agent
+with `resources.arrange` — one command for every resource, `null` puts the declaration
+back. What they store wins over the declaration; the registry's `layouts` section says
+which of the two is drawn. A resource with neither is drawn from the kinds of its
+fields, as every form was before.
+
 ## Registration
 
 ```ts

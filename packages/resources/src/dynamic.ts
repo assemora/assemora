@@ -274,6 +274,7 @@ export const dynamicResource = (
     name: definition.name,
     label: descriptor.label,
     descriptor,
+    declaredLayout: undefined,
     writableFields: fields,
 
     async list(query: ListQuery = {}): Promise<Page<unknown>> {

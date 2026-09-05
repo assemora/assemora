@@ -87,6 +87,7 @@ export const mcpQueries = (options: McpQueryOptions) => {
       policies: array(entry),
       settings: array(entry),
       singletons: array(entry),
+      layouts: array(entry),
     },
     handle: async () => {
       const all = sections()
@@ -125,6 +126,10 @@ export const mcpQueries = (options: McpQueryOptions) => {
         // A page there is exactly one of (SPEC.md §135): its fields, so an agent
         // knows what `singletons.update` takes before it calls it.
         singletons: all.singletons ?? [],
+        // How each resource's form is arranged, and whether by declaration or by a
+        // stored `resources.arrange` (ADR-0033) — so an agent rearranging one starts
+        // from what is there.
+        layouts: all.layouts ?? [],
       }
     },
   })

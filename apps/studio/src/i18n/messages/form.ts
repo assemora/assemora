@@ -1,0 +1,102 @@
+/**
+ * The form screen: how a resource's entry form is arranged (ADR-0033).
+ */
+import type { Catalogue } from '../catalogue.ts'
+
+export const FORM = {
+  'form.arrange': { en: 'Arrange the form', uk: 'Налаштувати форму', ru: 'Настроить форму' },
+  'form.title': { en: 'Form layout', uk: 'Розташування форми', ru: 'Расположение формы' },
+  'form.lede': {
+    en: 'Tabs, sections and the column beside them. What the layout leaves out is still drawn.',
+    uk: 'Вкладки, секції та колонка поруч. Що розташування не назвало, все одно малюється.',
+    ru: 'Вкладки, секции и колонка рядом. Что раскладка не назвала, всё равно рисуется.',
+  },
+  'form.source.declared': { en: 'declared', uk: 'оголошено', ru: 'объявлено' },
+  'form.source.stored': { en: 'arranged', uk: 'налаштовано', ru: 'настроено' },
+  'form.source.derived': { en: 'derived', uk: 'виведено', ru: 'выведено' },
+  'form.tabsLabel': { en: 'Sections of the form', uk: 'Розділи форми', ru: 'Разделы формы' },
+  'form.shape': { en: 'Shape', uk: 'Форма', ru: 'Форма' },
+  'form.onePage': { en: 'One page', uk: 'Одна сторінка', ru: 'Одна страница' },
+  'form.withTabs': { en: 'Tabs', uk: 'Вкладки', ru: 'Вкладки' },
+  'form.main': { en: 'The form', uk: 'Форма', ru: 'Форма' },
+  'form.aside': { en: 'Beside the form', uk: 'Поруч із формою', ru: 'Рядом с формой' },
+  'form.tab': { en: 'Tab', uk: 'Вкладка', ru: 'Вкладка' },
+  'form.newTab': { en: 'New tab', uk: 'Нова вкладка', ru: 'Новая вкладка' },
+  'form.addTab': { en: 'Add tab', uk: 'Додати вкладку', ru: 'Добавить вкладку' },
+  'form.removeTab': { en: 'Remove tab', uk: 'Прибрати вкладку', ru: 'Убрать вкладку' },
+  'form.labelPlaceholder': { en: 'Tab label', uk: 'Назва вкладки', ru: 'Название вкладки' },
+  'form.section': { en: 'Section', uk: 'Секція', ru: 'Секция' },
+  'form.addSection': { en: 'Add section', uk: 'Додати секцію', ru: 'Добавить секцию' },
+  'form.removeSection': { en: 'Remove section', uk: 'Прибрати секцію', ru: 'Убрать секцию' },
+  'form.titlePlaceholder': {
+    en: 'Section title (optional)',
+    uk: 'Заголовок секції (необов’язково)',
+    ru: 'Заголовок секции (необязательно)',
+  },
+  'form.columns': { en: 'Columns', uk: 'Колонки', ru: 'Колонки' },
+  'form.full': { en: 'Full width', uk: 'Повна ширина', ru: 'Полная ширина' },
+  'form.half': { en: 'Half width', uk: 'Половина ширини', ru: 'Половина ширины' },
+  'form.up': { en: 'Move up', uk: 'Вище', ru: 'Выше' },
+  'form.down': { en: 'Move down', uk: 'Нижче', ru: 'Ниже' },
+  'form.unplace': { en: 'Take out', uk: 'Прибрати з секції', ru: 'Убрать из секции' },
+  'form.emptySection': {
+    en: 'No fields here yet.',
+    uk: 'Тут ще немає полів.',
+    ru: 'Здесь ещё нет полей.',
+  },
+  'form.emptyTab': {
+    en: 'This tab has no sections yet.',
+    uk: 'У цій вкладці ще немає секцій.',
+    ru: 'В этой вкладке ещё нет секций.',
+  },
+  'form.unplaced': { en: 'Not placed', uk: 'Не розташовано', ru: 'Не размещено' },
+  'form.unplacedHelp': {
+    en: 'Drawn at the end of the form until placed.',
+    uk: 'Малюються в кінці форми, доки не розташовані.',
+    ru: 'Рисуются в конце формы, пока не размещены.',
+  },
+  'form.placeIn': { en: 'Place in…', uk: 'Розташувати в…', ru: 'Разместить в…' },
+  'form.leftOut': { en: 'Other fields', uk: 'Інші поля', ru: 'Другие поля' },
+  'form.preview': { en: 'Preview', uk: 'Попередній перегляд', ru: 'Предпросмотр' },
+  'form.reset': {
+    en: 'Back to the declaration',
+    uk: 'Повернути оголошене',
+    ru: 'Вернуть объявленное',
+  },
+  'form.resetDerived': {
+    en: 'Back to the default',
+    uk: 'Повернути типове',
+    ru: 'Вернуть исходное',
+  },
+  'form.cannot': {
+    en: 'You may not arrange this form.',
+    uk: 'Ви не можете налаштовувати цю форму.',
+    ru: 'Вы не можете настраивать эту форму.',
+  },
+  'form.confirmLeave': {
+    en: 'The arrangement has not been saved. Leave the screen anyway?',
+    uk: 'Розташування не збережено. Усе одно піти з екрана?',
+    ru: 'Расположение не сохранено. Всё равно уйти с экрана?',
+  },
+  'form.shownWhen': { en: 'Shown when', uk: 'Показувати, якщо', ru: 'Показывать, если' },
+  'form.always': { en: 'Always', uk: 'Завжди', ru: 'Всегда' },
+  'form.isPresent': { en: 'is filled in', uk: 'заповнено', ru: 'заполнено' },
+  'form.equals': { en: 'equals', uk: 'дорівнює', ru: 'равно' },
+  'form.yes': { en: 'Yes', uk: 'Так', ru: 'Да' },
+  'form.no': { en: 'No', uk: 'Ні', ru: 'Нет' },
+  'form.shownWhenPresent': {
+    en: 'Shown when {field} is filled in',
+    uk: 'Показується, якщо заповнено {field}',
+    ru: 'Показывается, если заполнено {field}',
+  },
+  'form.shownWhenEquals': {
+    en: 'Shown when {field} = {value}',
+    uk: 'Показується, якщо {field} = {value}',
+    ru: 'Показывается, если {field} = {value}',
+  },
+  'form.conflict': {
+    en: 'Somebody arranged this form since you opened it. Reload to see their version.',
+    uk: 'Хтось налаштував цю форму, поки ви її редагували. Перезавантажте, щоб побачити їхню версію.',
+    ru: 'Кто-то настроил эту форму, пока вы её редактировали. Перезагрузите, чтобы увидеть их версию.',
+  },
+} as const satisfies Catalogue

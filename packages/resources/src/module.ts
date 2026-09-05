@@ -8,6 +8,12 @@
 import { defineModuleFacet, type ModuleBuilder } from '@assemora/core'
 
 import { entryCommands } from './commands.js'
+import {
+  layoutCommands,
+  loadLayouts,
+  registerLayoutRestorer,
+  rememberLayout,
+} from './layout-commands.js'
 import { entryQueries } from './queries.js'
 import { registerResource } from './registry.js'
 import type { AnyResource } from './resource.js'
@@ -50,12 +56,36 @@ export const defineResourceFacet = (): void => {
         }
       }
 
+      // One write for every resource's form, registered with the resources it serves.
+      for (const definition of layoutCommands(() => context.registry)) {
+        if (!context.commands.has(definition.name)) {
+          context.commands.register(definition, 'resources')
+        }
+      }
+
       for (const candidate of args) {
         const registered = candidate as AnyResource
 
         registerResource(registered)
         context.registry.register('resources', registered.descriptor)
         registerEntryRestorer(registered.name)
+        // The declaration, in front of the registry until a stored one replaces it.
+        rememberLayout(context.registry, registered.name, null)
+      }
+
+      registerLayoutRestorer(() => context.registry)
+    })
+
+    // The stored arrangements, once the database can be read. Tolerant of its own table
+    // not existing, for the reason `collections()` is (ADR-0021); a form that cannot be
+    // read is drawn from its declaration, and the boot says so.
+    internals.addHook('boot', async (context) => {
+      const { pending } = await loadLayouts(context.registry, context.logger)
+
+      if (pending) {
+        context.logger.warn(
+          'assemora_resource_layouts does not exist, so no stored form layout was applied. Run assemora db:migrate.',
+        )
       }
     })
   })

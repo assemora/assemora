@@ -21,6 +21,7 @@ import { COMMON } from './messages/common.ts'
 import { CONTENT } from './messages/content.ts'
 import { DESIGN } from './messages/design.ts'
 import { DEVELOPER } from './messages/developer.ts'
+import { FORM } from './messages/form.ts'
 import { MEDIA } from './messages/media.ts'
 import { PAGES } from './messages/pages.ts'
 import { PEOPLE } from './messages/people.ts'
@@ -36,6 +37,7 @@ export const SLICES = [
   DESIGN,
   DEVELOPER,
   SETTINGS,
+  FORM,
 ] as const
 
 export const MESSAGES = {
@@ -48,6 +50,7 @@ export const MESSAGES = {
   ...DESIGN,
   ...DEVELOPER,
   ...SETTINGS,
+  ...FORM,
 }
 
 export type MessageKey = keyof typeof MESSAGES

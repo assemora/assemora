@@ -221,6 +221,49 @@ export type SingletonDescriptor = {
   readonly module?: string
 }
 
+/**
+ * How a resource's form is arranged (ADR-0033): tabs of sections, or sections alone,
+ * and the column beside them. `source` says whether the resource declared it or
+ * somebody arranged it with `resources.arrange`; a resource with no entry here is drawn
+ * from the kinds of its fields, as it always was.
+ */
+export type LayoutField = string | { readonly field: string; readonly width?: 'full' | 'half' }
+
+/** When a section is shown: while a field equals a value, or holds anything at all. */
+export type Condition = { readonly field: string } & (
+  | { readonly equals: string | number | boolean | null; readonly present?: undefined }
+  | { readonly present: true; readonly equals?: undefined }
+)
+
+export type LayoutSection = {
+  readonly key: string
+  readonly title?: Said
+  readonly description?: Said
+  readonly columns?: 1 | 2
+  readonly visibleWhen?: Condition
+  readonly fields: readonly LayoutField[]
+}
+
+export type LayoutTab = {
+  readonly key: string
+  readonly label: Said
+  readonly sections: readonly LayoutSection[]
+}
+
+export type Layout = (
+  | { readonly tabs: readonly LayoutTab[]; readonly sections?: undefined }
+  | { readonly sections: readonly LayoutSection[]; readonly tabs?: undefined }
+) & { readonly aside?: readonly LayoutSection[] }
+
+export type LayoutDescriptor = {
+  /** The resource's name. */
+  readonly name: string
+  readonly source: 'declared' | 'stored'
+  readonly layout: Layout
+  /** The stored row's version, which the next `resources.arrange` has to state. */
+  readonly version?: number
+}
+
 export type Introspection = {
   readonly resources?: readonly ResourceDescriptor[]
   readonly routes?: readonly RouteDescriptor[]
@@ -243,6 +286,8 @@ export type Introspection = {
   readonly settings?: readonly SettingsGroupDescriptor[]
   /** Every singleton, whose one row the settings screen edits through `singletons.update`. */
   readonly singletons?: readonly SingletonDescriptor[]
+  /** How each arranged resource's form is laid out; absent means derived from the kinds. */
+  readonly layouts?: readonly LayoutDescriptor[]
 }
 
 export const useIntrospection = (): UseQueryResult<Introspection> =>

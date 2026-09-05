@@ -73,6 +73,8 @@ describe('registration through the module facet', () => {
       'entries.delete',
       'entries.translate',
       'entries.update',
+      // The form's arrangement is written through the resources it serves (ADR-0033).
+      'resources.arrange',
     ])
   })
 
