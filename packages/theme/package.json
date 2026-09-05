@@ -1,6 +1,6 @@
 {
   "name": "@assemora/theme",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The theme as structured tokens, and the stylesheet they render to (SPEC.md §62)",
   "license": "Apache-2.0",
   "publishConfig": {

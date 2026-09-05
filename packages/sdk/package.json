@@ -1,6 +1,6 @@
 {
   "name": "@assemora/sdk",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Type-safe HTTP client generated from the Schema Registry",
   "license": "Apache-2.0",
   "publishConfig": {

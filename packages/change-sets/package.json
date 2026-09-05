@@ -1,6 +1,6 @@
 {
   "name": "@assemora/change-sets",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Proposed changes: dry run, diff, approval and apply (SPEC.md §73, §74)",
   "license": "Apache-2.0",
   "publishConfig": {
