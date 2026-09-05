@@ -354,9 +354,10 @@ is declarative data with no runtime expression; every mutation goes through the
 Command Bus. They are the product rather than restrictions on it — an agent can be
 trusted with a site because the surface is constrained.
 
-Also left, and not a section: nothing is published to npm, so `create-assemora` writes
-a dependency range that resolves to nothing and a generated project runs only from a
-checkout.
+Published: every package is on npm in lockstep since `0.1.0` (2026-09-05). `pnpm release
+<version>` bumps, builds, commits, publishes and tags (`scripts/release.ts`); a project
+updates with `pnpm up assemora '@assemora/*'`. Papa Cotta was the first project to depend
+on the published packages rather than on a checkout beside it.
 
 Decisions phase 10 added (ADR-0021, ADR-0022):
 

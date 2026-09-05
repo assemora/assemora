@@ -1,6 +1,13 @@
 # Getting started
 
-Nothing is on npm yet, so the way in is a checkout. Four commands, one process:
+Two ways in. A project of your own starts from the scaffolder, which is on npm:
+
+```bash
+pnpm create assemora my-site
+```
+
+To see the framework working before writing anything, a checkout serves the example.
+Four commands, one process:
 
 ```bash
 git clone https://github.com/assemora/assemora.git

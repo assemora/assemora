@@ -1,11 +1,29 @@
 # Releasing
 
-Nothing has been published. This is what the first release takes, in order, and what
-each step is guarding against.
+`0.1.0` was the first release, on 2026-09-05. Since then a release is one command:
 
-## Why the tree stays at `0.0.0`
+```bash
+pnpm release 0.2.0
+git push --follow-tags
+```
 
-Every manifest says `0.0.0`, and that is load-bearing rather than laziness.
+`scripts/release.ts` writes the version into every publishable package, builds, commits
+`release: v0.2.0`, publishes in lockstep with `pnpm -r publish` and tags. The packages
+share one version because `create-assemora` writes a project against the version it was
+built beside. A project updates with `pnpm up 'assemora' '@assemora/*'`.
+
+Two things to know: a freshly published scoped package answers 404 to the public registry
+for a few minutes, so an install straight after a release can fail once; and a version,
+once published, cannot be published again — a mistake is a new patch version, not a
+retry.
+
+What follows is the first release as it was planned, kept because the reasons still hold.
+
+## What the first release took
+
+### Why the tree stayed at `0.0.0` until then
+
+Every manifest said `0.0.0`, and that was load-bearing rather than laziness.
 `isUnreleased()` in `@assemora/create-assemora` reads it, and it is what makes the
 scaffolder print the checkout route instead of `pnpm install` — an install that today
 cannot resolve a single dependency. `packages/create-assemora/src/package-json.test.ts`

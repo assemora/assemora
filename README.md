@@ -51,10 +51,10 @@ grep ASSEMORA_SEED_PASSWORD examples/company/.env
 
 ## Status
 
-Early, and honest about it: nothing is published to npm, so `pnpm create assemora` and
-`pnpm add assemora` have nothing to fetch, and the public API is still free to change.
-The way in is a checkout. Releasing is prepared and deliberately not done —
-[`docs/releasing.md`](docs/releasing.md) is the procedure.
+Early, and published: every package is on npm at `0.1.0`, in lockstep, so
+`pnpm create assemora` scaffolds a project that installs and `pnpm add assemora` fetches
+the umbrella. The public API is still free to change before 1.0.
+[`docs/releasing.md`](docs/releasing.md) is the procedure — `pnpm release <version>`.
 
 All ten phases are complete. The scaffolder itself runs, and
 `tests/integration/v1.test.ts` asserts the database schema, the REST CRUD, Studio,
