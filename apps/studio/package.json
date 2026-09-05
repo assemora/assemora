@@ -1,8 +1,10 @@
 {
   "name": "@assemora/studio",
   "version": "0.0.0",
-  "private": false,
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/assemora/assemora.git",
@@ -44,6 +46,7 @@
   },
   "files": [
     "dist",
+    "!dist/.tsbuildinfo",
     "assets.js",
     "assets.d.ts"
   ]

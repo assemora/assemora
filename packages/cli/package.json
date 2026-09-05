@@ -1,9 +1,11 @@
 {
   "name": "@assemora/cli",
   "version": "0.0.0",
-  "private": true,
   "description": "Assemora CLI: generators, migrations, introspection",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/assemora/assemora.git",
@@ -23,7 +25,8 @@
   "types": "./dist/index.d.ts",
   "files": [
     "bin.mjs",
-    "dist"
+    "dist",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
