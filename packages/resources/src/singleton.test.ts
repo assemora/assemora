@@ -21,6 +21,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { email, text, toggle } from './fields.js'
 import { clearSingletonRegistry, singleton } from './singleton.js'
+import { readSingleton } from './singleton-commands.js'
 import { SingletonModel } from './system-models.js'
 import './module.js'
 
@@ -116,6 +117,18 @@ describe('reading one', () => {
 
     expect((await read()).values).not.toHaveProperty('notes')
     expect((await read(AGENT)).values).toEqual({ title: 'Papa Cotta' })
+  })
+})
+
+describe('an application reading one for itself', () => {
+  it('answers the row without a permission, hidden fields left out, and refuses a name nobody declared', async () => {
+    await update({ title: 'Papa Cotta', notes: 'do not publish before Monday' })
+
+    const read = await readSingleton('site')
+
+    expect(read.values).toEqual({ title: 'Papa Cotta' })
+    expect(read.version).toBe(1)
+    await expect(readSingleton('footer')).rejects.toThrow(/not registered/)
   })
 })
 

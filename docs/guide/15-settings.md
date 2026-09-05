@@ -157,6 +157,23 @@ await app.commands.execute('singletons.update', {
 })
 ```
 
+A visitor is not told the row: `singletons.get` is a query with a permission, and a
+storefront needs a narrower answer anyway. Declare a query of your own and read the row
+with `readSingleton()`, the way a menu query reads the dishes — it leaves hidden fields
+out and offers no write, because `singletons.update` is the one.
+
+```ts
+export const SiteFacts = query('site.facts', {
+  input: {},
+  output: { title: string(), open: boolean() },
+  handle: async () => {
+    const { values } = await readSingleton('site')
+
+    return { title: String(values.title ?? ''), open: values.open !== false }
+  },
+})
+```
+
 ## What is refused, and where
 
 `settingsGroup()` checks a group where it is written — at `module()` for a group

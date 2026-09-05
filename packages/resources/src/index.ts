@@ -152,6 +152,7 @@ export {
 } from './singleton.js'
 export {
   GetSingleton,
+  readSingleton,
   registerSingletonRestorer,
   singletonCommands,
   singletonQueries,
