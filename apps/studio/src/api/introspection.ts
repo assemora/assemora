@@ -365,8 +365,23 @@ const NOT_A_COLUMN: readonly FieldKind[] = [
 export const columnFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
   resource.fields.filter((field) => !field.hidden && !NOT_A_COLUMN.includes(field.kind)).slice(0, 5)
 
+/**
+ * The fields a form *sends*: never a hidden one, and never a read-only one, because
+ * the application refuses a write that so much as names it.
+ */
 export const editableFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
   resource.fields.filter((field) => !field.hidden && !field.readOnly)
+
+/**
+ * The fields a form *draws*: everything that is not hidden, read-only ones included.
+ *
+ * A read-only field is one the application computes — an order's total, the moment it
+ * was placed — and it was left off the form entirely, so the one screen a person opens
+ * an order on was the one screen that could not say what it cost. It is drawn disabled,
+ * and `editableFields` decides what goes back.
+ */
+export const shownFields = (resource: ResourceDescriptor): FieldDescriptor[] =>
+  resource.fields.filter((field) => !field.hidden)
 
 /**
  * The kinds that belong beside the entry rather than inside it.

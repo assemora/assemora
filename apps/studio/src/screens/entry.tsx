@@ -20,6 +20,7 @@ import {
   declaredValues,
   editableFields,
   labelOf,
+  shownFields,
   useIntrospection,
   valueAt,
 } from '../api/introspection.ts'
@@ -159,7 +160,15 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
     )
   }
 
-  const fields = editableFields(resource)
+  /**
+   * What is drawn and what is sent are two lists (ADR-0033, amended). A read-only field
+   * — a total, a timestamp — is on the form of an existing entry, disabled, because it
+   * is the one thing a person opens the entry to read; it is not on a blank one, where
+   * it would be an empty box nothing can fill, and it is never in the payload, which the
+   * application would refuse.
+   */
+  const fields = mode === 'create' ? editableFields(resource) : shownFields(resource)
+  const writable = editableFields(resource)
   /**
    * The keys the answer named that this form has an input for.
    *
@@ -195,7 +204,7 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
 
     // Only what the resource declares is sent: an id or a timestamp the read
     // returned is not the form's to write back.
-    save.mutate(declaredValues(fields, draft))
+    save.mutate(declaredValues(writable, draft))
   }
 
   const singular = resource.label.replace(/s$/, '')
@@ -227,10 +236,10 @@ export const EntryForm = ({ mode }: { mode: 'create' | 'edit' }) => {
    */
   const changed =
     mode === 'create'
-      ? fields
+      ? writable
           .filter((field) => valueAt(draft, field.name) !== undefined)
           .map((field) => field.name)
-      : fields
+      : writable
           .filter(
             (field) =>
               JSON.stringify(valueAt(draft, field.name) ?? null) !==

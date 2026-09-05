@@ -98,3 +98,14 @@ for a value, any other field only whether it is filled in, because a form does n
 constrain what a free field holds. Its preview draws a conditional section faded, with
 the condition written over it, since nothing in a preview is typed and the section would
 otherwise be invisible to the person arranging it. Tabs carry no condition yet.
+
+## Amendment — a read-only field is drawn, disabled
+
+The entry form left a `readOnly()` field off entirely, so an order's total and the moment
+it was placed — the things a person opens an order *to read* — were on the listing and
+nowhere else. The form of an existing entry now draws every field that is not hidden;
+a read-only one sits in a disabled fieldset, says it is the application's to set where
+it has no help of its own, and is never in the payload, which the application would
+refuse. A blank entry still draws only what can be typed: an empty box nothing can fill
+is not information. A layout may therefore place a read-only field, which the validator
+always allowed and Studio used to drop in silence.

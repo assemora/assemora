@@ -1329,7 +1329,7 @@ export const FieldInput = ({ field, value, issues, onChange }: FieldInputProps) 
       help={
         field.kind === 'slug' && field.source !== undefined
           ? t('fields.madeFrom', { source: field.source })
-          : field.help
+          : (field.help ?? (field.readOnly ? t('fields.readOnly') : undefined))
       }
       required={field.required}
       {...(shown.length === 0 ? {} : { errors: shown })}

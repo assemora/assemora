@@ -14,6 +14,7 @@ import {
   editableFields,
   type FieldDescriptor,
   type ResourceDescriptor,
+  shownFields,
   sortableFields,
   valueAt,
 } from './introspection.ts'
@@ -88,6 +89,18 @@ describe('the fields a screen shows', () => {
 
     expect(editableFields(mixed).map((each) => each.name)).toEqual(['title'])
     expect(columnFields(mixed).map((each) => each.name)).toEqual(['title', 'createdAt'])
+  })
+
+  it('draws a read-only field, so a total is on the form it belongs to, and still never a hidden one', () => {
+    const mixed = resource({
+      fields: [
+        field({ name: 'title' }),
+        field({ name: 'passwordHash', hidden: true }),
+        field({ name: 'total', readOnly: true }),
+      ],
+    })
+
+    expect(shownFields(mixed).map((each) => each.name)).toEqual(['title', 'total'])
   })
 })
 

@@ -445,6 +445,11 @@ export const CONTENT = {
     ru: 'Здесь пока ничего нет.',
   },
   'fields.addItem': { en: 'Add an item', uk: 'Додати елемент', ru: 'Добавить элемент' },
+  'fields.readOnly': {
+    en: 'Set by the application, not by hand',
+    uk: 'Встановлюється застосунком, не вручну',
+    ru: 'Устанавливается приложением, не вручную',
+  },
   'fields.madeFrom': {
     en: 'Left empty, this is made from {source}',
     uk: 'Якщо лишити порожнім, буде зроблено з «{source}»',

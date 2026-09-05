@@ -43,15 +43,27 @@ const FieldCell = ({
   props: Pick<FormProps, 'draft' | 'issuesFor' | 'onChange'>
 }) => {
   const issues = props.issuesFor?.(placed.field.name)
+  const input = (
+    <FieldInput
+      field={placed.field}
+      value={valueAt(props.draft, placed.field.name)}
+      {...(issues === undefined ? {} : { issues })}
+      onChange={(value) => props.onChange(placed.field.name, value)}
+    />
+  )
 
   return (
     <div className={join('min-w-0', placed.width === 'half' ? 'col-span-1' : 'col-span-full')}>
-      <FieldInput
-        field={placed.field}
-        value={valueAt(props.draft, placed.field.name)}
-        {...(issues === undefined ? {} : { issues })}
-        onChange={(value) => props.onChange(placed.field.name, value)}
-      />
+      {placed.field.readOnly ? (
+        // A disabled fieldset disables every control inside it, whatever kind draws the
+        // field, and the application refuses a write that names the field anyway — so
+        // what is shown is what was read, and nothing typed here could go back.
+        <fieldset disabled className="min-w-0 border-0 p-0 m-0 pointer-events-none">
+          {input}
+        </fieldset>
+      ) : (
+        input
+      )}
     </div>
   )
 }

@@ -21,11 +21,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError, api } from '../api/client.ts'
 import {
   type Condition,
-  editableFields,
   type FieldDescriptor,
   type Layout,
   type LayoutSection,
   labelOf,
+  shownFields,
   useIntrospection,
 } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
@@ -302,7 +302,7 @@ export const LayoutEditor = () => {
 
   const resource = introspection.data?.resources?.find((one) => one.name === params.resource)
   const described = introspection.data?.layouts?.find((one) => one.name === params.resource)
-  const fields = resource === undefined ? [] : editableFields(resource)
+  const fields = resource === undefined ? [] : shownFields(resource)
   const byName = new Map(fields.map((field) => [field.name, field]))
 
   const [layout, setLayout] = useState<Layout>()
@@ -314,7 +314,7 @@ export const LayoutEditor = () => {
   useEffect(() => {
     if (resource === undefined || layout !== undefined) return
 
-    const starting = described?.layout ?? derivedLayout(editableFields(resource))
+    const starting = described?.layout ?? derivedLayout(shownFields(resource))
 
     setLayout(starting)
     setSaved(starting)
