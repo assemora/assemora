@@ -1,6 +1,6 @@
 {
   "name": "assemora",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The umbrella: one call that assembles an Assemora application",
   "license": "Apache-2.0",
   "publishConfig": {

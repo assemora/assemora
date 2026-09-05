@@ -1,6 +1,6 @@
 {
   "name": "@assemora/notifications",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Outbound notifications: what an application announces, to whom, and over which channel (SPEC.md §81)",
   "license": "Apache-2.0",
   "publishConfig": {

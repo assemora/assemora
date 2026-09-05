@@ -1,6 +1,6 @@
 {
   "name": "@assemora/http",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "HTTP layer and route DSL (Fastify inside, never exposed)",
   "license": "Apache-2.0",
   "publishConfig": {
