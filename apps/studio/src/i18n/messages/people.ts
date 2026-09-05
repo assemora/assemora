@@ -164,6 +164,28 @@ export const PEOPLE = {
     uk: 'Це і є агент. Скопіюйте зараз — більше він не показується.',
     ru: 'Это и есть агент. Скопируйте сейчас — больше он не показывается.',
   },
+  'people.connectTitle': {
+    en: 'Connect it',
+    uk: 'Під’єднати',
+    ru: 'Подключить',
+  },
+  'people.connectClaudeCode': {
+    en: 'Claude Code: paste this into a terminal, then start a new session.',
+    uk: 'Claude Code: вставте це в термінал і почніть нову сесію.',
+    ru: 'Claude Code: вставьте это в терминал и начните новую сессию.',
+  },
+  'people.connectOthers': {
+    en: 'Claude Desktop, Cursor and the like: add this to their MCP configuration.',
+    uk: 'Claude Desktop, Cursor та подібні: додайте це до їхньої конфігурації MCP.',
+    ru: 'Claude Desktop, Cursor и подобные: добавьте это в их конфигурацию MCP.',
+  },
+  'people.mcpOff': {
+    en: 'This application mounts no MCP endpoint, so there is nothing to connect to. Set mcp: true.',
+    uk: 'Цей застосунок не має точки доступу MCP, тож під’єднуватися нема до чого. Задайте mcp: true.',
+    ru: 'У этого приложения нет точки доступа MCP, подключаться не к чему. Задайте mcp: true.',
+  },
+  'people.copy': { en: 'Copy', uk: 'Копіювати', ru: 'Копировать' },
+  'people.copied': { en: 'Copied', uk: 'Скопійовано', ru: 'Скопировано' },
   'people.noAgents': { en: 'No agents yet', uk: 'Агентів ще немає', ru: 'Агентов пока нет' },
   'people.noAgentsBody': {
     en: 'An agent is an identity with its own permissions, audited like anyone else.',

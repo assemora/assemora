@@ -9,6 +9,7 @@ import { Users as UsersIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 
 import { ApiError, api } from '../api/client.ts'
+import { useIntrospection } from '../api/introspection.ts'
 import type { Paged } from '../api/pages.ts'
 import { useSession } from '../api/session.tsx'
 import type { MessageKey } from '../i18n/messages.ts'
@@ -27,6 +28,7 @@ import {
   Spinner,
 } from '../ui/index.tsx'
 import { Screen, ScreenBody, ScreenHead, ScreenTitle, Tabs } from '../ui/layout.tsx'
+import { claudeCodeCommand, connectorName, mcpAddress, mcpJson } from './connect.ts'
 
 type UserRow = {
   readonly id: string
@@ -623,7 +625,13 @@ const Tokens = () => {
  * hold `auth.agents.create`, and refuses to grant a permission the actor does not hold
  * itself (SPEC.md §72), so this form can only ever ask.
  */
-const NewAgent = ({ onCreated, onClose }: { onCreated(token: string): void; onClose(): void }) => {
+const NewAgent = ({
+  onCreated,
+  onClose,
+}: {
+  onCreated(issued: { token: string; name: string }): void
+  onClose(): void
+}) => {
   const client = useQueryClient()
   const t = useT()
   const [name, setName] = useState('')
@@ -644,7 +652,7 @@ const NewAgent = ({ onCreated, onClose }: { onCreated(token: string): void; onCl
         ...(description.trim() === '' ? {} : { description: description.trim() }),
       }),
     onSuccess: async (result) => {
-      onCreated(result.token)
+      onCreated({ token: result.token, name })
       await client.invalidateQueries({ queryKey: ['agents'] })
       onClose()
     },
@@ -719,12 +727,83 @@ const NewAgent = ({ onCreated, onClose }: { onCreated(token: string): void; onCl
   )
 }
 
+/**
+ * A block of text and the one button that matters for it.
+ *
+ * Drawn as text rather than as an input: nothing here is typed, it is copied. The
+ * clipboard is asked and, where a browser refuses — no secure context, no permission —
+ * the text is still on screen to select, which is why the button is beside the text and
+ * not instead of it.
+ */
+const Snippet = ({ text, label }: { text: string; label: string }) => {
+  const t = useT()
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-base text-ink-soft">{label}</p>
+        <Button variant="secondary" size="sm" onClick={copy}>
+          {copied ? t('people.copied') : t('people.copy')}
+        </Button>
+      </div>
+      <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm">
+        {text}
+      </pre>
+    </div>
+  )
+}
+
+/**
+ * The token, and what to do with it.
+ *
+ * A token on its own is a credential with no instructions. The owner of a site who
+ * has just made an agent wants one thing: to paste something somewhere and have the
+ * agent answer. So the address comes from the registry, the name from the agent, and
+ * the two texts a client takes are written out ready (`connect.ts`).
+ */
+const Issued = ({ token, name }: { token: string; name: string }) => {
+  const t = useT()
+  const introspection = useIntrospection()
+  const url = mcpAddress(introspection.data?.settings, window.location.origin)
+  const connection = url === undefined ? undefined : { name: connectorName(name), url, token }
+
+  return (
+    <Card className="space-y-4 border-accent/30 bg-accent-wash p-4">
+      <div>
+        <p className="mb-1 text-base font-medium text-accent-ink">{t('people.agentTokenIs')}</p>
+        <code className="block break-all font-mono text-sm">{token}</code>
+      </div>
+
+      <p className="font-medium text-accent-ink">{t('people.connectTitle')}</p>
+      {connection === undefined ? (
+        <p className="text-base text-ink-soft">{t('people.mcpOff')}</p>
+      ) : (
+        <>
+          <Snippet text={claudeCodeCommand(connection)} label={t('people.connectClaudeCode')} />
+          <Snippet text={mcpJson(connection)} label={t('people.connectOthers')} />
+        </>
+      )}
+    </Card>
+  )
+}
+
 const Agents = () => {
   const client = useQueryClient()
   const t = useT()
   const [page, setPage] = useState(1)
   const [creating, setCreating] = useState(false)
-  const [issued, setIssued] = useState<string>()
+  const [issued, setIssued] = useState<{ token: string; name: string }>()
 
   const agents = useQuery({
     queryKey: ['agents', page],
@@ -743,12 +822,7 @@ const Agents = () => {
         <Button onClick={() => setCreating(true)}>{t('people.createAgent')}</Button>
       </div>
 
-      {issued !== undefined && (
-        <Card className="border-accent/30 bg-accent-wash p-4">
-          <p className="mb-1 text-base font-medium text-accent-ink">{t('people.agentTokenIs')}</p>
-          <code className="block break-all font-mono text-sm">{issued}</code>
-        </Card>
-      )}
+      {issued !== undefined && <Issued token={issued.token} name={issued.name} />}
 
       {agents.isError && <Failure error={agents.error} />}
 
