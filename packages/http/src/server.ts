@@ -504,6 +504,16 @@ const policyFor = (security: HttpServerOptions['security']): string => {
     "default-src 'self'",
     beside("script-src 'self'", security?.scriptSources),
     "style-src 'self' 'unsafe-inline'",
+    /**
+     * `data:` because a bundler inlines a small font, and Studio's are inlined.
+     *
+     * Without this directive fonts fall to `default-src 'self'`, which forbids a
+     * `data:` URL — so every deployment served Studio with its typefaces blocked and
+     * nothing saying so anywhere but the browser console. It is the same reason
+     * `img-src` names `data:`, and it is as narrow: a font is not executable, and no
+     * remote origin is admitted here.
+     */
+    "font-src 'self' data:",
     beside(`img-src 'self' data: blob:${from}`, security?.imageSources),
     // Only when there is something to say: with no entries `default-src 'self'` is
     // already the answer, and repeating it would be a directive that says nothing.

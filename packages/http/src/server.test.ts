@@ -902,6 +902,23 @@ describe('the headers every response carries (SPEC.md §85)', () => {
     expect(policy).not.toContain("script-src 'self' https://cdn.example.com")
   })
 
+  it('lets a bundled font load from a data: URL, so Studio is not served without its typefaces', async () => {
+    clearRouteRegistry()
+
+    const running = build({})
+
+    const response = await running.inject({ method: 'GET', url: '/api/health' })
+    const policy = String(response.headers['content-security-policy'])
+
+    // Studio's CSS inlines its faces, and with no `font-src` they fell to
+    // `default-src 'self'`, which forbids `data:` — so every deployment rendered
+    // Studio in the browser's default fonts, and said so nowhere but the console.
+    expect(policy).toContain("font-src 'self' data:")
+    // Narrow, and named: no remote origin is admitted by it.
+    expect(policy).not.toContain('font-src *')
+    expect(policy).toContain("default-src 'self'")
+  })
+
   it('lets a named third party run a script, and only that (SPEC.md §85)', async () => {
     clearRouteRegistry()
 
