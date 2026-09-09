@@ -207,10 +207,17 @@ const count = (amount: number, noun: string): string =>
  * What the developer does next — and there are two answers, because there are two
  * worlds.
  *
- * Once there is a release it is three commands, and `pnpm dev` rather than
+ * Once there is a release it is four commands, and `pnpm dev` rather than
  * `assemora dev`: the executable arrives with the install on the line above it, and
  * telling somebody to run a binary that is not there yet is how a first run fails
  * before it starts.
+ *
+ * `pnpm build` is the third of them because it writes `app/dist`, which is the bundle
+ * `/preview` serves and the builder canvas frames (SPEC.md §59). Skipped, the first
+ * thing a new project shows is a page builder with nothing in its canvas — and the
+ * server says so in a warning nobody reading the printed steps was told to expect. A
+ * page builder that cannot draw a page is the worst available first impression, and it
+ * costs one line to not make it.
  *
  * Until then there is no install to run at all. Printing `pnpm install` and then a
  * paragraph saying that `pnpm install` has nothing to fetch is one instruction and one
@@ -221,7 +228,9 @@ const count = (amount: number, noun: string): string =>
 export const nextSteps = (cwd: string, directory: string, released: boolean): readonly string[] => {
   const where = shortestPath(cwd, directory)
 
-  if (released) return ['', 'Next', `  cd ${where}`, '  pnpm install', '  pnpm dev']
+  if (released) {
+    return ['', 'Next', `  cd ${where}`, '  pnpm install', '  pnpm build', '  pnpm dev']
+  }
 
   return [
     '',
