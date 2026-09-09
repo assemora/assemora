@@ -1,6 +1,6 @@
 {
   "name": "@assemora/plugin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Plugin registration API",
   "license": "Apache-2.0",
   "publishConfig": {

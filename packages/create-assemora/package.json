@@ -1,6 +1,6 @@
 {
   "name": "create-assemora",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Scaffold an Assemora project: pnpm create assemora my-project",
   "license": "Apache-2.0",
   "publishConfig": {
