@@ -5,6 +5,7 @@ the real command and rolling it back, so the preview cannot disagree with the wr
 predicts.**
 
 [![verify](https://github.com/assemora/assemora/actions/workflows/verify.yml/badge.svg)](https://github.com/assemora/assemora/actions/workflows/verify.yml)
+[![npm](https://img.shields.io/npm/v/assemora?logo=npm&label=npm&color=cb3837)](https://www.npmjs.com/package/assemora)
 
 Around that claim is a TypeScript framework and CMS with one application layer, which
 the developer (TypeScript API), the person editing (Studio) and the AI agent (MCP) all
@@ -51,9 +52,10 @@ grep ASSEMORA_SEED_PASSWORD examples/company/.env
 
 ## Status
 
-Early, and published: every package is on npm at `0.1.0`, in lockstep, so
-`pnpm create assemora` scaffolds a project that installs and `pnpm add assemora` fetches
-the umbrella. The public API is still free to change before 1.0.
+Early, and published: every package is on npm in lockstep, at the version the badge
+above reads, so `pnpm create assemora` scaffolds a project that installs and
+`pnpm add assemora` fetches the umbrella. The public API is still free to change
+before 1.0.
 [`docs/releasing.md`](docs/releasing.md) is the procedure — `pnpm release <version>`.
 
 All ten phases are complete. The scaffolder itself runs, and
@@ -240,7 +242,7 @@ The rest of the table is where Assemora loses today, stated plainly.
 | GraphQL | No | Yes | Yes, as a plugin | Yes |
 | Realtime | No | No | No | WebSockets and GraphQL subscriptions |
 | License | Apache-2.0 | MIT | MIT | Source-available (MSCL); free below $5M revenue and 50 employees |
-| On npm | Not yet | Yes | Yes | Yes |
+| On npm | Yes | Yes | Yes | Yes |
 
 As of September 2026, read from each project's own documentation:
 [Payload](https://payloadcms.com/docs/plugins/mcp),
