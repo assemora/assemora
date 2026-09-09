@@ -171,12 +171,13 @@ describe('run', () => {
     expect(out).toContain('no DATABASE_URL')
   })
 
-  it('finishes with the three commands to run next, in order, once there is a release', () => {
+  it('puts pnpm build between the install and the dev server, not install then dev straight into an empty canvas', () => {
     const steps = [...nextSteps('/work', '/work/my-project', true)].map((entry) => entry.trim())
 
     expect(steps.indexOf('cd my-project')).toBeGreaterThan(steps.indexOf('Next'))
     expect(steps.indexOf('pnpm install')).toBe(steps.indexOf('cd my-project') + 1)
-    expect(steps.indexOf('pnpm dev')).toBe(steps.indexOf('pnpm install') + 1)
+    expect(steps.indexOf('pnpm build')).toBe(steps.indexOf('pnpm install') + 1)
+    expect(steps.indexOf('pnpm dev')).toBe(steps.indexOf('pnpm build') + 1)
   })
 
   /**
