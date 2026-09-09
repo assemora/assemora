@@ -1,0 +1,21 @@
+# Everything the build produces for itself. A stale `dist` copied in from a developer's
+# machine is the one way this image can differ from a clean checkout.
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+**/.turbo
+**/.next
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Credentials, and the directory the CLI writes.
+.env
+**/.env
+.assemora
+
+.git
+.github
+.DS_Store
+**/.DS_Store
