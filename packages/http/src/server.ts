@@ -173,6 +173,40 @@ export type HttpServerOptions = {
      * here.
      */
     readonly mediaSources?: readonly string[]
+    /**
+     * Origins a script may be loaded from, beside this one (SPEC.md §85).
+     *
+     * `script-src 'self'` is the right default, and the reason it withholds
+     * `'unsafe-inline'` is that it is what stops a stray `<script>` in stored content
+     * from running. But an application carrying an analytics tag, a payment widget or a
+     * map is loading a script from somebody else's origin, and under the default it loads
+     * nothing — with no error the server can see and none anybody will look for, because
+     * the page still renders. Naming the origin here makes that a decision rather than a
+     * discovery.
+     *
+     * Widens `script-src` and nothing else. An origin trusted to run a script here has
+     * not thereby been trusted to receive what this page knows: that is `connectSources`.
+     */
+    readonly scriptSources?: readonly string[]
+    /**
+     * Origins this page may open a connection to, beside this one (SPEC.md §85).
+     *
+     * `fetch`, `sendBeacon` and a WebSocket all answer to `connect-src`, so this is the
+     * directive that decides whether a third-party script can report anything back. A tag
+     * whose origin is in `scriptSources` and not here loads, runs, and measures into a
+     * wall.
+     */
+    readonly connectSources?: readonly string[]
+    /**
+     * Origins an image may be loaded from, beside this one and beside `mediaSources`.
+     *
+     * Separate from `mediaSources` because the two answer different questions.
+     * `mediaSources` is where this application's *own* uploads are kept; this is for an
+     * image belonging to somebody else's script — a tracking pixel, a badge, a tile. Both
+     * widen `img-src`; only `mediaSources` widens `media-src`, because an upload can be a
+     * video and a pixel never is.
+     */
+    readonly imageSources?: readonly string[]
     /** Replaces the generated policy outright, for an application with its own. */
     readonly contentSecurityPolicy?: string
   }
@@ -462,15 +496,19 @@ const policyFor = (security: HttpServerOptions['security']): string => {
   const media = security?.mediaSources ?? []
   const from = media.length === 0 ? '' : ` ${media.join(' ')}`
 
+  /** A directive, widened by whatever the application named for it and by nothing else. */
+  const beside = (base: string, extra: readonly string[] = []): string =>
+    extra.length === 0 ? base : `${base} ${extra.join(' ')}`
+
   return [
     "default-src 'self'",
-    "script-src 'self'",
+    beside("script-src 'self'", security?.scriptSources),
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob:${from}`,
+    beside(`img-src 'self' data: blob:${from}`, security?.imageSources),
     // Only when there is something to say: with no entries `default-src 'self'` is
     // already the answer, and repeating it would be a directive that says nothing.
     ...(media.length === 0 ? [] : [`media-src 'self'${from}`]),
-    "connect-src 'self'",
+    beside("connect-src 'self'", security?.connectSources),
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",

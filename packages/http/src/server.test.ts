@@ -902,6 +902,60 @@ describe('the headers every response carries (SPEC.md §85)', () => {
     expect(policy).not.toContain("script-src 'self' https://cdn.example.com")
   })
 
+  it('lets a named third party run a script, and only that (SPEC.md §85)', async () => {
+    clearRouteRegistry()
+
+    const running = build({
+      security: { scriptSources: ['https://www.googletagmanager.com'] },
+    })
+
+    running.mount(login)
+    await running.ready()
+
+    const response = await running.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'ada@x.io', password: 'longenough' },
+    })
+    const policy = String(response.headers['content-security-policy'])
+
+    expect(policy).toContain("script-src 'self' https://www.googletagmanager.com")
+    // An origin allowed to run a script here has not been allowed to be told what this
+    // page knows. That is a separate decision, and it was not made.
+    expect(policy).toContain("connect-src 'self'")
+    expect(policy).not.toContain("connect-src 'self' https://www.googletagmanager.com")
+    expect(policy).toContain("img-src 'self' data: blob:;")
+  })
+
+  it('opens the connection and the image separately from the script', async () => {
+    clearRouteRegistry()
+
+    const running = build({
+      security: {
+        connectSources: ['https://*.google-analytics.com'],
+        imageSources: ['https://*.google-analytics.com'],
+      },
+    })
+
+    running.mount(login)
+    await running.ready()
+
+    const response = await running.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'ada@x.io', password: 'longenough' },
+    })
+    const policy = String(response.headers['content-security-policy'])
+
+    expect(policy).toContain("connect-src 'self' https://*.google-analytics.com")
+    expect(policy).toContain("img-src 'self' data: blob: https://*.google-analytics.com")
+    // A tag that may report is not thereby a tag that may load.
+    expect(policy).toContain("script-src 'self'")
+    expect(policy).not.toContain("script-src 'self' https://*.google-analytics.com")
+    // `media-src` belongs to the media library and is not written for a pixel.
+    expect(policy).not.toContain('media-src')
+  })
+
   it('sends the narrow policy when no other origin serves the files', async () => {
     server.mount(login)
     await server.ready()

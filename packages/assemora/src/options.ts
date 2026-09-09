@@ -346,6 +346,25 @@ export type AssemoraOptions = {
   readonly jobs?: JobsOptions
   readonly frontend?: FrontendOptions
   /**
+   * Third-party origins this application's pages are allowed to reach (SPEC.md §85).
+   *
+   * Everything else about the Content-Security-Policy is decided here rather than by the
+   * application: `frame-ancestors` follows from where Studio is, `img-src` from where the
+   * media library keeps its files, and the strict answer is right for the rest. These
+   * three are the exception, because they are the only ones an application can know and
+   * this package cannot — a payment widget, a map, an analytics tag.
+   *
+   * Additive, and each widens one directive: `scripts` may run, `connections` may be
+   * opened, `images` may be loaded. Naming an origin under one of them says nothing about
+   * the others, which is the point — a tag allowed to load is not thereby allowed to
+   * report. Leave them out and the policy is exactly what it was.
+   */
+  readonly thirdParty?: {
+    readonly scripts?: readonly string[]
+    readonly connections?: readonly string[]
+    readonly images?: readonly string[]
+  }
+  /**
    * Browser origins other than this one that may *call* this application (SPEC.md §85).
    *
    * Empty by default, because Studio is served beside the API and nothing else needs
@@ -493,6 +512,12 @@ export type Settings = {
   readonly studio: ResolvedStudio | undefined
   readonly mcp: ResolvedMcp | undefined
   readonly frontend: ResolvedFrontend | undefined
+  /** Always three lists, empty where the application named nothing. */
+  readonly thirdParty: {
+    readonly scripts: readonly string[]
+    readonly connections: readonly string[]
+    readonly images: readonly string[]
+  }
   readonly session: ResolvedSession
   readonly observability: ResolvedObservability
   readonly origins: readonly string[]
@@ -567,6 +592,11 @@ export const resolve = (options: AssemoraOptions): Settings => ({
           // frontend built by something else names its own.
           immutableAssets: options.frontend.immutableAssets ?? DEFAULT_IMMUTABLE,
         },
+  thirdParty: {
+    scripts: options.thirdParty?.scripts ?? [],
+    connections: options.thirdParty?.connections ?? [],
+    images: options.thirdParty?.images ?? [],
+  },
   session: {
     secure: options.session?.secure ?? true,
     sameSite: options.session?.sameSite ?? 'strict',

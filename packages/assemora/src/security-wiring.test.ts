@@ -16,6 +16,7 @@ import { createMemoryAdapter } from '@assemora/database'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { type AssemoraApplication, assemora } from './assemora.js'
+import type { AssemoraOptions } from './options.js'
 
 const capture = vi.hoisted(() => ({ options: [] as Record<string, unknown>[] }))
 
@@ -35,7 +36,10 @@ vi.mock('@assemora/http', async (importOriginal) => {
 
 let running: AssemoraApplication[] = []
 
-const build = (options: { readonly origins?: readonly string[] }): Record<string, unknown> => {
+/** Whatever an application may say that reaches the HTTP layer's `security` (SPEC.md §85). */
+const build = (
+  options: Pick<AssemoraOptions, 'origins' | 'thirdParty'>,
+): Record<string, unknown> => {
   const built = assemora({ ...options, database: createMemoryAdapter() })
 
   running.push(built)
@@ -67,6 +71,30 @@ describe('what the umbrella asks the HTTP layer for (SPEC.md §85)', () => {
     // Optional in `createHttpServer`, and leaving it out turns CSRF off entirely.
     expect(asked.csrf).toEqual({ cookie: 'assemora_csrf' })
     expect(asked.security).toEqual({ frameAncestors: [] })
+  })
+
+  it('passes a third party along one directive at a time, and only when named', () => {
+    // Nothing named is nothing asked for. An empty list would widen nothing and still
+    // put the key in the object, which reads as a decision somebody made.
+    expect(build({}).security).toEqual({ frameAncestors: [] })
+
+    capture.options = []
+
+    const asked = build({
+      thirdParty: {
+        scripts: ['https://www.googletagmanager.com'],
+        connections: ['https://*.google-analytics.com'],
+      },
+    })
+
+    expect(asked.security).toEqual({
+      frameAncestors: [],
+      scriptSources: ['https://www.googletagmanager.com'],
+      connectSources: ['https://*.google-analytics.com'],
+    })
+    // The one that was not named is not there: a tag allowed to load and to report has
+    // not thereby been allowed to put an image on the page.
+    expect(asked.security).not.toHaveProperty('imageSources')
   })
 
   it('asks for CORS only when an origin was allowed, and never as a wildcard', () => {

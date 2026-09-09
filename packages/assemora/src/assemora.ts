@@ -470,6 +470,17 @@ const serve = (
     security: {
       frameAncestors: frameAncestorsFor(settings),
       ...(mediaOrigin === undefined ? {} : { mediaSources: [mediaOrigin] }),
+      // Passed only where the application named something. An empty list widens nothing
+      // and would still put the key in the object, which reads as a decision made.
+      ...(settings.thirdParty.scripts.length === 0
+        ? {}
+        : { scriptSources: settings.thirdParty.scripts }),
+      ...(settings.thirdParty.connections.length === 0
+        ? {}
+        : { connectSources: settings.thirdParty.connections }),
+      ...(settings.thirdParty.images.length === 0
+        ? {}
+        : { imageSources: settings.thirdParty.images }),
     },
   })
 
