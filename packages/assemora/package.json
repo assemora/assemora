@@ -22,12 +22,14 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "!dist/.tsbuildinfo"
+    "!dist/.tsbuildinfo",
+    "guide"
   ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rm -rf dist guide *.tsbuildinfo",
+    "prepack": "node --disable-warning=ExperimentalWarning scripts/copy-guide.mjs"
   },
   "dependencies": {
     "@assemora/audit": "workspace:*",

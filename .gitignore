@@ -9,6 +9,8 @@ coverage/
 next-env.d.ts
 # Machine-made copies of starters/, packed into create-assemora
 packages/create-assemora/templates/
+# Machine-made by `prepack`; the guide itself is docs/guide/.
+packages/assemora/guide/
 .env
 .env.*
 !.env.example
