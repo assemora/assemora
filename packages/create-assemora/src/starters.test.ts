@@ -140,6 +140,29 @@ describe('starters/', () => {
    * This repository may demand whatever its own tooling needs — `.node-version` pins
    * that — but a project it generates may only demand what the framework documents.
    */
+  /**
+   * What a new project offers before anybody has thought about it.
+   *
+   * Studio ships English, Ukrainian and Russian, and a deployment that says nothing
+   * offers all three (ADR-0034) — the right default for the *mechanism*, because the
+   * set is no longer a constant and hiding what a bundle has would be a second ceiling.
+   * It is the wrong default for a *project*: it puts the three languages this
+   * framework's author happened to write on the sign-in screen of a shop in Brazil.
+   *
+   * So the starter decides, in its own source, where the line can be read and widened.
+   * A default nobody can see is a default nobody changes.
+   */
+  it.each(STARTERS)(
+    '%s offers one interface language, and says so where it can be read',
+    (name) => {
+      const source = readFileSync(join(starter(name), 'src', 'app.ts'), 'utf8')
+
+      expect(source).toContain("studio: { languages: ['en'] }")
+      // Named rather than implied: a reader has to learn that widening it is a word.
+      expect(source).toContain('languagePacks')
+    },
+  )
+
   it.each(STARTERS)('%s asks for the Node the framework documents, not a patch of it', (name) => {
     const manifest = JSON.parse(readFileSync(join(starter(name), 'package.json'), 'utf8')) as {
       engines?: { node?: string }
