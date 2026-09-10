@@ -111,7 +111,15 @@ export const createApp = (): AssemoraApplication =>
     // first-party exactly as they would be if this server answered the browser
     // directly. The bundle comes from `@assemora/studio`, which this project depends
     // on and the framework deliberately does not.
-    studio: true,
+    //
+    // `languages` is which languages Studio offers to be *read* in — never the
+    // languages of the content, which is `locales` (SPEC.md §131, ADR-0034). The bundle
+    // speaks English, Ukrainian and Russian; this project offers English, because that
+    // is the one a new project can be sure of, and a switcher offering languages nobody
+    // in the room reads is furniture. Widen it — `['en', 'uk']` — or delete the line to
+    // offer everything the bundle has. A language the bundle never had is a directory
+    // of JSON: `studio: { languagePacks: './i18n' }`.
+    studio: { languages: ['en'] },
     // assemora:end
     // assemora:if mcp
     // An agent proposes; a person applies (SPEC.md §75). `mutations: 'direct'` is the
