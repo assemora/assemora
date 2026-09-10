@@ -11,7 +11,7 @@
  * has left it — built or not, installed or not — because that is the state a
  * developer's `pnpm create assemora` meets.
  */
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -125,6 +125,27 @@ const STARTERS: readonly string[] = readdirSync(join(here, '..', '..', '..', 'st
 describe('starters/', () => {
   it('holds the three this repository ships', () => {
     expect(STARTERS).toStrictEqual(['bare', 'blog', 'nextjs'])
+  })
+
+  /**
+   * What a *generated project* needs, which is not what this repository needs.
+   *
+   * ADR-0005 records the requirement as Node 24 — the version that executes `.ts`
+   * directly. The floor shipped to every project was `>=24.11.0`, a patch level with
+   * nothing behind it: it was written in the first commit of the repository and copied
+   * into the starters, so it described whichever Node the author had that afternoon.
+   *
+   * The distance is not academic. `engine-strict=true` is ordinary in CI, and it turns
+   * this line into a refusal to install on a Node the project demonstrably runs on.
+   * This repository may demand whatever its own tooling needs — `.node-version` pins
+   * that — but a project it generates may only demand what the framework documents.
+   */
+  it.each(STARTERS)('%s asks for the Node the framework documents, not a patch of it', (name) => {
+    const manifest = JSON.parse(readFileSync(join(starter(name), 'package.json'), 'utf8')) as {
+      engines?: { node?: string }
+    }
+
+    expect(manifest.engines?.node).toBe('>=24.0.0')
   })
 })
 
