@@ -185,6 +185,15 @@ const WATCHDOG = new URL(
  * The watchdog is preloaded with the pid of the process supervising the server, which
  * is what it watches. `--watch` hands node's own flags on to the process it restarts,
  * so the server has it under `dev` too, one process below.
+ *
+ * Type stripping is how a project's TypeScript runs at all (ADR-0005), and node
+ * announces it as experimental on every boot. That announcement is addressed to
+ * whoever chose the flag, and nobody here did: it is the mechanism this CLI is built
+ * on, not a decision a project made. Left in, the first thing `pnpm dev` says to
+ * somebody trying the framework is that something about it might change at any moment.
+ * It is silenced for the same reason and by the same flag this repository already
+ * silences it in its own scripts — and only this warning, so a deprecation or a real
+ * experiment the project opted into still arrives.
  */
 export const serverArgv = (options: {
   readonly watch: boolean
@@ -192,6 +201,7 @@ export const serverArgv = (options: {
   readonly entry: string
   readonly supervisor: number
 }): string[] => [
+  '--disable-warning=ExperimentalWarning',
   ...(options.watch ? ['--watch'] : []),
   '--import',
   `${WATCHDOG.href}?parent=${options.supervisor}`,
