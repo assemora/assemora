@@ -1418,3 +1418,46 @@ describe('a path may answer with a signpost rather than an endpoint', () => {
     expect(() => server.mountRedirect('/preview', '/studio')).toThrow(/"\/preview"/)
   })
 })
+
+describe('a mount whose few entries the build could not know', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'assemora-documents-'))
+
+    await mkdir(join(root, 'i18n'), { recursive: true })
+    await writeFile(join(root, 'index.html'), '<!doctype html><title>Studio</title>')
+    // What the bundle was built with, months before this deployment said anything.
+    await writeFile(join(root, 'i18n', 'manifest.json'), JSON.stringify({ languages: ['shipped'] }))
+    await writeFile(join(root, 'i18n', 'uk.json'), JSON.stringify({ language: 'uk' }))
+
+    server.mountAssets({
+      path: '/studio',
+      root,
+      documents: { 'i18n/manifest.json': { languages: ['computed'] } },
+    })
+  })
+
+  it('answers a document from memory rather than from the directory', async () => {
+    const answered = await server.inject({ method: 'GET', url: '/studio/i18n/manifest.json' })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.headers['content-type']).toBe('application/json; charset=utf-8')
+    expect(answered.json()).toEqual({ languages: ['computed'] })
+  })
+
+  it('never lets one be cached, because it describes a live deployment', async () => {
+    const answered = await server.inject({ method: 'GET', url: '/studio/i18n/manifest.json' })
+
+    expect(answered.headers['cache-control']).toBe('no-cache')
+  })
+
+  it('leaves every other file in the directory alone', async () => {
+    // The shadow is per path. A document standing in for a manifest must not turn the
+    // packs beside it into 404s, which is the whole of what the bundle still serves.
+    const answered = await server.inject({ method: 'GET', url: '/studio/i18n/uk.json' })
+
+    expect(answered.statusCode).toBe(200)
+    expect(answered.json()).toEqual({ language: 'uk' })
+  })
+})

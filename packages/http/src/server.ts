@@ -1367,9 +1367,26 @@ export const createHttpServer = (options: HttpServerOptions): HttpServer => {
 
     mountAssets(assets) {
       const base = assets.path.replace(/\/+$/, '')
+      const documents = new Map(
+        Object.entries(assets.documents ?? {}).map(([path, value]) => [
+          path.replace(/^\/+/, ''),
+          JSON.stringify(value),
+        ]),
+      )
 
       const serve = async (request: FastifyRequest, reply: FastifyReply) => {
         const requested = (request.params as { '*'?: string })['*'] ?? ''
+        const written = documents.get(requested)
+
+        // Before the disk, so a document shadows a file of the same name: the bundle's
+        // own copy is the default and this is the deployment's answer.
+        if (written !== undefined) {
+          return await reply
+            .header('content-type', 'application/json; charset=utf-8')
+            .header('cache-control', 'no-cache')
+            .send(written)
+        }
+
         const found = await findAsset(assets, requested)
 
         if (found === undefined) {

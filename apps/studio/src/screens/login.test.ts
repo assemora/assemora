@@ -9,7 +9,7 @@ import { signInFailure } from './login.tsx'
  * what it says in any language. The catalogue's own suite proves the other two readings
  * exist.
  */
-const t = translator('en')
+const t = translator('en', {})
 
 describe('what a login screen says when signing in did not work', () => {
   it('says the same thing for an unknown address and a wrong password (SPEC.md §86)', () => {

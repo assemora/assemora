@@ -9,10 +9,11 @@
  * is English and the person filling the menu in reads Ukrainian. One control for two
  * questions would be wrong for both.
  *
- * It follows that changing this sends no request. Nothing on the screen is re-fetched,
- * because nothing the application holds depends on it — which is exactly why this is a
- * React context and the content locale is not: switching the interface re-renders, and
- * switching the content language invalidates every answer in the cache.
+ * It follows that changing this sends no request to the *application*. Nothing on the
+ * screen is re-fetched, because nothing the application holds depends on it — which is
+ * exactly why this is a React context and the content locale is not: switching the
+ * interface re-renders, and switching the content language invalidates every answer in
+ * the cache. What it does fetch is the pack, a static file beside the bundle (ADR-0034).
  */
 import {
   createContext,
@@ -26,8 +27,11 @@ import {
   useState,
 } from 'react'
 
+import type { Readings } from './catalogue.ts'
 import { HOLE, reading } from './catalogue.ts'
-import { isLanguage, LANGUAGES, type Language, preferred, SOURCE } from './languages.ts'
+import type { Language, Offered } from './languages.ts'
+import { preferred, SOURCE } from './languages.ts'
+import { ENGLISH, NO_READINGS, offered, readingsOf } from './load.ts'
 import { MESSAGES, type MessageKey, type Translate, translator, type Woven } from './messages.ts'
 
 /**
@@ -37,37 +41,98 @@ import { MESSAGES, type MessageKey, type Translate, translator, type Woven } fro
  */
 const STORED = 'assemora.studio.language'
 
+/**
+ * How long to wait for the manifest before drawing in English anyway.
+ *
+ * The manifest and the packs are static files on the same origin as the bundle that is
+ * already running, so in every ordinary case they answer in a few milliseconds and this
+ * timer is never reached. It is here for the case that is not ordinary — a proxy that
+ * swallows the request, a deployment serving the asset path as the index document — and
+ * what it buys is that the failure is a Studio in English rather than no Studio at all.
+ */
+const PATIENCE = 1500
+
 export type LanguageState = {
-  /** Every language this build of Studio was written in. */
-  readonly languages: readonly Language[]
+  /** Every language this deployment offers, English first. */
+  readonly languages: readonly Offered[]
   /** The one being read. */
   readonly language: Language
+  /** Its pack, or nothing where the language is English or the pack has not arrived. */
+  readonly readings: Readings
   choose(language: Language): void
 }
 
-const Context = createContext<LanguageState>({
-  languages: LANGUAGES,
+const ALONE: LanguageState = {
+  languages: [ENGLISH],
   language: SOURCE,
+  readings: NO_READINGS,
   choose: () => undefined,
-})
+}
 
 /**
- * What a first visit opens in.
+ * Exported so a screen can be drawn in a language that was decided rather than fetched.
  *
- * Read once, at mount, rather than watched: a person who changes their browser's
- * language list mid-session has not asked Studio to change, and a chosen language must
- * outlive the guess that preceded it.
+ * `LanguageProvider` reads the manifest and the pack over the network, which a test
+ * rendering one screen has no business doing — and the default below is a deployment
+ * offering English alone, which is a real state now (ADR-0034) and therefore the wrong
+ * thing for a test about something else to fall into silently.
  */
-const opening = (): Language => {
-  const stored = localStorage.getItem(STORED)
+export const LanguageContext = createContext<LanguageState>(ALONE)
 
-  if (stored !== null && isLanguage(stored)) return stored
+type Settled = {
+  readonly languages: readonly Offered[]
+  readonly language: Language
+  readonly readings: Readings
+}
 
-  return preferred(navigator.languages)
+const SETTLED_ENGLISH: Settled = {
+  languages: [ENGLISH],
+  language: SOURCE,
+  readings: NO_READINGS,
 }
 
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
-  const [language, setLanguage] = useState<Language>(opening)
+  const [settled, setSettled] = useState<Settled>()
+
+  /**
+   * What a first visit opens in.
+   *
+   * A language chosen before is honoured only while it is still on offer: a deployment
+   * that stopped offering Ukrainian must not leave the one person who picked it looking
+   * at a screen whose switcher cannot get them back. Otherwise the browser's own
+   * ordering decides, which is the one honest guess available before anybody has said.
+   *
+   * Read once, at mount, rather than watched: a person who changes their browser's
+   * language list mid-session has not asked Studio to change, and a chosen language must
+   * outlive the guess that preceded it.
+   */
+  useEffect(() => {
+    let live = true
+
+    void (async () => {
+      const languages = await offered()
+      const stored = localStorage.getItem(STORED)
+      const language =
+        stored !== null && languages.some((candidate) => candidate.tag === stored)
+          ? stored
+          : preferred(languages, navigator.languages)
+
+      const readings = await readingsOf(language)
+
+      if (live) setSettled({ languages, language, readings })
+    })()
+
+    const patience = setTimeout(() => {
+      setSettled((held) => held ?? SETTLED_ENGLISH)
+    }, PATIENCE)
+
+    return () => {
+      live = false
+      clearTimeout(patience)
+    }
+  }, [])
+
+  const language = settled?.language ?? SOURCE
 
   /**
    * The document says which language it is in.
@@ -81,20 +146,41 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     document.documentElement.lang = language
   }, [language])
 
+  /**
+   * The pack is fetched before the language changes, not after.
+   *
+   * So a switch is one repaint in the new language, rather than a repaint into English
+   * followed by a second one when the file lands. A pack that cannot be fetched answers
+   * with nothing, and the switch still happens: the person asked for Ukrainian and got
+   * an English screen with a Ukrainian switcher, which is visibly wrong and recoverable.
+   * Refusing to switch would be neither.
+   */
   const choose = useCallback((next: Language) => {
     localStorage.setItem(STORED, next)
-    setLanguage(next)
+
+    void readingsOf(next).then((readings) => {
+      setSettled((held) => (held === undefined ? held : { ...held, language: next, readings }))
+    })
   }, [])
 
   const state = useMemo<LanguageState>(
-    () => ({ languages: LANGUAGES, language, choose }),
-    [language, choose],
+    () => ({
+      languages: settled?.languages ?? ALONE.languages,
+      language,
+      readings: settled?.readings ?? NO_READINGS,
+      choose,
+    }),
+    [settled, language, choose],
   )
 
-  return <Context.Provider value={state}>{children}</Context.Provider>
+  // Nothing until the language is known, which is a paint rather than a wait: the
+  // alternative is a screen that draws in English and changes under the reader.
+  if (settled === undefined) return null
+
+  return <LanguageContext.Provider value={state}>{children}</LanguageContext.Provider>
 }
 
-export const useLanguage = (): LanguageState => useContext(Context)
+export const useLanguage = (): LanguageState => useContext(LanguageContext)
 
 /**
  * One sentence, in the language being read.
@@ -105,9 +191,9 @@ export const useLanguage = (): LanguageState => useContext(Context)
  * it, and which components those are is not a list anybody can keep.
  */
 export const useT = (): Translate => {
-  const { language } = useContext(Context)
+  const { language, readings } = useContext(LanguageContext)
 
-  return useMemo(() => translator(language), [language])
+  return useMemo(() => translator(language, readings), [language, readings])
 }
 
 /**
@@ -120,12 +206,12 @@ export const useT = (): Translate => {
  * language and at the end in another, and no pair of fragments can be both.
  */
 export const useWoven = (): Woven => {
-  const { language } = useContext(Context)
+  const { language, readings } = useContext(LanguageContext)
 
   return useMemo(
     () =>
       ((key: MessageKey, values: Readonly<Record<string, ReactNode>> = {}) => {
-        const text = reading(language, MESSAGES[key], values.count)
+        const text = reading(language, MESSAGES[key], readings[key], values.count)
         const parts: ReactNode[] = []
         let seen = 0
 
@@ -147,7 +233,7 @@ export const useWoven = (): Woven => {
 
         return createElement(Fragment, null, ...parts)
       }) as Woven,
-    [language],
+    [language, readings],
   )
 }
 
@@ -170,7 +256,7 @@ export const useDates = (): {
   dateTime(value: string): string
   time(value: string): string
 } => {
-  const { language } = useContext(Context)
+  const { language } = useContext(LanguageContext)
 
   return useMemo(
     () => ({

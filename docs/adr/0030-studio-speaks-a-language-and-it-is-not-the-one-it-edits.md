@@ -1,7 +1,11 @@
 # 0030. Studio speaks a language, and it is not the one it edits
 
-Status: accepted
+Status: accepted, amended by ADR-0034
 Date: 2026-09-01
+
+ADR-0034 reverses one of the three answers below — where the words live. The set of
+languages is no longer the bundle's, and a key no longer holds every language at once:
+English is compiled in and every other language is a pack. Everything else here stands.
 
 ## Context
 

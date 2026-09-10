@@ -1,5 +1,9 @@
 /**
- * Everything Studio says, in every language it says it in.
+ * Everything Studio says, in the language it is written in.
+ *
+ * English only, and every other language is a pack fetched beside the bundle
+ * (ADR-0034). This is the source: the keys are defined here, the call-site types are
+ * read off here, and a pack missing a key is answered from here.
  *
  * One object rather than eight, because the key space is one: `content.save` and
  * `pages.save` are different messages and `save` twice is a bug. The slices below are
@@ -13,7 +17,7 @@
  */
 import type { ReactNode } from 'react'
 
-import type { Message, Values } from './catalogue.ts'
+import type { Message, Readings, Values } from './catalogue.ts'
 import { say } from './catalogue.ts'
 import type { Language } from './languages.ts'
 import { CHROME } from './messages/chrome.ts'
@@ -76,13 +80,20 @@ type Word<Name extends string> = Name extends ''
 /**
  * The `{name}` holes in a message.
  *
- * Distributive on purpose: a plural's English reading is a union of its three forms, so
+ * Distributive on purpose: a plural's English reading is a union of both its forms, so
  * a hole that appears in only one of them is still required at the call site.
  */
 type Holes<S> = S extends `${string}{${infer Name}}${infer Rest}` ? Word<Name> | Holes<Rest> : never
 
-/** A message's English reading — the three forms of a plural, or the one of a phrase. */
-type English<M extends Message> = M['en'] extends readonly string[] ? M['en'][number] : M['en']
+/**
+ * A message's English reading — both forms of a plural, or the one of a phrase.
+ *
+ * Reading the holes off the *source* language is what lets every other language be a
+ * pack (ADR-0034): the call site is typed by what is compiled in, so a translation
+ * arriving at run time cannot change what `t` demands, and a pack cannot introduce a
+ * parameter the code was never asked for.
+ */
+type English<M extends Message> = M['en'] extends string ? M['en'] : M['en'][keyof M['en']]
 
 type Filling<M extends Message, V> = Readonly<Record<Holes<English<M>>, V>>
 
@@ -131,10 +142,15 @@ export type Woven = <K extends MessageKey>(
 /**
  * One message, in one language.
  *
+ * `readings` is the pack being read, and is empty for English and for a language whose
+ * pack has not arrived yet — in both cases every key falls through to the source, which
+ * is why a pack that is still loading shows a whole screen rather than a broken one.
+ *
  * The cast is the whole of the untyped surface in this file, and it is one line: the
  * implementation cannot see through `Filler<M>` while `M` is still a type parameter,
  * though every caller can. Narrowing it any other way would mean giving up the call
  * site's checking, which is the point of the machinery above.
  */
-export const translator = (language: Language): Translate =>
-  ((key: MessageKey, values: Values = {}) => say(language, MESSAGES[key], values)) as Translate
+export const translator = (language: Language, readings: Readings): Translate =>
+  ((key: MessageKey, values: Values = {}) =>
+    say(language, MESSAGES[key], readings[key], values)) as Translate

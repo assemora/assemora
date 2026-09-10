@@ -338,11 +338,32 @@ second is a fact about the person reading it. Both switchers sit on the account 
 named apart — `Editing in` and `Studio language` — and the second is there even in an
 application that serves one language. Changing it sends no request and re-renders.
 
-- Every word Studio writes is a key in `apps/studio/src/i18n/messages/`, and a key holds
-  **every language at once**: `Readonly<Record<Language, string>>` means a key with
-  English and nothing else does not compile, so a half-translated language cannot ship
-  unnoticed. English, Ukrainian and Russian are what the bundle ships; a fourth is one
-  column and one reading per key, and the build names the ones that are missing.
+- **A language is a file, not a constant (ADR-0034).** `LANGUAGES = ['en', 'uk', 'ru']`
+  used to be compiled into every bundle, which made its author's three languages the
+  three every deployment on earth offered — a Brazilian shop could not add Portuguese and
+  nobody could remove Russian. English is compiled in, because it is the source every
+  reading falls back to; every other language is a JSON pack in `public/i18n/`, and one a
+  deployment writes is the same kind of file in the same place. `studio: { languages }`
+  narrows the offer and `studio: { languagePacks }` adds to it, a project's pack shadowing
+  a shipped one of the same tag. The umbrella computes the manifest from those three facts
+  and serves it through `mountAssets`' `documents` — paths answered from memory, before
+  the disk — so the bundle's own copy is a default rather than the answer. Manifest and
+  packs are static assets, which is what lets the sign-in screen read them: it has no
+  session, and `/api/_introspection` answers 401 there.
+- The one thing that genuinely could not travel as data was plural selection, a
+  `Record<Language, (count) => 0 | 1 | 2>` — exactly ADR-0027's "a function does not
+  survive `JSON.stringify`", and what made the closed set look necessary. It does not need
+  to travel: `Intl.PluralRules` holds the rule for every language CLDR has. Asking the
+  platform also removed a second ceiling nobody had noticed — `[Counted, Counted, Counted]`
+  was three forms because Slavic needs three, so the *arity* of every language's plural was
+  a regional assumption in the type. Arabic takes six and Japanese one; the forms are
+  CLDR's categories now, `other` required because it is the one every language has.
+- The compiler no longer refuses an incomplete shipped pack, and that guarantee is moved
+  rather than dropped: `packs.test.ts` holds every shipped pack against the English
+  catalogue for completeness, invented holes, and the plural categories its own language
+  takes — so a Ukrainian pack missing `few` fails `pnpm verify`. A pack a *deployment*
+  adds is checked by nothing and degrades per key to English, which is per key on purpose:
+  falling back wholesale would turn one missing key into an English admin panel.
 - A message's parameters are read off its English reading with a template-literal type,
   so `t('entry.savedAt', { when })` does not compile without `when` and does not compile
   with a hole the sentence has not got. A translation may use *fewer* holes — Ukrainian

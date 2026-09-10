@@ -117,6 +117,31 @@ export type StudioOptions = {
    * scripts are 404s. It exists for a Studio built with a matching base of its own.
    */
   readonly path?: string
+  /**
+   * Which languages Studio offers to read itself in. Every one it ships, by default.
+   *
+   * The *interface* language, never the content's — `locales` is that, and it is a fact
+   * about the rows a screen is about (SPEC.md §131). This is a fact about the people who
+   * open Studio: an agency whose editors all read German has no use for a switcher
+   * offering four languages none of them reads, and a bundle that shipped three had no
+   * way to be told so (ADR-0034).
+   *
+   * `['en']` leaves English alone and draws no switcher at all. A tag named here that no
+   * pack answers is refused at boot rather than quietly dropped: a deployment that
+   * believes it offers German and does not is worse off than one that fails to start.
+   */
+  readonly languages?: readonly string[]
+  /**
+   * A directory of language packs this project wrote, served beside the ones Studio
+   * ships and offered on the same terms.
+   *
+   * One JSON file per language, named for its tag — `pt-BR.json` — holding `language`,
+   * `name` and `messages`. A key it does not carry is read in English, so a pack is
+   * worth adding before it is finished. A file here shadows a language of the same tag
+   * inside the bundle, which is how a deployment corrects a translation without waiting
+   * for a release.
+   */
+  readonly languagePacks?: string
 }
 
 export type McpOptions = {
@@ -466,6 +491,9 @@ export type ResolvedApi = {
 export type ResolvedStudio = {
   readonly root: string | undefined
   readonly path: string
+  /** The narrowed offer, or `undefined` where the deployment narrowed nothing. */
+  readonly languages: readonly string[] | undefined
+  readonly languagePacks: string | undefined
 }
 
 export type ResolvedMcp = {
@@ -550,7 +578,12 @@ const studioOf = (value: AssemoraOptions['studio']): ResolvedStudio | undefined 
 
   const given: StudioOptions = value === true ? {} : value
 
-  return { root: given.root, path: given.path ?? DEFAULT_STUDIO_PATH }
+  return {
+    root: given.root,
+    path: given.path ?? DEFAULT_STUDIO_PATH,
+    languages: given.languages,
+    languagePacks: given.languagePacks,
+  }
 }
 
 const mcpOf = (value: AssemoraOptions['mcp']): ResolvedMcp | undefined => {
