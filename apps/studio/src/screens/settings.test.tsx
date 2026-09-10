@@ -27,6 +27,7 @@ import type {
   SingletonDescriptor,
 } from '../api/introspection.ts'
 import { SessionProvider, type Viewer } from '../api/session.tsx'
+import { LanguageContext, type LanguageState } from '../i18n/translate.tsx'
 import { Settings } from './settings.tsx'
 
 const VIEWER: Viewer = {
@@ -44,10 +45,24 @@ type Stored = {
 }
 
 /** The screen at `/settings`, with the query string the address carries. */
+const SPOKEN: LanguageState = {
+  languages: [
+    { tag: 'en', name: 'English' },
+    { tag: 'uk', name: 'Українська' },
+  ],
+  language: 'en',
+  readings: {},
+  choose: () => undefined,
+}
+
+/** The same deployment, having settled on one language — so there is nothing to switch. */
+const ALONE: LanguageState = { ...SPOKEN, languages: [{ tag: 'en', name: 'English' }] }
+
 const draw = async (
   settings: readonly SettingsGroupDescriptor[],
   search = '',
   singletons: readonly Stored[] = [],
+  spoken: LanguageState = SPOKEN,
 ): Promise<string> => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const introspection: Introspection = {
@@ -85,11 +100,13 @@ const draw = async (
   await router.load()
 
   return renderToStaticMarkup(
-    <QueryClientProvider client={client}>
-      <SessionProvider>
-        <RouterProvider router={router} />
-      </SessionProvider>
-    </QueryClientProvider>,
+    <LanguageContext.Provider value={spoken}>
+      <QueryClientProvider client={client}>
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>
+      </QueryClientProvider>
+    </LanguageContext.Provider>,
   )
 }
 
@@ -286,5 +303,14 @@ describe('the settings screen', () => {
 
     expect(sidebar(markup)).toEqual(['Studio'])
     expect(words(markup)).toContain('English')
+  })
+
+  it('leaves it out where the deployment offers one language, rather than drawing a settled question', async () => {
+    // Its only row is which language Studio speaks (ADR-0034). A deployment that
+    // narrowed the offer to one has answered that, and the group would be a sidebar
+    // entry leading to a screen holding a control with a single option.
+    const markup = await draw([], '', [], ALONE)
+
+    expect(sidebar(markup)).toEqual([])
   })
 })

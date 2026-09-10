@@ -20,7 +20,6 @@ import { type FormEvent, useId, useState } from 'react'
 
 import { ApiError, unshownMessages } from '../api/client.ts'
 import { useSession } from '../api/session.tsx'
-import { LANGUAGE_NAMES } from '../i18n/languages.ts'
 import type { Translate } from '../i18n/messages.ts'
 import { useLanguage, useT } from '../i18n/translate.tsx'
 import { Button, Input, Segmented } from '../ui/index.tsx'
@@ -172,15 +171,21 @@ export const Login = () => {
            * cannot reach the account menu because they are not signed in yet. A person
            * who has to read English to find out how to stop reading English has been
            * given no choice at all.
+           *
+           * Unless the deployment offers one language, in which case there is no guess
+           * to correct (ADR-0034). A control with a single option is not a choice, and
+           * drawing one is how a deployment that decided this ends up looking undecided.
            */}
-          <div className="mt-5">
-            <Segmented
-              label={t('account.interface')}
-              value={language}
-              options={languages.map((code) => ({ value: code, label: LANGUAGE_NAMES[code] }))}
-              onChange={choose}
-            />
-          </div>
+          {languages.length > 1 && (
+            <div className="mt-5">
+              <Segmented
+                label={t('account.interface')}
+                value={language}
+                options={languages.map((offer) => ({ value: offer.tag, label: offer.name }))}
+                onChange={choose}
+              />
+            </div>
+          )}
         </div>
       </section>
 

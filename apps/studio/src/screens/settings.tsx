@@ -39,7 +39,6 @@ import {
 } from '../api/introspection.ts'
 import { useSession } from '../api/session.tsx'
 import { Avatar } from '../app/shell.tsx'
-import { isLanguage, LANGUAGE_NAMES } from '../i18n/languages.ts'
 import { useLanguage, useT } from '../i18n/translate.tsx'
 import { said } from '../settings/said.ts'
 import { hitsOf, matches } from '../settings/search.ts'
@@ -395,34 +394,44 @@ const useGroups = (): {
   // Built on every render rather than memoised: the list is a handful of small
   // objects, and the answers it is drawn from change by identity as the queries
   // settle — a dependency list that tracks that is longer than the work it saves.
-  const studio: Group = {
-    name: STUDIO_GROUP,
-    section: 'workspace',
-    label: t('settings.studio'),
-    blurb: t('settings.studio.blurb'),
-    icon: 'settings-2',
-    blocks: [
-      {
-        title: t('settings.studio'),
-        note: t('settings.studio.note'),
-        rows: [
-          {
-            key: STUDIO_LANGUAGE,
-            kind: 'segmented',
-            label: t('account.interface'),
-            help: t('settings.language.help'),
-            value: language,
-            options: languages.map((code) => ({ value: code, label: LANGUAGE_NAMES[code] })),
-          },
-        ],
-      },
-    ],
-  }
+  /**
+   * Absent where the deployment offers one language (ADR-0034).
+   *
+   * Its only row is which language Studio speaks, so a deployment that settled that
+   * question has an empty group — and an empty group is a sidebar entry leading to a
+   * screen with nothing on it.
+   */
+  const studio: Group | undefined =
+    languages.length < 2
+      ? undefined
+      : {
+          name: STUDIO_GROUP,
+          section: 'workspace',
+          label: t('settings.studio'),
+          blurb: t('settings.studio.blurb'),
+          icon: 'settings-2',
+          blocks: [
+            {
+              title: t('settings.studio'),
+              note: t('settings.studio.note'),
+              rows: [
+                {
+                  key: STUDIO_LANGUAGE,
+                  kind: 'segmented',
+                  label: t('account.interface'),
+                  help: t('settings.language.help'),
+                  value: language,
+                  options: languages.map((offer) => ({ value: offer.tag, label: offer.name })),
+                },
+              ],
+            },
+          ],
+        }
 
   const groups: Group[] = [
     ...(introspection.data?.settings ?? []).map((group) => spoken(group, language)),
     ...declared.map((one) => singletonGroup(one, read.get(one.name))),
-    studio,
+    ...(studio === undefined ? [] : [studio]),
   ]
 
   // A registry that could not be read is said, not shown as one lonely group: the
@@ -439,7 +448,7 @@ export const Settings = () => {
   const navigate = useNavigate()
   const { group: asked } = useSearch({ from: '/settings' })
   const { viewer } = useSession()
-  const { choose } = useLanguage()
+  const { choose, languages } = useLanguage()
   const { groups, ready, failure, versions } = useGroups()
   const client = useQueryClient()
   const t = useT()
@@ -514,7 +523,11 @@ export const Settings = () => {
     onSuccess: async (written, held) => {
       const language = held[STUDIO_LANGUAGE]
 
-      if (typeof language === 'string' && isLanguage(language)) choose(language)
+      // Offered rather than merely well-formed: the row was drawn from this list, so
+      // anything else arrived from a stale screen or a hand-edited store.
+      if (typeof language === 'string' && languages.some((offer) => offer.tag === language)) {
+        choose(language)
+      }
 
       setStaged({})
       setRefusal(undefined)

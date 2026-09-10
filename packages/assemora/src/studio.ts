@@ -18,6 +18,7 @@ import { ConfigurationError, type Logger } from '@assemora/core'
 import type { HttpServer } from '@assemora/http'
 
 import type { ResolvedStudio } from './options.js'
+import { studioLanguages } from './studio-languages.js'
 
 /**
  * Held in a constant so that TypeScript does not try to resolve it.
@@ -110,8 +111,14 @@ export const mountStudio = async (
   logger: Logger,
 ): Promise<void> => {
   const root = studio.root ?? (await installedRoot())
+  const { offered, documents } = await studioLanguages(root, studio)
 
-  logger.info('Studio is served beside the API', { path: studio.path })
+  logger.info('Studio is served beside the API', {
+    path: studio.path,
+    // English is always on offer and is never a pack, so it is said here rather than
+    // counted: a line reading `languages: []` would be a Studio nobody could read.
+    languages: ['en', ...offered.map((language) => language.tag)],
+  })
 
-  server.mountAssets({ path: studio.path, root })
+  server.mountAssets({ path: studio.path, root, documents })
 }

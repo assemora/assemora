@@ -1,42 +1,28 @@
 /**
- * The catalogue's own invariants (SPEC.md §115).
+ * The source catalogue's own invariants (SPEC.md §115).
  *
- * Four of the five below cannot be argued with by a translator, which is the point: a
- * missing language, a hole a translation invented, a plural with two forms instead of
- * three and a key lost to a duplicate are all mistakes that read as ordinary text on a
- * screen nobody has opened in that language yet.
+ * English only. Every other language is a pack and is held to its own standard in
+ * `packs.test.ts` — which is the shape ADR-0034 chose, and the reason these two files
+ * are two: what a compiler can see is one question, and what arrives at run time is
+ * another.
  *
- * The fifth — that `t` refuses the wrong call — is checked by the compiler rather than
- * here: `pnpm typecheck` covers this file, so the `@ts-expect-error` lines at the end
- * fail the build if the machinery ever stops catching what they say it catches.
+ * The one invariant checked by the compiler rather than here is that `t` refuses the
+ * wrong call: `pnpm typecheck` covers this file, so the `@ts-expect-error` lines at the
+ * end fail the build if the machinery ever stops catching what they say it catches.
  */
 import { describe, expect, it } from 'vitest'
 
-import { formOf } from './catalogue.ts'
-import { isLanguage, LANGUAGE_NAMES, LANGUAGES, preferred, SOURCE } from './languages.ts'
+import { categoryOf } from './catalogue.ts'
+import { isLanguage, preferred, SOURCE } from './languages.ts'
+import { ENGLISH } from './load.ts'
 import { MESSAGES, type MessageKey, SLICES, type Translate, translator } from './messages.ts'
 
 const entries = Object.entries(MESSAGES) as readonly (readonly [MessageKey, unknown])[]
 
-/** Every `{name}` in one reading of a message. */
-const holesOf = (text: string): readonly string[] =>
-  [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1] ?? '')
-
-const readings = (message: unknown, language: string): readonly string[] => {
-  const value = (message as Record<string, string | readonly string[]>)[language]
-
-  return typeof value === 'string' ? [value] : (value ?? [])
-}
+const UKRAINIAN = { tag: 'uk', name: 'Українська' }
+const nothing = {}
 
 describe('the catalogue', () => {
-  it('says everything in every language Studio speaks', () => {
-    for (const [key, message] of entries) {
-      for (const language of LANGUAGES) {
-        expect(readings(message, language).length, `${key} in ${language}`).toBeGreaterThan(0)
-      }
-    }
-  })
-
   it('loses nothing when the slices are merged', () => {
     // A key written into two slices would silently be one key, and the second would win
     // — the failure mode of assembling an object out of parts.
@@ -45,38 +31,16 @@ describe('the catalogue', () => {
     expect(Object.keys(MESSAGES).length).toBe(written)
   })
 
-  it('never lets a translation invent a hole the English does not have', () => {
-    // The other direction is allowed and used: `entries.blank.title` says the resource's
-    // name in English and leaves it to the heading in Ukrainian, because a foreign noun
-    // cannot be declined into a Slavic sentence. An *extra* hole is always a typo, and
-    // it renders as `{naem}` on the screen.
+  it('gives a counted message the two forms English counts in, each holding its number', () => {
     for (const [key, message] of entries) {
-      const english = new Set(readings(message, SOURCE).flatMap(holesOf))
+      const english = (message as { en: string | Record<string, string> }).en
 
-      for (const language of LANGUAGES) {
-        for (const reading of readings(message, language)) {
-          for (const hole of holesOf(reading)) {
-            expect(english, `${key} in ${language} names {${hole}}`).toContain(hole)
-          }
-        }
-      }
-    }
-  })
+      if (typeof english === 'string') continue
 
-  it('gives a counted message three forms, each holding its number', () => {
-    for (const [key, message] of entries) {
-      const forms = readings(message, SOURCE)
+      expect(Object.keys(english).sort(), `${key}`).toEqual(['one', 'other'])
 
-      if (forms.length === 1) continue
-
-      for (const language of LANGUAGES) {
-        const written = readings(message, language)
-
-        expect(written.length, `${key} in ${language}`).toBe(3)
-
-        for (const form of written) {
-          expect(form, `${key} in ${language}`).toContain('{count}')
-        }
+      for (const form of Object.values(english)) {
+        expect(form, `${key}`).toContain('{count}')
       }
     }
   })
@@ -86,31 +50,79 @@ describe('counting', () => {
   /**
    * The rule is not one rule, and 21 is where that shows.
    *
-   * Under the Slavic rule 21 takes the *first* form, which is right for `21 запис` and
-   * wrong for `21 item`. Sharing one function between the three languages is the bug
-   * this table exists to refuse.
+   * Under the Slavic rule 21 takes the form 1 takes, which is right for `21 запис` and
+   * wrong for `21 item`. What used to prove this was a hand-written table of functions;
+   * what proves it now is that `Intl` is asked per language, which is also what made a
+   * language expressible as a file (ADR-0034).
    */
   it('follows each language rather than one rule for all of them', () => {
-    expect([1, 2, 5, 11, 21].map((count) => formOf('uk', count))).toEqual([0, 1, 2, 2, 0])
-    expect([1, 2, 5, 11, 21].map((count) => formOf('ru', count))).toEqual([0, 1, 2, 2, 0])
-    expect([1, 2, 5, 11, 21].map((count) => formOf('en', count))).toEqual(
-      [1, 1, 1, 1, 1].map((_, index) => (index === 0 ? 0 : 1)),
-    )
+    expect([1, 2, 5, 11, 21].map((count) => categoryOf('uk', count))).toEqual([
+      'one',
+      'few',
+      'many',
+      'many',
+      'one',
+    ])
+    expect([1, 2, 5, 11, 21].map((count) => categoryOf('en', count))).toEqual([
+      'one',
+      'other',
+      'other',
+      'other',
+      'other',
+    ])
+  })
+
+  it('counts in a language nobody wrote a rule for', () => {
+    // The point of asking the platform: Japanese has one form and Arabic has six, and
+    // neither was a language this bundle had heard of when the mechanism was written.
+    expect(categoryOf('ja', 5)).toBe('other')
+    expect(categoryOf('ar', 2)).toBe('two')
   })
 
   it('picks the form a number takes in the language being read', () => {
-    const uk = translator('uk')
+    const readings = {
+      'collection.entryCount': {
+        one: '{count} запис',
+        few: '{count} записи',
+        many: '{count} записів',
+        other: '{count} записів',
+      },
+    }
+    const uk = translator('uk', readings)
 
     expect(uk('collection.entryCount', { count: 1 })).toBe('1 запис')
     expect(uk('collection.entryCount', { count: 3 })).toBe('3 записи')
     expect(uk('collection.entryCount', { count: 7 })).toBe('7 записів')
-    expect(translator('en')('collection.entryCount', { count: 7 })).toBe('7 entries')
+    expect(translator(SOURCE, nothing)('collection.entryCount', { count: 7 })).toBe('7 entries')
+  })
+})
+
+describe('a language whose pack does not hold the key', () => {
+  it('answers in English rather than in nothing', () => {
+    // Per key, not per pack. A pack written against an older Studio is a screen in its
+    // own language with the newest sentence in English, which is a thing a reader can
+    // work with; falling back wholesale would turn one missing key into an English
+    // admin panel.
+    const partial = { 'common.cancel': 'Скасувати' }
+    const uk = translator('uk', partial)
+
+    expect(uk('common.cancel')).toBe('Скасувати')
+    expect(uk('common.save')).toBe('Save')
+  })
+
+  it('answers a counted message in English in the form English would take', () => {
+    const uk = translator('uk', nothing)
+
+    expect(uk('collection.entryCount', { count: 1 })).toBe('1 entry')
+    // 3 is `few` in Ukrainian and `other` in English, and the reading being used is the
+    // English one — so it must be counted the way English counts.
+    expect(uk('collection.entryCount', { count: 3 })).toBe('3 entries')
   })
 })
 
 describe('a message with holes in it', () => {
   it('fills them from what the call site passed', () => {
-    expect(translator('en')('collection.unknown', { name: 'wormholes' })).toBe(
+    expect(translator(SOURCE, nothing)('collection.unknown', { name: 'wormholes' })).toBe(
       'No collection called “wormholes”',
     )
   })
@@ -121,30 +133,51 @@ describe('a message with holes in it', () => {
     // through `String()`. Compared against `Intl`'s own answer for that reason: what is
     // being pinned is that the language decides, not which byte it decided on.
     const grouped = new Intl.NumberFormat('uk').format(12480)
+    const readings = {
+      'collection.entryCount': {
+        one: '{count} запис',
+        few: '{count} записи',
+        many: '{count} записів',
+        other: '{count} записів',
+      },
+    }
 
     expect(grouped).not.toBe('12480')
-    expect(translator('uk')('collection.entryCount', { count: 12480 })).toBe(`${grouped} записів`)
-    expect(translator('en')('collection.entryCount', { count: 12480 })).toBe('12,480 entries')
+    expect(translator('uk', readings)('collection.entryCount', { count: 12480 })).toBe(
+      `${grouped} записів`,
+    )
+    expect(translator(SOURCE, nothing)('collection.entryCount', { count: 12480 })).toBe(
+      '12,480 entries',
+    )
     // A value that must not be grouped is passed as a string: `v1,024` is not a version.
-    expect(translator('en')('builder.published', { version: '1024' })).toBe('Published · v1024')
+    expect(translator(SOURCE, nothing)('builder.published', { version: '1024' })).toBe(
+      'Published · v1024',
+    )
   })
 })
 
 describe('the language Studio opens in', () => {
-  it('is the first one the browser asks for that Studio speaks', () => {
-    expect(preferred(['uk-UA', 'en-GB'])).toBe('uk')
-    expect(preferred(['de-DE', 'ru'])).toBe('ru')
+  const offered = [ENGLISH, UKRAINIAN]
+
+  it('is the first one the browser asks for that this deployment offers', () => {
+    expect(preferred(offered, ['uk-UA', 'en-GB'])).toBe('uk')
+    expect(preferred(offered, ['de-DE', 'uk'])).toBe('uk')
   })
 
-  it('falls back to the language every message is written in first', () => {
-    expect(preferred(['de-DE', 'fr'])).toBe(SOURCE)
-    expect(preferred([])).toBe(SOURCE)
+  it('falls back to the source rather than to a language nobody offered', () => {
+    // The list is the deployment's now, so a browser asking for Russian where Russian
+    // is not offered gets English — not a tag with no pack behind it.
+    expect(preferred(offered, ['ru-RU'])).toBe(SOURCE)
+    expect(preferred(offered, [])).toBe(SOURCE)
   })
 
-  it('names each language in itself, never in English', () => {
-    expect(LANGUAGE_NAMES.uk).toBe('Українська')
+  it('takes a tag `Intl` accepts, and only that', () => {
     expect(isLanguage('uk')).toBe(true)
-    expect(isLanguage('de')).toBe(false)
+    // The set is open now, so a language nobody shipped is still a language: what is
+    // checked is the shape of the tag, because everything downstream hands it to `Intl`.
+    expect(isLanguage('pt-BR')).toBe(true)
+    expect(isLanguage('not a tag')).toBe(false)
+    expect(isLanguage('')).toBe(false)
   })
 })
 
@@ -173,6 +206,6 @@ const refused = (t: Translate): void => {
 describe('what does not compile', () => {
   it('asks for the parameters a message names, and only those', () => {
     expect(refused).toBeTypeOf('function')
-    expect(translator('en')('common.cancel')).toBe('Cancel')
+    expect(translator(SOURCE, nothing)('common.cancel')).toBe('Cancel')
   })
 })

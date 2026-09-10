@@ -24,6 +24,21 @@ export type AssetsOptions = {
   /** The directory on disk. Absolute. */
   readonly root: string
   /**
+   * Paths answered from memory rather than from the directory, keyed relative to it.
+   *
+   * A static mount serves what a build wrote, and a build cannot know a fact that is
+   * settled when the server starts. Studio's language manifest is the case this exists
+   * for (ADR-0034): which languages a deployment offers is decided by the application,
+   * by what it added and by what it narrowed the set to, and none of the three is
+   * knowable to whoever ran `vite build` months earlier.
+   *
+   * Checked before the disk, so a document shadows a file of the same name — which is
+   * what makes the bundle's own manifest a default rather than the answer. The value is
+   * serialised as JSON once, at mount, and served `no-cache`: these are small and they
+   * describe the deployment, so a cached one is a stale description of a live thing.
+   */
+  readonly documents?: Readonly<Record<string, unknown>>
+  /**
    * What a request for an unknown path answers with.
    *
    * A single-page application routes in the browser, so `/studio/pages/42` has to

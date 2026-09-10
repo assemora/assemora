@@ -61,7 +61,16 @@ export const createApp = (): AssemoraApplication =>
       version: '0.0.0',
       description: 'A marketing site assembled from blocks',
     },
-    studio: { root: studioAssets() },
+    /**
+     * English alone, because this deployment is a public demo (ADR-0034).
+     *
+     * Studio ships Ukrainian and Russian too, and a deployment whose editors read them
+     * should say so — `languages: ['en', 'uk']`, or nothing at all to offer everything
+     * in the bundle. This one is opened by strangers who arrived from a link, so a
+     * switcher offering two languages none of them asked for is furniture. Adding one
+     * the bundle never shipped is `languagePacks`, a directory of JSON.
+     */
+    studio: { root: studioAssets(), languages: ['en'] },
     mcp: true,
     /**
      * The bundle `pnpm build` writes, served at `/preview`.

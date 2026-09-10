@@ -66,7 +66,7 @@ const nested: CollectionDefinition = {
 const context = {
   // English, because these assertions are about which refusal is raised rather than
   // about how it reads. The catalogue's own suite covers the other two languages.
-  t: translator('en'),
+  t: translator('en', {}),
   stored: undefined,
   taken: ['articles'],
   dropped: [],

@@ -34,7 +34,6 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { type ResourceDescriptor, useIntrospection } from '../api/introspection.ts'
 import { useLocales } from '../api/locale.tsx'
 import { useSession } from '../api/session.tsx'
-import { LANGUAGE_NAMES } from '../i18n/languages.ts'
 import type { MessageKey } from '../i18n/messages.ts'
 import { useLanguage, useT } from '../i18n/translate.tsx'
 import { ResourceIcon } from '../ui/icons.tsx'
@@ -659,23 +658,24 @@ const ProfileMenu = ({
        * Ukrainian is routinely filled in by somebody who reads English, and the reverse
        * is just as ordinary.
        */}
-      <MenuHeading>{t('account.interface')}</MenuHeading>
-      {languages.map((code) => (
-        <MenuItem
-          key={code}
-          onClick={() => {
-            speak(code)
-            onDismiss()
-          }}
-        >
-          <span className={code === language ? 'font-[650]' : undefined}>
-            {LANGUAGE_NAMES[code]}
-          </span>
-          {code === language && (
-            <Check aria-hidden className="ml-auto size-4 shrink-0 text-ink-soft" />
-          )}
-        </MenuItem>
-      ))}
+      {/* Only where there is something to switch to: a deployment may offer one
+          language (ADR-0034), and a heading over a single ticked row is furniture. */}
+      {languages.length > 1 && <MenuHeading>{t('account.interface')}</MenuHeading>}
+      {languages.length > 1 &&
+        languages.map((offer) => (
+          <MenuItem
+            key={offer.tag}
+            onClick={() => {
+              speak(offer.tag)
+              onDismiss()
+            }}
+          >
+            <span className={offer.tag === language ? 'font-[650]' : undefined}>{offer.name}</span>
+            {offer.tag === language && (
+              <Check aria-hidden className="ml-auto size-4 shrink-0 text-ink-soft" />
+            )}
+          </MenuItem>
+        ))}
       <MenuSeparator />
 
       {/* The settings screen is reached from here, where the redesign puts it: a mode
