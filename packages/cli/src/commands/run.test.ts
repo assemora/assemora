@@ -372,6 +372,8 @@ describe('start', () => {
       const argv: unknown = JSON.parse(await readFile(join(root, 'argv.json'), 'utf8'))
 
       expect(argv).toEqual([
+        // Node's type-stripping notice, which nobody in a project chose (ADR-0005).
+        '--disable-warning=ExperimentalWarning',
         '--import',
         expect.stringMatching(new RegExp(`/watchdog\\.[jt]s\\?parent=${process.pid}$`)),
       ])
@@ -717,5 +719,42 @@ describe('build', () => {
     const root = await project({ 'assemora.config.ts': config("server: 'server.mjs'") })
 
     await expect(invoke(['build'], root)).rejects.toThrow(/no tsconfig\.json/)
+  })
+})
+
+describe('what node is told before it reads the entry', () => {
+  const argv = (passthrough: readonly string[] = []): readonly string[] =>
+    serverArgv({ watch: false, passthrough, entry: 'src/server.ts', supervisor: 1 })
+
+  it('silences the type-stripping notice, which nobody in a project chose', () => {
+    // Running TypeScript directly is the mechanism, not an option a project took
+    // (ADR-0005), so node's announcement that it is experimental is addressed to
+    // nobody. Left in, the first thing `pnpm dev` says to somebody trying the
+    // framework is that it might change at any moment.
+    expect(argv()).toContain('--disable-warning=ExperimentalWarning')
+  })
+
+  it('silences that one by name rather than warnings in general', () => {
+    // A deprecation, or an experiment the project really did opt into, still has to
+    // arrive. `--no-warnings` would take those with it.
+    expect(argv()).not.toContain('--no-warnings')
+  })
+
+  it('puts it where node reads its own options, before the entry', () => {
+    // Everything after the script path belongs to the script. A node flag written
+    // past it is an argument the server is handed and does not understand.
+    const built = argv()
+
+    expect(built.indexOf('--disable-warning=ExperimentalWarning')).toBeLessThan(
+      built.indexOf('src/server.ts'),
+    )
+  })
+
+  it('still lets a project pass node its own flags', () => {
+    // `assemora dev -- --inspect` has to reach node, and after this rather than
+    // instead of it.
+    expect(argv(['--inspect'])).toEqual(
+      expect.arrayContaining(['--disable-warning=ExperimentalWarning', '--inspect']),
+    )
   })
 })

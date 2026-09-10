@@ -19,6 +19,31 @@
  */
 import { existsSync } from 'node:fs'
 
+/**
+ * Node's type-stripping notice, silenced — and nothing else.
+ *
+ * Running a project's TypeScript directly is the mechanism this CLI is built on
+ * (ADR-0005), so node announces it as experimental the moment `assemora.config.ts` is
+ * loaded. The announcement is addressed to whoever chose the flag, and nobody did:
+ * every `assemora` command printed it, so the first thing somebody trying the
+ * framework read was that it might change at any moment.
+ *
+ * The child process is given `--disable-warning=ExperimentalWarning` instead
+ * (`commands/run.ts`), which is what this repository already does in its own scripts.
+ * A flag cannot be passed through `#!/usr/bin/env node`, so the same thing is done
+ * here by hand — narrower, in fact: it drops one warning by name and hands every
+ * other one to the printer node came with, so a deprecation, or an experiment a
+ * project really did opt into, still arrives.
+ */
+const printers = process.listeners('warning')
+
+process.removeAllListeners('warning')
+process.on('warning', (warning) => {
+  if (warning.name === 'ExperimentalWarning' && warning.message.includes('Type Stripping')) return
+
+  for (const printer of printers) printer(warning)
+})
+
 const compiled = new URL('./dist/bin.js', import.meta.url)
 
 if (existsSync(compiled)) {
