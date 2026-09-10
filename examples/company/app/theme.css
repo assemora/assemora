@@ -188,3 +188,41 @@ a {
   padding: var(--space-sm);
   text-align: center;
 }
+
+/*
+ * The demo says who to sign in as.
+ *
+ * A public demo whose front door is a password field is a closed door. This strip is
+ * the answer, and it appears only where the answer is public: `/api/site/demo` refuses
+ * unless the deployment opted in and is running in memory.
+ */
+.demo-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.demo-banner code {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  background: rgb(255 255 255 / 14%);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.demo-banner-open {
+  margin-left: auto;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+}
