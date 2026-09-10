@@ -27,6 +27,22 @@ Two things follow, and both are deliberate:
 Setting `DATABASE_URL` moves the demo onto PostgreSQL and the reset that makes the
 published password reasonable stops happening. Don't.
 
+### It says who to sign in as
+
+A public demo whose front door is a password field is a closed door: a visitor arrives,
+finds a form, and has no way to know what to type. Set `ASSEMORA_DEMO=1` and the site
+carries a strip saying the address and the password, with a link to Studio.
+
+`GET /api/site/demo` is what it reads, and it answers only when **both** are true: the
+deployment opted in with that variable, and it is running on the in-memory database.
+This file is an example people copy, and a route that hands out a password must be
+impossible to turn on by accident — with a real `DATABASE_URL` it is a 404.
+
+Studio's own sign-in screen still says nothing. It has no unauthenticated source to
+read a notice from, and giving it one is a change to the authentication surface rather
+than a demo's to make — so a visitor who types `/studio` directly still arrives at a
+bare form. The address handed out should be the site.
+
 ## It must be served over HTTPS
 
 `session: { secure: true }` is the default (`packages/assemora/src/options.ts`), so the
