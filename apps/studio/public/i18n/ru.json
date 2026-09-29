@@ -40,6 +40,12 @@
     "nav.theme": "Тема",
     "nav.ai": "ИИ",
     "nav.proposals": "Предложения",
+    "nav.proposalsWaiting": {
+      "one": "{count} ждёт решения",
+      "few": "{count} ждут решения",
+      "many": "{count} ждут решения",
+      "other": "{count} ждут решения"
+    },
     "nav.settings": "Настройки",
     "nav.users": "Пользователи",
     "nav.developer": "Для разработчика",

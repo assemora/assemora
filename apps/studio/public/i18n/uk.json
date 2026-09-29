@@ -40,6 +40,12 @@
     "nav.theme": "Тема",
     "nav.ai": "ШІ",
     "nav.proposals": "Пропозиції",
+    "nav.proposalsWaiting": {
+      "one": "{count} чекає на рішення",
+      "few": "{count} чекають на рішення",
+      "many": "{count} чекають на рішення",
+      "other": "{count} чекають на рішення"
+    },
     "nav.settings": "Налаштування",
     "nav.users": "Користувачі",
     "nav.developer": "Для розробника",

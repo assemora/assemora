@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
+import { usePendingProposals } from '../api/changesets.ts'
 import { type ResourceDescriptor, useIntrospection } from '../api/introspection.ts'
 import { useLocales } from '../api/locale.tsx'
 import { useSession } from '../api/session.tsx'
@@ -138,6 +139,31 @@ const RailLink = ({
 
 const RailRule = () => <span aria-hidden className="my-1.5 h-px w-6 bg-line" />
 
+/**
+ * How many proposals wait for somebody, at the end of the row that leads to them.
+ *
+ * Accent rather than the quiet `Counter` a heading wears: of everything in the sidebar,
+ * this is the one number asking for something to be done. Past 99 it stops counting — a
+ * sidebar row is no place to read a large number, and the screen states the exact one.
+ * The figure is drawn for the eye and said in words for a screen reader, because a bare
+ * "2" after "Proposals" does not say two of what.
+ */
+export const Waiting = ({ count }: { count: number }) => {
+  const t = useT()
+
+  return (
+    <span className="ml-auto flex shrink-0 items-center">
+      <span
+        aria-hidden
+        className="h-5 min-w-5 rounded-full bg-accent px-1.5 text-center text-xs leading-5 font-[650] text-white tabular-nums"
+      >
+        {count > 99 ? '99+' : count}
+      </span>
+      <span className="sr-only">{t('nav.proposalsWaiting', { count })}</span>
+    </span>
+  )
+}
+
 /* ------------------------------------------------------------------------- the shell */
 
 export const Shell = () => {
@@ -202,6 +228,12 @@ export const Shell = () => {
   const hasCollections =
     introspection.data?.queries?.some((query) => query.name === 'collections.list') === true &&
     can('collections.read')
+  // The same two questions for the proposals badge: an application without change sets
+  // has nothing to count, and a viewer who may not read them would only be refused.
+  const waiting = usePendingProposals(
+    introspection.data?.queries?.some((query) => query.name === 'changesets.list') === true &&
+      can('changesets.read'),
+  )
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -263,11 +295,17 @@ export const Shell = () => {
                   </>
                 )}
                 <RailRule />
+                {/* The dot used to be drawn unconditionally, so the rail announced
+                    proposals whether or not there were any. */}
                 <RailLink
                   to="/proposals"
                   icon={<Sparkles className="size-5" />}
-                  label={t('nav.proposals')}
-                  badge
+                  label={
+                    waiting > 0
+                      ? `${t('nav.proposals')} — ${t('nav.proposalsWaiting', { count: waiting })}`
+                      : t('nav.proposals')
+                  }
+                  badge={waiting > 0}
                 />
                 <RailRule />
                 <RailLink
@@ -410,7 +448,11 @@ export const Shell = () => {
                 )}
 
                 <Group title={t('nav.ai')}>
-                  <NavLink to="/proposals" icon={<Sparkles className="size-[18px]" />}>
+                  <NavLink
+                    to="/proposals"
+                    icon={<Sparkles className="size-[18px]" />}
+                    after={waiting > 0 && <Waiting count={waiting} />}
+                  >
                     {t('nav.proposals')}
                   </NavLink>
                 </Group>

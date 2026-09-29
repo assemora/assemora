@@ -33,6 +33,10 @@ export const CHROME = {
   'nav.theme': { en: 'Theme' },
   'nav.ai': { en: 'AI' },
   'nav.proposals': { en: 'Proposals' },
+  // What the number beside `Proposals` means, for somebody who hears it rather than sees it.
+  'nav.proposalsWaiting': {
+    en: { one: '{count} waiting for a decision', other: '{count} waiting for a decision' },
+  },
   'nav.settings': { en: 'Settings' },
   'nav.users': { en: 'Users' },
   'nav.developer': { en: 'Developer' },
